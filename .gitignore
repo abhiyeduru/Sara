@@ -1,0 +1,115 @@
+# ============================================
+# SARA - Git Ignore
+# ============================================
+
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+
+# API keys / credentials
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+credentials.json
+service-account.json
+secrets.json
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---------- Node / React ----------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+client/dist/
+client/build/
+dist/
+build/
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- Local databases ----------
+*.db
+*.sqlite
+*.sqlite3
+
+# ---------- Temporary files ----------
+*.tmp
+*.temp
+*.bak
+*.cache
+
+# ---------- Python generated files ----------
+*.egg-info/
+.eggs/
+
+# ---------- ML / Model files ----------
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.ckpt
+
+# Hugging Face / local model cache
+.cache/
+huggingface_cache/
+models/
+
+# ---------- Audio files ----------
+*.wav
+*.mp3
+*.m4a
+*.ogg
+*.flac
+
+# ---------- Generated data ----------
+output/
+outputs/
+tmp/
+temp/
+
+# ---------- Coverage ----------
+.coverage.*
+coverage.xml
+
+# ---------- Local configuration ----------
+config.local.py
+config.local.json
