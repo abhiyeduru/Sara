@@ -155,9 +155,11 @@ export class AudioStreamer {
     }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const port = window.location.port === '5173' ? '8000' : (window.location.port || (protocol === 'wss:' ? '443' : '80'));
-    const host = `${window.location.hostname}:${port}`;
-    const wsUrl = `${protocol}//${host}/ws/voice/${agentId}`;
+    let wsHost = window.location.host;
+    if (window.location.port === '5173' || window.location.port === '5174') {
+      wsHost = `${window.location.hostname}:8000`;
+    }
+    const wsUrl = `${protocol}//${wsHost}/ws/voice/${agentId}`;
 
     return new Promise((resolve) => {
       this.ws = new WebSocket(wsUrl);
