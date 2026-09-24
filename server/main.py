@@ -41,6 +41,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 # Include Routers
 app.include_router(agents.router)
 app.include_router(voices.router)
@@ -69,6 +73,26 @@ def health_check(db: Session = Depends(get_db)):
         "languages": ["en", "te", "hi"]
     }
 
+# Mount static frontend build if present
+CLIENT_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client", "dist")
+if os.path.exists(CLIENT_DIST):
+    assets_dir = os.path.join(CLIENT_DIST, "assets")
+    if os.path.exists(assets_dir):
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        if full_path.startswith("api/") or full_path.startswith("ws/"):
+            return {"error": "Not Found"}
+        target = os.path.join(CLIENT_DIST, full_path)
+        if os.path.isfile(target):
+            return FileResponse(target)
+        index_html = os.path.join(CLIENT_DIST, "index.html")
+        if os.path.isfile(index_html):
+            return FileResponse(index_html)
+        return {"message": "SARA API is running"}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("server.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+

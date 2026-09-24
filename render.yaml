@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: sara-platform
+    env: python
+    buildCommand: npm --prefix client install && npm --prefix client run build && pip install -r requirements.txt
+    startCommand: uvicorn server.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NODE_VERSION
+        value: 20.0.0
+      - key: ENVIRONMENT
+        value: production
