@@ -43,10 +43,10 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
     personality: 'Professional & Friendly',
     communication_style: 'Concise',
     sales_behavior: 'Consultative',
-    languages: ['en', 'te', 'hi'],
-    voice_id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4',
+    languages: ['te'],
+    voice_id: '330c4fa0-1da3-4c55-8e97-951bfd724e20',
     voice_gender: 'female',
-    voice_name: 'Skylar',
+    voice_name: 'SARA Cartesia Telugu (Sarika - Calm & Sweet Spirit)',
     faqs: [
       { question: 'What is the starting price for a 2 BHK?', answer: 'The starting price for a 2 BHK is ₹85 Lakhs.', category: 'Pricing', priority: 1 },
       { question: 'Where are your projects located?', answer: 'Our projects are located in Gachibowli, Kondapur, and Kokapet.', category: 'Locations', priority: 1 },
@@ -156,7 +156,13 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
       return;
     }
 
-    const previewUrl = api.getVoicePreviewUrl(voiceId, "Namaste! I am SARA, your AI voice agent.");
+    const isTelugu = voiceId && (voiceId.includes('te') || voiceId.includes('telugu') || voiceId === '3a8e6fea-81e5-4d4d-8755-86093146cdb8' || voiceId === '330c4fa0-1da3-4c55-8e97-951bfd724e20' || voiceId === '07bc462a-c644-49f1-baf7-82d5599131be');
+    const previewText = isTelugu 
+      ? "నమస్కారం అండీ! నేను సారా మీ తెలుగు వాయిస్ అసిస్టెంట్ ని. మీకు ఏ విధంగా సహాయపడగలను?"
+      : "Hello! I am SARA, your real-time AI voice representative. How can I help you today?";
+    const lang = isTelugu ? 'te' : 'en';
+
+    const previewUrl = api.getVoicePreviewUrl(voiceId, previewText, lang);
     const audio = new Audio(previewUrl);
     setAudioElem(audio);
     setPlayingVoiceId(voiceId);
@@ -615,30 +621,45 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
         {/* Step 8: Voice Selection */}
         {currentStep === 8 && (
           <div>
-            <h2 className="text-xl font-semibold text-white mb-1">Select Cartesia Voice</h2>
-            <p className="text-xs text-sara-400 mb-6">Select a male or female neural voice and preview live Cartesia audio synthesis.</p>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xl font-semibold text-white">Select AI Voice (Pure Telugu & Multilingual)</h2>
+              <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-medium border border-emerald-500/30">
+                ✨ Pure Sweet Telugu Voices Active
+              </span>
+            </div>
+            <p className="text-xs text-sara-400 mb-6">Select an authentic sweet native Telugu voice or neural voice and preview live natural speech synthesis.</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-              {(voices.length > 0 ? voices.slice(0, 6) : [
-                { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar', gender: 'female', style: 'Warm & Professional', description: 'Crystal clear neural voice ideal for corporate representatives.' },
-                { id: '62ae83ad-4f6a-430b-af41-a9bede9286ca', name: 'Gemma', gender: 'female', style: 'Friendly & Supportive', description: 'Approachable, warm tone for customer queries.' },
-                { id: '47c38ca4-5f35-497b-b1a3-415245fb35e1', name: 'Daniel', gender: 'male', style: 'Executive & Calm', description: 'Deep, confident masculine voice for consultative advisory.' },
-                { id: 'ef191366-f52f-447a-a398-ed8c0f2943a1', name: 'Archie', gender: 'male', style: 'Energetic & Modern', description: 'Upbeat and articulate voice for admissions & tech.' }
+              {(voices.length > 0 ? voices : [
+                { id: '330c4fa0-1da3-4c55-8e97-951bfd724e20', name: 'SARA Cartesia Telugu (Sarika - Calm & Sweet Spirit)', gender: 'female', style: 'Sweet, Calm & Conversational', description: 'Official Cartesia Telugu neural voice with sweet laidback tone and gentle rhythm, perfect for friendly dialogue.' },
+                { id: '3a8e6fea-81e5-4d4d-8755-86093146cdb8', name: 'SARA Cartesia Telugu (Vidya - Empathetic Voice)', gender: 'female', style: 'Gentle & Reassuring', description: 'Official Cartesia Telugu neural voice with gentle, sweet, reassuring tone designed to build trust.' },
+                { id: 'sarvam-te-pooja', name: 'SARA Telugu Sweet (Pooja - Native Sweet Voice)', gender: 'female', style: 'Sweet & Respectful', description: 'Pure authentic sweet native Telugu voice with natural respect and sweet cadence.' },
+                { id: 'sarvam-te-kavitha', name: 'SARA Telugu Crystal (Kavitha - Sweet & Crystal Clear)', gender: 'female', style: 'Sweet & Crystal Clear', description: 'Crystal-clear sweet native Telugu voice with pristine articulation.' },
+                { id: 'sarvam-te-kavya', name: 'SARA Telugu Friendly (Kavya - Conversational)', gender: 'female', style: 'Warm & Cheerful', description: 'Approachable, warm native Telugu voice for customer engagement.' },
+                { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar (English Recommended)', gender: 'female', style: 'Warm & Professional', description: 'Crystal clear neural voice ideal for corporate representatives.' }
               ]).map(v => {
                 const isSelected = formData.voice_id === v.id;
+                const isTelugu = (v.language === 'te') || v.id.includes('te') || v.id.includes('telugu') || v.id === '3a8e6fea-81e5-4d4d-8755-86093146cdb8' || v.id === '330c4fa0-1da3-4c55-8e97-951bfd724e20' || v.id === '07bc462a-c644-49f1-baf7-82d5599131be';
                 return (
                   <div
                     key={v.id}
                     onClick={() => setFormData({ ...formData, voice_id: v.id, voice_name: v.name, voice_gender: v.gender })}
                     className={`p-4 rounded-xl cursor-pointer border flex items-center justify-between transition-all ${
                       isSelected
-                        ? 'bg-white/15 border-white text-white shadow-lg'
-                        : 'bg-sara-900/50 border-white/5 text-sara-300 hover:border-white/20'
+                        ? 'bg-white/15 border-white text-white shadow-lg ring-1 ring-white/30'
+                        : isTelugu
+                          ? 'bg-emerald-950/20 border-emerald-500/20 text-sara-300 hover:border-emerald-500/40'
+                          : 'bg-sara-900/50 border-white/5 text-sara-300 hover:border-white/20'
                     }`}
                   >
                     <div>
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-xs text-white">{v.name}</span>
+                        {isTelugu && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-semibold">
+                            Telugu Native
+                          </span>
+                        )}
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/10 uppercase font-mono">{v.gender}</span>
                       </div>
                       <p className="text-xs text-sara-400">{v.description}</p>
@@ -650,7 +671,7 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
                         e.stopPropagation();
                         playVoicePreview(v.id);
                       }}
-                      className="p-2.5 rounded-full bg-white text-black hover:bg-sara-200 transition-transform active:scale-95"
+                      className="p-2.5 rounded-full bg-white text-black hover:bg-sara-200 transition-transform active:scale-95 shrink-0 ml-2"
                       title="Preview Voice"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />

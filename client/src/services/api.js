@@ -5,10 +5,13 @@ const API_BASE = ""; // Relative path proxied by Vite to http://localhost:8000
 export async function request(endpoint, options = {}) {
   const token = await getCurrentUserToken();
   const headers = {
-    "Content-Type": "application/json",
     "Authorization": `Bearer ${token}`,
     ...(options.headers || {})
   };
+
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
 
   const response = await fetch(`${API_BASE}${endpoint}`, {
     ...options,
@@ -37,6 +40,14 @@ export const api = {
   updateAgent: (id, data) => request(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify(data) }),
   regeneratePrompt: (id) => request(`/api/agents/${id}/generate-prompt`, { method: "POST" }),
 
+  // Autonomous Agent Compiler & Studio
+  compileAgent: (data) => request("/api/agents/compile", { method: "POST", body: JSON.stringify(data) }),
+  uploadDocs: (agentId, formData) => request(`/api/agents/${agentId}/upload-docs`, { method: "POST", body: formData }),
+  getAgentDocs: (agentId) => request(`/api/agents/${agentId}/documents`),
+  teachAgent: (agentId, instruction) => request(`/api/agents/${agentId}/teach`, { method: "POST", body: JSON.stringify({ instruction }) }),
+  runAgentTests: (agentId) => request(`/api/agents/${agentId}/run-tests`, { method: "POST" }),
+  getAgentSpec: (agentId) => request(`/api/agents/${agentId}/spec`),
+
   // FAQs
   addFAQ: (agentId, data) => request(`/api/agents/${agentId}/faqs`, { method: "POST", body: JSON.stringify(data) }),
   deleteFAQ: (agentId, faqId) => request(`/api/agents/${agentId}/faqs/${faqId}`, { method: "DELETE" }),
@@ -50,3 +61,4 @@ export const api = {
   getSessionDetail: (sessionId) => request(`/api/sessions/${sessionId}`),
   getSessionLatencies: (sessionId) => request(`/api/sessions/${sessionId}/latencies`)
 };
+

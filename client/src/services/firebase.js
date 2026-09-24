@@ -21,11 +21,18 @@ const firebaseConfig = {
 let app = null;
 let auth = null;
 
-try {
-  app = initializeApp(firebaseConfig);
-  auth = getAuth(app);
-} catch (err) {
-  console.warn("Firebase initialization notice:", err.message);
+// Only initialize Firebase Auth if a valid custom Firebase project API key is provided
+const isRealFirebaseKey = firebaseConfig.apiKey && 
+  !firebaseConfig.apiKey.startsWith("AIzaSyDhycimimNk") && 
+  firebaseConfig.apiKey.length > 20;
+
+if (isRealFirebaseKey) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+  } catch (err) {
+    console.warn("Firebase initialization notice:", err.message);
+  }
 }
 
 export { 

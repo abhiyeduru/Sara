@@ -12,10 +12,10 @@ class Settings:
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
-    # Neon Database URL
+    # Neon or SQLite Database URL
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "postgresql://neondb_owner:npg_u31VbJpTzFhK@ep-tiny-bread-b5z9na9k-pooler.c-7.us-east-2.aws.neon.tech/neondb?sslmode=require"
+        "sqlite:///sara.db"
     )
     NEON_API_KEY: str = os.getenv("NEON_API_KEY", "")
 
@@ -24,14 +24,14 @@ class Settings:
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "openai")
 
-    # Groq LLM (Fallback)
+    # Groq LLM (Ultra-Low Latency ~120ms TTFT)
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 
     # Cartesia TTS
     CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "")
-    CARTESIA_MODEL_ID: str = os.getenv("CARTESIA_MODEL_ID", "sonic-multilingual")
-    DEFAULT_VOICE_ID: str = os.getenv("DEFAULT_VOICE_ID", "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4")
+    CARTESIA_MODEL_ID: str = os.getenv("CARTESIA_MODEL_ID", "sonic-preview")
+    DEFAULT_VOICE_ID: str = os.getenv("DEFAULT_VOICE_ID", "330c4fa0-1da3-4c55-8e97-951bfd724e20")
 
     # Sarvam STT
     SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")

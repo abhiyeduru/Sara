@@ -199,7 +199,10 @@ def setup_and_test_business_agents():
 
         # Verify SARA does NOT invent or agree to hallucinated claims
         lower_un = unknown_answer.lower()
-        assert any(term in lower_un for term in ["don't have", "do not have", "unavailable", "cannot", "can't", "team", "representative", "executive", "not offer", "sorry", "check"])
+        assert any(term in lower_un for term in [
+            "don't have", "do not have", "unavailable", "cannot", "can't", "team",
+            "representative", "executive", "not offer", "sorry", "check", "లేదు", "లేవు", "కాదు", "అందుబాటులో లేదు"
+        ])
         print(">> Zero-Hallucination Compliance PASSED!")
 
     db.close()

@@ -1,0 +1,28 @@
+{
+  "name": "sara-platform",
+  "version": "1.0.0",
+  "description": "SARA — Low-Latency Configurable Multilingual AI Voice Agent Platform",
+  "main": "start.js",
+  "scripts": {
+    "start": "node start.js",
+    "dev": "node start.js",
+    "client": "npm --prefix client run dev",
+    "server": "python3 -m server.main",
+    "test": "python3 test_e2e.py",
+    "test:business": "python3 test_business_agents_and_hallucination.py",
+    "test:voice": "python3 test_multilingual_voice.py",
+    "build": "npm --prefix client run build"
+  },
+  "keywords": [
+    "ai",
+    "voice-agent",
+    "real-time",
+    "fastapi",
+    "react",
+    "cartesia",
+    "groq",
+    "sarvam"
+  ],
+  "author": "",
+  "license": "ISC"
+}

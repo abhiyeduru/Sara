@@ -3,6 +3,7 @@ import base64
 import json
 import asyncio
 import logging
+import re
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
@@ -15,14 +16,26 @@ from server.engine.conversation_manager import ConversationManager
 from server.engine.chunker import SentenceChunker
 from server.providers.sarvam_stt import SarvamSTT
 from server.providers.openai_llm import OpenAILLM
+from server.providers.groq_llm import GroqLLM
 from server.providers.cartesia_tts import CartesiaTTS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
 stt_provider = SarvamSTT()
-llm_provider = OpenAILLM()
+llm_provider = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
 tts_provider = CartesiaTTS()
+
+def get_synth_lang(phrase_text: str) -> str:
+    """Dynamically determine native TTS language based on actual script content"""
+    if re.search(r'[\u0C00-\u0C7F]', phrase_text):
+        return "te"
+    if re.search(r'[\u0900-\u097F]', phrase_text):
+        return "hi"
+    return "en"
+
+from server.engine.normalizer import normalize_numbers_to_english
+
 
 @router.websocket("/ws/voice/{agent_id}")
 async def voice_websocket_endpoint(
@@ -80,7 +93,8 @@ async def voice_websocket_endpoint(
             voice_id=agent.voice_id,
             llm_provider=llm_provider,
             tts_provider=tts_provider,
-            stt_provider=stt_provider
+            stt_provider=stt_provider,
+            initial_language=agent.primary_language or "en"
         )
 
         # Notify frontend that session has started
@@ -93,11 +107,9 @@ async def voice_websocket_endpoint(
             "stage": manager.stage
         })
 
-        # Select voice based on agent primary language
-        greeting_voice = agent.voice_id
-        if agent.primary_language == "te":
-            greeting_voice = "07bc462a-c644-49f1-baf7-82d5599131be"
-        elif agent.primary_language == "hi":
+        # Select voice based on agent configuration
+        greeting_voice = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+        if agent.primary_language == "hi" and not agent.voice_id:
             greeting_voice = "4459a9a5-69d6-4680-b970-e13dc51845b6"
 
         # Synthesize and send initial greeting
@@ -142,9 +154,15 @@ async def voice_websocket_endpoint(
                 idle_time = time.time() - last_activity_time
                 if idle_time >= settings.MEDIUM_SILENCE_SECONDS and not silence_prompt_sent and manager.stage != "GREETING":
                     silence_prompt_sent = True
-                    prompt_text = "Are you still there? Please let me know how I can help."
+                    is_agent_te = agent.primary_language == "te"
+                    prompt_text = "మీరు లైన్‌లో ఉన్నారా అండీ? నేను మీకు ఏ విధంగా సహాయపడగలను?" if is_agent_te else "Are you still there? Please let me know how I can help."
                     try:
-                        tts_res = await tts_provider.synthesize_speech(text=prompt_text, voice_id=agent.voice_id)
+                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+                        tts_res = await tts_provider.synthesize_speech(
+                            text=prompt_text,
+                            voice_id=voice_to_use,
+                            language="te" if is_agent_te else (agent.primary_language or "en")
+                        )
                         if tts_res.get("audio_bytes"):
                             b64 = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
                             await websocket.send_json({
@@ -157,9 +175,15 @@ async def voice_websocket_endpoint(
                         logger.warning(f"Silence prompt notice: {err}")
 
                 elif idle_time >= settings.LONG_SILENCE_SECONDS and session_active:
-                    closing_text = "Thank you for contacting us. You can reconnect whenever you're ready. Have a great day!"
+                    is_agent_te = agent.primary_language == "te"
+                    closing_text = "మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు అండీ. మీకు ఎప్పుడు కావాలన్నా మళ్ళీ మాట్లాడవచ్చు. సెలవు!" if is_agent_te else "Thank you for contacting us. You can reconnect whenever you're ready. Have a great day!"
                     try:
-                        tts_res = await tts_provider.synthesize_speech(text=closing_text, voice_id=agent.voice_id)
+                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+                        tts_res = await tts_provider.synthesize_speech(
+                            text=closing_text,
+                            voice_id=voice_to_use,
+                            language="te" if is_agent_te else (agent.primary_language or "en")
+                        )
                         if tts_res.get("audio_bytes"):
                             b64 = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
                             await websocket.send_json({
@@ -178,6 +202,9 @@ async def voice_websocket_endpoint(
 
         silence_task = asyncio.create_task(silence_monitor())
 
+        last_processed_user_text = ""
+        last_processed_user_time = 0.0
+
         # 5. Main bidirectional real-time audio/text loop
         while True:
             data = await websocket.receive_text()
@@ -186,6 +213,18 @@ async def voice_websocket_endpoint(
             payload = json.loads(data)
             msg_type = payload.get("type")
 
+            # Handle Explicit User Stop / End Call
+            if msg_type in ["session.end", "call.end", "user.stop"]:
+                manager.interrupt()
+                session_active = False
+                if 'silence_task' in locals() and not silence_task.done():
+                    silence_task.cancel()
+                await websocket.send_json({
+                    "type": "session.ended",
+                    "reason": "user_stopped"
+                })
+                break
+
             # Handle Barge-In / Interruption
             if msg_type == "user.interrupt":
                 manager.interrupt()
@@ -193,6 +232,22 @@ async def voice_websocket_endpoint(
                     "type": "agent.interrupted",
                     "timestamp": time.time(),
                     "message": "Speech cancelled due to barge-in"
+                })
+                continue
+
+            # Handle Dynamic Voice / Configuration Change
+            if msg_type in ["voice.change", "config.update"]:
+                new_voice = payload.get("voice_id")
+                if new_voice:
+                    manager.voice_id = new_voice
+                    agent.voice_id = new_voice
+                new_lang = payload.get("language")
+                if new_lang:
+                    manager.active_language = new_lang
+                await websocket.send_json({
+                    "type": "config.updated",
+                    "voice_id": manager.voice_id,
+                    "language": manager.active_language
                 })
                 continue
 
@@ -209,9 +264,11 @@ async def voice_websocket_endpoint(
                 audio_bytes = base64.b64decode(audio_b64)
                 await websocket.send_json({"type": "stt.started"})
 
-                stt_res = await stt_provider.transcribe(audio_bytes, language_hint=manager.active_language)
+                hint = manager.active_language or agent.primary_language or "en"
+                stt_res = await stt_provider.transcribe(audio_bytes, language_hint=hint)
                 user_text = stt_res.get("transcript", "").strip()
                 stt_latency = stt_res.get("latency_ms", 0.0)
+
 
                 await websocket.send_json({
                     "type": "stt.final",
@@ -226,7 +283,25 @@ async def voice_websocket_endpoint(
                 stt_latency = 0.0
 
             if not user_text:
+                await websocket.send_json({
+                    "type": "stt.empty",
+                    "message": "No speech detected"
+                })
                 continue
+
+            # Strict Turn Deduplication Guard (Prevents dual-pipeline duplicate triggers)
+            now_ts = time.time()
+            clean_curr = user_text.strip().lower()
+            clean_prev = last_processed_user_text.strip().lower()
+            if (now_ts - last_processed_user_time < 3.0) and clean_prev:
+                if (clean_curr == clean_prev or
+                    (len(clean_curr) > 3 and clean_curr in clean_prev) or
+                    (len(clean_prev) > 3 and clean_prev in clean_curr)):
+                    logger.info(f"Discarding duplicate user utterance within debounce window: '{user_text}' (matches '{last_processed_user_text}')")
+                    continue
+
+            last_processed_user_text = user_text
+            last_processed_user_time = now_ts
 
             manager.is_interrupted = False
 
@@ -264,17 +339,13 @@ async def voice_websocket_endpoint(
             manager.messages.append({"role": "user", "content": user_text})
 
             # Select native neural voice based on language
-            active_voice_id = manager.voice_id
-            if detected_lang == "te":
-                active_voice_id = "07bc462a-c644-49f1-baf7-82d5599131be"
-            elif detected_lang == "hi":
+            active_voice_id = agent.voice_id or manager.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+            if detected_lang == "hi" and not agent.voice_id:
                 active_voice_id = "4459a9a5-69d6-4680-b970-e13dc51845b6"
-            elif detected_lang == "en":
-                active_voice_id = manager.voice_id or "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 
             # Low-Latency Streaming LLM -> Sentence Chunker -> TTS
             await websocket.send_json({"type": "llm.started"})
-            # Fast chunking: 2 words minimum yields instant first audio
+            # Fluid melodic chunking: 2 words minimum creates immediate speech output (~300ms TTFA)
             chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=10)
 
             full_response_text = []
@@ -287,8 +358,8 @@ async def voice_websocket_endpoint(
             llm_stream = llm_provider.stream_chat(
                 messages=manager.messages,
                 system_prompt=manager.system_prompt,
-                temperature=0.5,
-                max_tokens=90
+                temperature=0.4,
+                max_tokens=250
             )
 
             async for chunk in llm_stream:
@@ -315,11 +386,14 @@ async def voice_websocket_endpoint(
                         if manager.is_interrupted:
                             break
 
+                        # Ensure all numerals and currency units are in English
+                        phrase = normalize_numbers_to_english(phrase)
+                        target_synth_lang = get_synth_lang(phrase)
                         tts_start = time.perf_counter()
                         tts_res = await tts_provider.synthesize_speech(
                             text=phrase,
                             voice_id=active_voice_id,
-                            language=detected_lang
+                            language=target_synth_lang
                         )
                         tts_dur = (time.perf_counter() - tts_start) * 1000
 
@@ -341,10 +415,12 @@ async def voice_websocket_endpoint(
             if not manager.is_interrupted:
                 remaining_phrases = chunker.flush()
                 for phrase in remaining_phrases:
+                    phrase = normalize_numbers_to_english(phrase)
+                    target_synth_lang = get_synth_lang(phrase)
                     tts_res = await tts_provider.synthesize_speech(
                         text=phrase,
                         voice_id=active_voice_id,
-                        language=detected_lang
+                        language=target_synth_lang
                     )
                     if tts_res.get("audio_bytes"):
                         b64_audio = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
@@ -355,7 +431,7 @@ async def voice_websocket_endpoint(
                             "chunk_latency_ms": round(tts_res.get("latency_ms", 0), 2)
                         })
 
-            complete_agent_reply = "".join(full_response_text).strip()
+            complete_agent_reply = normalize_numbers_to_english("".join(full_response_text).strip())
             manager.messages.append({"role": "assistant", "content": complete_agent_reply})
 
             # Calculate precise turn metrics
@@ -411,13 +487,98 @@ async def voice_websocket_endpoint(
                 "intent": detected_intent
             })
 
+            # If the user said goodbye, stop, or ended the conversation: conclude and stop immediately
+            if detected_intent == "closing" or manager.stage == "CLOSING":
+                session_active = False
+                if 'silence_task' in locals() and not silence_task.done():
+                    silence_task.cancel()
+                await websocket.send_json({
+                    "type": "session.ended",
+                    "reason": "conversation_concluded"
+                })
+                break
+
             turn_index += 1
 
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from session {session_record.id if session_record else 'unknown'}")
         if session_record:
             session_record.status = "completed"
+            session_record.ended_at = get_utc_now()
             db.commit()
+
+            # Auto-log completed voice call into Saadhyam CRM
+            try:
+                from server.models import CallRecord, CallTranscript, CallIntelligence
+                from server.engine.crm_intelligence import analyze_call_transcript
+                import uuid
+
+                duration = int((session_record.ended_at - session_record.started_at).total_seconds()) if session_record.started_at else 0
+                msgs = db.query(ConversationMessage).filter(ConversationMessage.session_id == session_record.id).all()
+                if msgs:
+                    crm_call = CallRecord(
+                        id=str(uuid.uuid4()),
+                        user_id=session_record.user_id,
+                        session_id=session_record.id,
+                        caller="Web Voice Caller",
+                        receiver=agent.name if agent else "SARA",
+                        phone_number="Web Audio Client",
+                        direction="Inbound",
+                        call_type="AI Voice Call",
+                        start_time=session_record.started_at,
+                        end_time=session_record.ended_at,
+                        duration_seconds=max(duration, 5),
+                        call_status="Completed"
+                    )
+                    db.add(crm_call)
+                    db.flush()
+
+                    full_lines = []
+                    offset = 0.0
+                    for m in msgs:
+                        db.add(CallTranscript(
+                            id=str(uuid.uuid4()),
+                            call_id=crm_call.id,
+                            speaker="Agent" if m.role == "agent" else "Customer",
+                            speaker_name=agent.name if m.role == "agent" else "Customer",
+                            start_time_offset=round(offset, 1),
+                            end_time_offset=round(offset + 3.0, 1),
+                            text=m.content,
+                            language=m.detected_language or "en",
+                            sentiment="Positive" if m.role == "agent" else "Interested"
+                        ))
+                        full_lines.append(f"{'Agent' if m.role == 'agent' else 'Customer'}: {m.content}")
+                        offset += 3.5
+
+                    intel = analyze_call_transcript(
+                        transcript_text="\n".join(full_lines),
+                        customer_name="Web Voice Caller",
+                        agent_name=agent.name if agent else "SARA"
+                    )
+
+                    db.add(CallIntelligence(
+                        id=str(uuid.uuid4()),
+                        call_id=crm_call.id,
+                        customer_intent=intel.get("customer_intent", "Voice inquiry"),
+                        requirements=intel.get("requirements", []),
+                        budget=intel.get("budget", ""),
+                        timeline=intel.get("timeline", ""),
+                        objections=intel.get("objections", []),
+                        questions=intel.get("questions", []),
+                        sentiment=intel.get("sentiment", "Interested"),
+                        sentiment_score=intel.get("sentiment_score", 0.85),
+                        purchase_intent=intel.get("purchase_intent", "High"),
+                        purchase_intent_score=intel.get("purchase_intent_score", 0.9),
+                        promises=intel.get("promises", []),
+                        follow_up_needed=intel.get("follow_up_needed", True),
+                        follow_up_reason=intel.get("follow_up_reason", "Voice inquiry callback"),
+                        next_recommended_action=intel.get("next_recommended_action", "Follow up with customer"),
+                        call_summary=intel.get("call_summary", "")
+                    ))
+                    db.commit()
+                    logger.info(f"Auto-logged voice session {session_record.id} to Saadhyam CRM CallRecord {crm_call.id}")
+            except Exception as crm_err:
+                logger.warning(f"Auto CRM call logging skipped: {crm_err}")
     except Exception as e:
         logger.exception("Error in voice WebSocket session")
         try:

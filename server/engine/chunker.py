@@ -10,7 +10,7 @@ class SentenceChunker:
     # Boundary characters that represent natural spoken pauses
     PUNCTUATION_REGEX = re.compile(r'([.?!;:\n]+|,\s*)')
 
-    def __init__(self, min_chunk_words: int = 3, max_chunk_words: int = 18):
+    def __init__(self, min_chunk_words: int = 2, max_chunk_words: int = 12):
         self.min_chunk_words = min_chunk_words
         self.max_chunk_words = max_chunk_words
         self.buffer = ""
@@ -27,7 +27,7 @@ class SentenceChunker:
             # Look for sentence-ending punctuation or pause punctuation
             match = self.PUNCTUATION_REGEX.search(self.buffer)
             if not match:
-                # If buffer gets very long without punctuation, force split at word boundary
+                # If buffer gets long without punctuation, force split at word boundary
                 words = self.buffer.strip().split()
                 if len(words) >= self.max_chunk_words:
                     split_idx = self.buffer.rfind(" ")
@@ -42,12 +42,10 @@ class SentenceChunker:
             potential_chunk = self.buffer[:end_pos].strip()
             word_count = len(potential_chunk.split())
 
-            # Emit immediately on any natural spoken boundary (. ? ! , ; : \n) as long as it has at least 1 word
-            is_boundary = any(p in match.group() for p in [".", "?", "!", "\n", ",", ";", ":"])
-            if is_boundary and word_count >= 1:
-                ready_chunks.append(potential_chunk)
-                self.buffer = self.buffer[end_pos:].lstrip()
-            elif word_count >= self.min_chunk_words:
+            # Emit on natural spoken boundaries without chopping words abruptly
+            is_strong_boundary = any(p in match.group() for p in [".", "?", "!", "\n"])
+            is_pause_boundary = any(p in match.group() for p in [",", ";", ":"])
+            if (is_strong_boundary and word_count >= 2) or (is_pause_boundary and word_count >= 2) or (word_count >= self.min_chunk_words):
                 ready_chunks.append(potential_chunk)
                 self.buffer = self.buffer[end_pos:].lstrip()
             else:

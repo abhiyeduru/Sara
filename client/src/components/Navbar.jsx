@@ -41,8 +41,20 @@ export default function Navbar({ activeTab, setActiveTab, currentAgent, agents, 
                 : 'text-sara-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Sliders className="w-3.5 h-3.5" />
-            <span>Agent Builder</span>
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Agent Studio</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('crm')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-md text-xs font-medium transition-all ${
+              activeTab === 'crm'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm font-semibold'
+                : 'text-emerald-400 hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Universal CRM</span>
           </button>
 
           <button
@@ -60,19 +72,22 @@ export default function Navbar({ activeTab, setActiveTab, currentAgent, agents, 
 
         {/* Right side: Agent selector & DB Status */}
         <div className="flex items-center gap-3">
-          {agents && agents.length > 0 && (
-            <select
-              value={currentAgent?.id || ''}
-              onChange={(e) => onSelectAgent(e.target.value)}
-              className="bg-sara-900 text-xs text-sara-200 border border-white/10 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-white/30"
-            >
-              {agents.map((ag) => (
-                <option key={ag.id} value={ag.id}>
-                  {ag.name} ({ag.business_type})
-                </option>
-              ))}
-            </select>
-          )}
+          {agents && agents.length > 0 && (() => {
+            const uniqueAgents = Array.from(new Map((agents || []).map((a) => [a.id, a])).values());
+            return (
+              <select
+                value={currentAgent?.id || ''}
+                onChange={(e) => onSelectAgent(e.target.value)}
+                className="bg-sara-900 text-xs text-sara-200 border border-white/10 rounded-md px-2.5 py-1.5 focus:outline-none focus:border-white/30"
+              >
+                {uniqueAgents.map((ag) => (
+                  <option key={ag.id} value={ag.id}>
+                    {ag.name} ({ag.business_type}) — {ag.voice_name || 'Kavitha Sweet'}
+                  </option>
+                ))}
+              </select>
+            );
+          })()}
 
           <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 bg-white/5 border border-white/10 rounded text-[11px] text-sara-300">
             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>

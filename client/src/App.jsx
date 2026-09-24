@@ -2,11 +2,14 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import VoiceScreen from './components/voice/VoiceScreen';
 import AgentBuilder from './components/builder/AgentBuilder';
+import AgentCompilerStudio from './components/builder/AgentCompilerStudio';
 import TestConsole from './components/console/TestConsole';
+import CRMWorkspace from './components/crm/CRMWorkspace';
 import { api } from './services/api';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('voice'); // 'voice' | 'builder' | 'console'
+  const [builderMode, setBuilderMode] = useState('compiler'); // 'compiler' | 'wizard'
   const [agents, setAgents] = useState([]);
   const [currentAgent, setCurrentAgent] = useState(null);
   const [latestMetrics, setLatestMetrics] = useState(null);
@@ -20,9 +23,10 @@ export default function App() {
     setLoading(true);
     try {
       const list = await api.getAgents();
-      setAgents(list);
-      if (list && list.length > 0) {
-        setCurrentAgent(list[0]);
+      const unique = Array.from(new Map((list || []).map((a) => [a.id, a])).values());
+      setAgents(unique);
+      if (unique && unique.length > 0) {
+        setCurrentAgent(unique[0]);
       }
     } catch (err) {
       console.error('Error loading voice agents:', err);
@@ -39,9 +43,9 @@ export default function App() {
   }
 
   function handleAgentCreated(newAgent) {
-    setAgents((prev) => [newAgent, ...prev]);
+    if (!newAgent || !newAgent.id) return;
+    setAgents((prev) => [newAgent, ...prev.filter((a) => a.id !== newAgent.id)]);
     setCurrentAgent(newAgent);
-    setActiveTab('voice');
   }
 
   return (
@@ -74,10 +78,51 @@ export default function App() {
             )}
 
             {activeTab === 'builder' && (
-              <AgentBuilder
-                onAgentCreated={handleAgentCreated}
-                onSelectAgent={handleSelectAgent}
-              />
+              <div>
+                {/* Mode Switcher Banner */}
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-4 flex items-center justify-end">
+                  <div className="flex items-center gap-1 p-1 bg-sara-900 border border-white/10 rounded-lg text-xs">
+                    <button
+                      onClick={() => setBuilderMode('compiler')}
+                      className={`px-3 py-1 rounded-md transition-all ${
+                        builderMode === 'compiler'
+                          ? 'bg-white text-black font-semibold'
+                          : 'text-sara-400 hover:text-white'
+                      }`}
+                    >
+                      Natural Input Studio
+                    </button>
+                    <button
+                      onClick={() => setBuilderMode('wizard')}
+                      className={`px-3 py-1 rounded-md transition-all ${
+                        builderMode === 'wizard'
+                          ? 'bg-white text-black font-semibold'
+                          : 'text-sara-400 hover:text-white'
+                      }`}
+                    >
+                      10-Step Wizard
+                    </button>
+                  </div>
+                </div>
+
+                {builderMode === 'compiler' ? (
+                  <AgentCompilerStudio
+                    currentAgent={currentAgent}
+                    onAgentCreated={handleAgentCreated}
+                    onSelectAgent={handleSelectAgent}
+                  />
+                ) : (
+                  <AgentBuilder
+                    onAgentCreated={handleAgentCreated}
+                    onSelectAgent={handleSelectAgent}
+                  />
+                )}
+              </div>
+            )}
+
+
+            {activeTab === 'crm' && (
+              <CRMWorkspace />
             )}
 
             {activeTab === 'console' && (

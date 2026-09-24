@@ -1,19 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from server.database import get_db
 from server.auth import get_current_user
 from server.models import (
-    User, VoiceAgent, BusinessProfile, AgentFAQ, AgentRule, GeneratedPrompt
+    User, VoiceAgent, BusinessProfile, AgentFAQ, AgentRule, GeneratedPrompt, AgentDocument
 )
 from server.schemas import (
     VoiceAgentCreate, VoiceAgentUpdate, VoiceAgentDetailResponse,
     FAQCreate, FAQResponse, RuleCreate, RuleResponse,
-    GeneratedPromptResponse, BusinessProfileUpdate, BusinessProfileResponse
+    GeneratedPromptResponse, BusinessProfileUpdate, BusinessProfileResponse,
+    AgentCompileRequest, AgentTeachRequest, AgentDocumentResponse
 )
 from server.engine.prompt_generator import PromptGenerator
+from server.engine.agent_compiler import AgentCompiler
+from server.engine.document_processor import DocumentProcessor
+from server.engine.continuous_teacher import ContinuousTeacher
+from server.engine.test_runner import TestRunner
 
 router = APIRouter(prefix="/api/agents", tags=["Voice Agents"])
+
 
 # Standard pre-configured business templates for the 10-step wizard
 BUSINESS_TEMPLATES = {
@@ -343,3 +349,398 @@ def delete_faq(
     db.delete(faq)
     db.commit()
     return {"status": "success", "message": "FAQ deleted"}
+
+
+@router.post("/compile", response_model=VoiceAgentDetailResponse)
+def compile_agent(
+    payload: AgentCompileRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Autonomously compile a business owner's natural language input into a
+    production-ready AI Employee with tools, workflow, prompt, and test suite.
+    """
+    compiler = AgentCompiler()
+    spec = compiler.compile(natural_input=payload.natural_input, language_preference=payload.language_preference or "en")
+
+    agent_id = payload.agent_id
+    if agent_id:
+        agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        agent.name = spec["identity"]["name"]
+        agent.role_title = spec["identity"]["role_title"]
+        agent.department = spec["identity"].get("department", "Sales")
+        agent.mission = spec["identity"].get("mission", "")
+        agent.business_type = spec["business"]["industry"]
+        agent.service_type = spec["business"]["services"][0] if spec["business"]["services"] else "Property enquiries"
+        agent.personality = spec["behavior"]["personality"]
+        agent.communication_style = spec["behavior"]["communication_style"]
+        agent.sales_behavior = spec["behavior"]["sales_behavior"]
+        agent.languages = spec["identity"]["languages"]
+        agent.universal_spec = spec
+        agent.workflow_spec = spec.get("workflow", {})
+        agent.tools_spec = spec.get("tools", {})
+        agent.test_results = spec.get("test_suite", {})
+    else:
+        agent = VoiceAgent(
+            user_id=current_user.id,
+            name=spec["identity"]["name"],
+            role_title=spec["identity"]["role_title"],
+            department=spec["identity"].get("department", "Sales"),
+            mission=spec["identity"].get("mission", ""),
+            business_type=spec["business"]["industry"],
+            service_type=spec["business"]["services"][0] if spec["business"]["services"] else "Property enquiries",
+            personality=spec["behavior"]["personality"],
+            communication_style=spec["behavior"]["communication_style"],
+            sales_behavior=spec["behavior"]["sales_behavior"],
+            languages=spec["identity"]["languages"],
+            voice_id="db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+            voice_gender="female",
+            voice_name="Skylar",
+            is_active=True,
+            universal_spec=spec,
+            workflow_spec=spec.get("workflow", {}),
+            tools_spec=spec.get("tools", {}),
+            test_results=spec.get("test_suite", {})
+        )
+        db.add(agent)
+        db.flush()
+
+    # Sync BusinessProfile
+    policies_raw = spec["business"].get("policies", "")
+    if isinstance(policies_raw, list):
+        policies_str = ", ".join(str(p) for p in policies_raw)
+    else:
+        policies_str = str(policies_raw or "")
+
+    profile = db.query(BusinessProfile).filter(BusinessProfile.agent_id == agent.id).first()
+    if not profile:
+        profile = BusinessProfile(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            business_name=spec["business"]["company_name"],
+            industry=spec["business"]["industry"],
+            locations=spec["business"]["locations"],
+            services_offered=spec["business"]["services"],
+            important_policies=policies_str
+        )
+        db.add(profile)
+    else:
+        profile.business_name = spec["business"]["company_name"]
+        profile.industry = spec["business"]["industry"]
+        profile.locations = spec["business"]["locations"]
+        profile.services_offered = spec["business"]["services"]
+        profile.important_policies = policies_str
+
+    # Replace / insert FAQs
+    db.query(AgentFAQ).filter(AgentFAQ.agent_id == agent.id).delete()
+    for f in spec["knowledge"].get("faqs", []):
+        faq_obj = AgentFAQ(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            question=f.get("question", ""),
+            answer=f.get("answer", ""),
+            category=f.get("category", "General"),
+            priority=1
+        )
+        db.add(faq_obj)
+
+    # Replace / insert Rules
+    db.query(AgentRule).filter(AgentRule.agent_id == agent.id).delete()
+    for r in spec["guardrails"].get("forbidden_topics", []) + spec["guardrails"].get("escalation_triggers", []):
+        rule_obj = AgentRule(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            rule_text=r,
+            rule_type="negative",
+            is_active=True
+        )
+        db.add(rule_obj)
+
+    # Sync GeneratedPrompt
+    prompt_rec = db.query(GeneratedPrompt).filter(GeneratedPrompt.agent_id == agent.id).first()
+    system_prompt = spec.get("system_prompt", "")
+    greeting_prompt = spec.get("workflow", {}).get("greeting", "Hello! How can I assist you today?")
+    if not prompt_rec:
+        prompt_rec = GeneratedPrompt(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            full_prompt=system_prompt,
+            greeting_prompt=greeting_prompt,
+            version=1
+        )
+        db.add(prompt_rec)
+    else:
+        prompt_rec.full_prompt = system_prompt
+        prompt_rec.greeting_prompt = greeting_prompt
+        prompt_rec.version = (prompt_rec.version or 1) + 1
+
+    db.commit()
+    db.refresh(agent)
+    return agent
+
+
+@router.post("/{agent_id}/upload-docs")
+async def upload_documents(
+    agent_id: str,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Upload and parse business documents (PDF, DOCX, XLSX, CSV, TXT, JSON)
+    for knowledge extraction and agent retraining.
+    """
+    agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    saved_docs = []
+    new_faqs_count = 0
+
+    for file in files:
+        content = await file.read()
+        filename = file.filename or "uploaded_file.txt"
+        ext = filename.lower().split(".")[-1] if "." in filename else "txt"
+
+        # 1. Extract text and structured knowledge
+        text = DocumentProcessor.extract_text_from_bytes(content, filename)
+        knowledge = DocumentProcessor.extract_structured_knowledge(text, filename)
+
+        # 2. Persist AgentDocument
+        doc = AgentDocument(
+            agent_id=agent.id,
+            user_id=current_user.id,
+            filename=filename,
+            file_type=ext,
+            file_size=len(content),
+            extracted_text=text[:10000],
+            structured_facts=knowledge.get("facts", [])
+        )
+        db.add(doc)
+
+        # 3. Add extracted FAQs to AgentFAQ
+        for faq_item in knowledge.get("faqs", []):
+            if faq_item.get("question") and faq_item.get("answer"):
+                faq_obj = AgentFAQ(
+                    agent_id=agent.id,
+                    user_id=current_user.id,
+                    question=faq_item["question"],
+                    answer=faq_item["answer"],
+                    category=faq_item.get("category", "Document"),
+                    priority=1
+                )
+                db.add(faq_obj)
+                new_faqs_count += 1
+
+        saved_docs.append({
+            "filename": filename,
+            "category": knowledge.get("category", "General"),
+            "summary": knowledge.get("summary", ""),
+            "facts_count": len(knowledge.get("facts", []))
+        })
+
+    # 4. Re-compile prompt with new facts/knowledge
+    db.commit()
+
+    all_faqs = db.query(AgentFAQ).filter(AgentFAQ.agent_id == agent.id).all()
+    faq_dicts = [{"question": f.question, "answer": f.answer, "category": f.category} for f in all_faqs]
+    rules = [r.rule_text for r in db.query(AgentRule).filter(AgentRule.agent_id == agent.id, AgentRule.is_active == True).all()]
+
+    profile = db.query(BusinessProfile).filter(BusinessProfile.agent_id == agent.id).first()
+    biz_dict = {
+        "business_name": profile.business_name if profile else "ABC Properties",
+        "description": profile.description if profile else "",
+        "locations": profile.locations if profile else [],
+        "services": profile.services_offered if profile else [agent.service_type],
+        "important_policies": profile.important_policies if profile else []
+    }
+
+    new_prompt = PromptGenerator.generate(
+        agent_name=agent.name,
+        role_title=agent.role_title,
+        business_info=biz_dict,
+        services=[agent.service_type],
+        faqs=faq_dicts,
+        rules=rules,
+        personality=agent.personality,
+        comm_style=agent.communication_style,
+        sales_behavior=agent.sales_behavior,
+        languages=agent.languages
+    )
+
+    prompt_rec = db.query(GeneratedPrompt).filter(GeneratedPrompt.agent_id == agent.id).first()
+    if prompt_rec:
+        prompt_rec.full_prompt = new_prompt["full_prompt"]
+        prompt_rec.version = (prompt_rec.version or 1) + 1
+        db.commit()
+
+    return {
+        "status": "success",
+        "uploaded_count": len(saved_docs),
+        "documents": saved_docs,
+        "new_faqs_added": new_faqs_count
+    }
+
+
+@router.get("/{agent_id}/documents", response_model=List[AgentDocumentResponse])
+def get_agent_documents(
+    agent_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve all parsed documents associated with an agent"""
+    agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    docs = db.query(AgentDocument).filter(AgentDocument.agent_id == agent.id).order_by(AgentDocument.created_at.desc()).all()
+    return docs
+
+
+@router.post("/{agent_id}/teach")
+def teach_agent(
+    agent_id: str,
+    payload: AgentTeachRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Continuous teaching: Convert natural language instructions
+    (e.g., 'From now on, do not offer properties below 50 Lakhs')
+    into active behavioral rules and guardrails.
+    """
+    agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    compiled = ContinuousTeacher.compile_instruction(
+        natural_instruction=payload.instruction,
+        current_role=agent.role_title
+    )
+
+    rule_text = compiled.get("rule_text") or payload.instruction
+    rule_type = compiled.get("rule_type", "behavior")
+
+    # Add rule
+    new_rule = AgentRule(
+        agent_id=agent.id,
+        user_id=current_user.id,
+        rule_text=rule_text,
+        rule_type=rule_type,
+        is_active=True
+    )
+    db.add(new_rule)
+
+    # Re-compile prompt
+    all_rules = [r.rule_text for r in db.query(AgentRule).filter(AgentRule.agent_id == agent.id, AgentRule.is_active == True).all()]
+    all_rules.append(rule_text)
+
+    all_faqs = db.query(AgentFAQ).filter(AgentFAQ.agent_id == agent.id).all()
+    faq_dicts = [{"question": f.question, "answer": f.answer, "category": f.category} for f in all_faqs]
+
+    profile = db.query(BusinessProfile).filter(BusinessProfile.agent_id == agent.id).first()
+    biz_dict = {
+        "business_name": profile.business_name if profile else "ABC Properties",
+        "description": profile.description if profile else "",
+        "locations": profile.locations if profile else [],
+        "services": profile.services_offered if profile else [agent.service_type],
+        "important_policies": profile.important_policies if profile else []
+    }
+
+    new_prompt = PromptGenerator.generate(
+        agent_name=agent.name,
+        role_title=agent.role_title,
+        business_info=biz_dict,
+        services=[agent.service_type],
+        faqs=faq_dicts,
+        rules=all_rules,
+        personality=agent.personality,
+        comm_style=agent.communication_style,
+        sales_behavior=agent.sales_behavior,
+        languages=agent.languages
+    )
+
+    prompt_rec = db.query(GeneratedPrompt).filter(GeneratedPrompt.agent_id == agent.id).first()
+    if prompt_rec:
+        prompt_rec.full_prompt = new_prompt["full_prompt"]
+        prompt_rec.version = (prompt_rec.version or 1) + 1
+
+    db.commit()
+
+    return {
+        "status": "success",
+        "rule": {
+            "id": new_rule.id,
+            "rule_text": rule_text,
+            "rule_type": rule_type,
+            "category": compiled.get("category", "General")
+        },
+        "confirmation": compiled.get("confirmation_message", "Rule added and agent updated successfully.")
+    }
+
+
+@router.post("/{agent_id}/run-tests")
+def run_agent_tests(
+    agent_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Run the 7 automated pre-deployment test scenarios against the agent's current prompt.
+    """
+    agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    prompt_rec = db.query(GeneratedPrompt).filter(GeneratedPrompt.agent_id == agent.id).first()
+    system_prompt = prompt_rec.full_prompt if prompt_rec else ""
+    if not system_prompt and agent.universal_spec:
+        system_prompt = agent.universal_spec.get("system_prompt", "")
+
+    # Retrieve test scenarios from universal_spec or default 7 scenarios
+    scenarios = []
+    if agent.universal_spec and "test_suite" in agent.universal_spec:
+        scenarios = agent.universal_spec["test_suite"].get("scenarios", [])
+
+    if not scenarios:
+        # Fallback to standard 7 scenarios
+        scenarios = [
+            {"id": "test_1", "title": "Lead Qualification", "input": "Hi, I am looking for a 3 BHK flat.", "expected_behavior": "Acknowledge and ask for location and budget."},
+            {"id": "test_2", "title": "Pricing & English Numbers", "input": "What is the starting price for 2 BHK?", "expected_behavior": "State ₹85 Lakhs clearly in English digits and words."},
+            {"id": "test_3", "title": "Site Visit Booking", "input": "Can I visit the site this Sunday at 2 PM?", "expected_behavior": "Confirm appointment and offer calendar invite."},
+            {"id": "test_4", "title": "Out-of-Scope / Boundary", "input": "Can you file my income tax return?", "expected_behavior": "Politely decline and redirect to core services."},
+            {"id": "test_5", "title": "Stop Talk Intent", "input": "Stop talking now, thanks.", "expected_behavior": "Polite brief sign-off without further questions."},
+            {"id": "test_6", "title": "Discounts & Escalation", "input": "Give me a 30% discount right now.", "expected_behavior": "Explain fixed pricing or offer escalation to manager."},
+            {"id": "test_7", "title": "Bilingual / Multilingual", "input": "Mee projects ekkada unnai? Details cheppandi.", "expected_behavior": "Respond in warm Telugu, keeping numbers in English."}
+        ]
+
+    suite_results = TestRunner.run_suite(system_prompt=system_prompt, scenarios=scenarios)
+    passed_count = sum(1 for r in suite_results if r.get("passed"))
+    summary = {
+        "total": len(suite_results),
+        "passed": passed_count,
+        "failed": len(suite_results) - passed_count,
+        "pass_rate": f"{(passed_count / max(1, len(suite_results)) * 100):.1f}%",
+        "scenarios": suite_results
+    }
+
+    agent.test_results = summary
+    db.commit()
+
+    return summary
+
+
+@router.get("/{agent_id}/spec")
+def get_agent_spec(
+    agent_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Retrieve canonical Universal Agent Specification JSON"""
+    agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id, VoiceAgent.user_id == current_user.id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent.universal_spec or {}
+

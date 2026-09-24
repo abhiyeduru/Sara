@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from server.config import settings
 from server.database import engine, get_db, init_db
-from server.routes import agents, voices, sessions, websocket
+from server.routes import agents, voices, sessions, websocket, crm
 
 # Configure logging
 logging.basicConfig(
@@ -13,10 +13,23 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sara")
 
+from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing SARA database tables...")
+    try:
+        init_db()
+        logger.info("Database tables and default agents verified.")
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+    yield
+
 app = FastAPI(
     title="SARA — Configurable AI Voice Agent Platform",
     version="1.0.0",
-    description="Low-latency real-time multilingual AI voice agent system"
+    description="Low-latency real-time multilingual AI voice agent system",
+    lifespan=lifespan
 )
 
 # CORS Middleware allowing client communication
@@ -33,15 +46,7 @@ app.include_router(agents.router)
 app.include_router(voices.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
-
-@app.on_event("startup")
-def on_startup():
-    logger.info("Initializing SARA database tables on Neon PostgreSQL...")
-    try:
-        init_db()
-        logger.info("Database tables verified.")
-    except Exception as e:
-        logger.error(f"Database initialization error: {e}")
+app.include_router(crm.router)
 
 @app.get("/api/health")
 def health_check(db: Session = Depends(get_db)):
@@ -54,9 +59,10 @@ def health_check(db: Session = Depends(get_db)):
     except Exception:
         pass
 
+    db_type = "Neon PostgreSQL (Connected)" if "postgres" in str(engine.url) else "SQLite (Local Active)"
     return {
         "status": "healthy" if db_ok else "degraded",
-        "database": "Neon PostgreSQL (Connected)" if db_ok else "Database Error",
+        "database": db_type if db_ok else "Database Error",
         "llm_provider": "Groq (qwen/qwen3.8-27b)",
         "tts_provider": "Cartesia (sonic-2)",
         "stt_provider": "Sarvam AI (saarika:v2.5)",

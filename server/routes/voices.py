@@ -22,6 +22,11 @@ async def preview_voice(
     Synthesize live audio sample for voice selection preview.
     Returns real audio/wav bytes directly.
     """
+    is_te = (language == "te") or ("te" in voice_id.lower()) or (voice_id in ["3a8e6fea-81e5-4d4d-8755-86093146cdb8", "330c4fa0-1da3-4c55-8e97-951bfd724e20", "07bc462a-c644-49f1-baf7-82d5599131be"])
+    if is_te and (text.startswith("Hello!") or text.startswith("Namaste!")):
+        text = "నమస్కారం అండీ! నేను సారా మీ తెలుగు వాయిస్ అసిస్టెంట్ ని. మీకు ఏ విధంగా సహాయపడగలను?"
+        language = "te"
+
     res = await tts.synthesize_speech(text=text, voice_id=voice_id, language=language)
     if not res.get("audio_bytes"):
         raise HTTPException(status_code=500, detail=res.get("error", "Failed to generate preview audio"))

@@ -60,6 +60,8 @@ class BusinessProfileResponse(BusinessProfileBase):
 class VoiceAgentBase(BaseModel):
     name: str = "SARA"
     role_title: str = "Real Estate Assistant"
+    department: Optional[str] = "Sales"
+    mission: Optional[str] = None
     business_type: str = "Real Estate"
     service_type: str = "Property enquiries"
     personality: str = "Professional & Friendly"
@@ -70,6 +72,32 @@ class VoiceAgentBase(BaseModel):
     voice_gender: str = "female"
     voice_name: str = "Skylar"
     is_active: bool = True
+    universal_spec: Optional[Any] = None
+    workflow_spec: Optional[Any] = None
+    tools_spec: Optional[Any] = None
+    test_results: Optional[Any] = None
+
+
+class AgentCompileRequest(BaseModel):
+    natural_input: str
+    language_preference: Optional[str] = "en"
+    agent_id: Optional[str] = None
+
+class AgentTeachRequest(BaseModel):
+    instruction: str
+
+class AgentDocumentResponse(BaseModel):
+    id: str
+    agent_id: str
+    filename: str
+    file_type: str
+    file_size: int
+    structured_facts: List[Any] = Field(default_factory=list)
+    created_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
 
 class VoiceAgentCreate(VoiceAgentBase):
     business_profile: Optional[BusinessProfileBase] = None
