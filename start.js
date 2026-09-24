@@ -19,7 +19,7 @@ console.log(`${CYAN}${BOLD}═════════════════�
 console.log(`${CYAN}${BOLD}  SARA — Low-Latency Real-Time Multilingual AI Voice Platform  ${RESET}`);
 console.log(`${CYAN}${BOLD}════════════════════════════════════════════════════════════${RESET}\n`);
 
-// Free up ports 8000 and 5173 if already occupied
+// Free up ports 8000 and 5174 if already occupied
 function freePort(port) {
   try {
     const output = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
@@ -35,9 +35,9 @@ function freePort(port) {
   } catch {}
 }
 
-console.log(`${YELLOW}[SETUP] Checking port availability (8000, 5173)...${RESET}`);
+console.log(`${YELLOW}[SETUP] Checking port availability (8000, 5174)...${RESET}`);
 freePort(8000);
-freePort(5173);
+freePort(5174);
 
 // 1. Launch Backend Server (FastAPI / Python)
 console.log(`${GREEN}[SERVER] Starting FastAPI Backend on http://localhost:8000...${RESET}`);
@@ -64,7 +64,7 @@ serverProcess.stderr.on('data', (data) => {
 });
 
 // 2. Launch Frontend Client (Vite / React)
-console.log(`${GREEN}[CLIENT] Starting Vite React Frontend on http://localhost:5173...${RESET}`);
+console.log(`${GREEN}[CLIENT] Starting Vite React Frontend on http://localhost:5174...${RESET}`);
 const clientProcess = spawn('npm', ['run', 'dev', '--', '--host'], {
   cwd: CLIENT_DIR,
   stdio: ['pipe', 'pipe', 'pipe'],
@@ -86,7 +86,7 @@ function checkHealth() {
   const req = http.get('http://127.0.0.1:8000/api/health', (res) => {
     if (res.statusCode === 200) {
       console.log(`\n${GREEN}${BOLD}✓ SARA Platform is Ready & Active!${RESET}`);
-      console.log(`${CYAN}  ► Frontend Web Application: ${BOLD}http://localhost:5173${RESET}`);
+      console.log(`${CYAN}  ► Frontend Web Application: ${BOLD}http://localhost:5174${RESET}`);
       console.log(`${CYAN}  ► Backend REST & WebSocket:  ${BOLD}http://localhost:8000${RESET}`);
       console.log(`${CYAN}  ► Interactive API Docs:      ${BOLD}http://localhost:8000/docs${RESET}\n`);
     } else {
@@ -111,7 +111,7 @@ function cleanup() {
   } catch {}
   setTimeout(() => {
     freePort(8000);
-    freePort(5173);
+    freePort(5174);
     process.exit(0);
   }, 500);
 }
