@@ -4,14 +4,20 @@ import { AudioStreamer } from '../../services/audioStreamer';
 import { api } from '../../services/api';
 
 const CURATED_VOICES = [
-  { id: 'sarvam-te-kavitha', name: 'Kavitha (Telugu Sweet)', desc: 'Crystal Clear & Sweet' },
-  { id: '330c4fa0-1da3-4c55-8e97-951bfd724e20', name: 'Sarika (Cartesia)', desc: 'Calm Spirit' },
-  { id: 'sarvam-te-kavya', name: 'Kavya (Telugu Friendly)', desc: 'Conversational & Warm' },
-  { id: 'sarvam-te-pooja', name: 'Pooja (Telugu Warm)', desc: 'Native Sweet Voice' },
-  { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar (English)', desc: 'English Recommended' }
+  { id: 'sarvam-te-pooja', name: 'Pooja (Sweet & Warm)', desc: 'Silky smooth, respectful & most human native Telugu' },
+  { id: 'sarvam-te-roopa', name: 'Roopa (Sweet & Soothing)', desc: 'Melodious, gentle & empathetic Telugu tone' },
+  { id: 'sarvam-te-priya', name: 'Priya (Cheerful & Sweet)', desc: 'Bright, sweet, high-energy conversational Telugu' },
+  { id: 'sarvam-te-kavitha', name: 'Kavitha (Gentle & Polite)', desc: 'Crystal clear, soft, traditional polite Telugu' },
+  { id: 'sarvam-te-shruti', name: 'Shruti (Articulate & Crisp)', desc: 'Sweet, crisp, luxury consultative real estate voice' },
+  { id: 'sarvam-te-kavya', name: 'Kavya (Friendly & Warm)', desc: 'Bubbly, warm & approachable Telugu conversational voice' },
+  { id: 'sarvam-te-neha', name: 'Neha (Sweet Support)', desc: 'Comforting, sweet customer care & follow-up voice' },
+  { id: 'sarvam-te-simran', name: 'Simran (Bilingual Sweet)', desc: 'Modern sweet voice switching Telugu & Indian English' },
+  { id: 'sarvam-te-vijay', name: 'Vijay (Telugu Friendly Male)', desc: 'Warm, polite, respectful native Telugu male voice' },
+  { id: 'sarvam-te-aditya', name: 'Aditya (Confident Male)', desc: 'Deep, trustworthy Indian & Telugu male voice' }
 ];
 
-export default function VoiceScreen({ agent, onTurnMetrics }) {
+export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate }) {
+  const [activeAgent, setActiveAgent] = useState(agent || null);
   const [streamer, setStreamer] = useState(null);
   const [state, setState] = useState('idle'); // idle, listening, thinking, speaking, connected, error
   const [isMicOn, setIsMicOn] = useState(false);
@@ -25,16 +31,66 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
       : "Hi, welcome to ABC Properties. I'm SARA. How can I help you today?"
   );
   const [textInput, setTextInput] = useState('');
-  const [activeLanguage, setActiveLanguage] = useState(agent?.primary_language || 'en');
-  const [activeVoiceId, setActiveVoiceId] = useState(agent?.voice_id || 'sarvam-te-kavitha');
-  const [activeVoiceName, setActiveVoiceName] = useState(agent?.voice_name || 'Kavitha');
+  const [activeLanguage, setActiveLanguage] = useState(agent?.primary_language || 'te');
+  const [activeVoiceId, setActiveVoiceId] = useState(agent?.voice_id || 'sarvam-te-pooja');
+  const [activeVoiceName, setActiveVoiceName] = useState(agent?.voice_name || 'Pooja');
 
   useEffect(() => {
-    if (agent?.voice_id) {
-      setActiveVoiceId(agent.voice_id);
-      setActiveVoiceName(agent.voice_name || 'Kavitha');
+    if (!activeAgent) {
+      api.getAgents().then(list => {
+        if (list && list.length > 0) {
+          setActiveAgent(list[0]);
+          if (list[0].voice_id) setActiveVoiceId(list[0].voice_id);
+          if (list[0].voice_name) setActiveVoiceName(list[0].voice_name);
+        }
+      }).catch(err => {
+        console.warn("Could not fetch agents, using fallback SARA agent:", err);
+        setActiveAgent({
+          id: 'agent_sara_default',
+          name: 'SARA',
+          voice_id: 'sarvam-te-kavitha',
+          voice_name: 'Kavitha',
+          primary_language: 'auto',
+          business_type: 'AI Voice Assistant'
+        });
+      });
     }
-  }, [agent?.id, agent?.voice_id]);
+  }, [agent]);
+
+  useEffect(() => {
+    if (activeAgent?.voice_id) {
+      setActiveVoiceId(activeAgent.voice_id);
+      setActiveVoiceName(activeAgent.voice_name || 'Kavitha');
+    }
+  }, [activeAgent?.id, activeAgent?.voice_id]);
+
+  const speakTextNative = (text) => {
+    if (!('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      const isTe = /[\u0C00-\u0C7F]/.test(text) || selectedLanguage === 'te';
+      const isHi = /[\u0900-\u097F]/.test(text) || selectedLanguage === 'hi';
+      utterance.lang = isTe ? 'te-IN' : isHi ? 'hi-IN' : 'en-IN';
+      utterance.rate = 1.0;
+      utterance.pitch = 1.05;
+      utterance.onstart = () => {
+        setState('speaking');
+        isSpeakingRef.current = true;
+      };
+      utterance.onend = () => {
+        setState(isMicOn ? 'listening' : 'idle');
+        isSpeakingRef.current = false;
+      };
+      utterance.onerror = () => {
+        setState(isMicOn ? 'listening' : 'idle');
+        isSpeakingRef.current = false;
+      };
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn("SpeechSynthesis error:", e);
+    }
+  };
 
   const handleVoiceChange = (v) => {
     setActiveVoiceId(v.id);
@@ -42,8 +98,8 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
     if (streamer && streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
       streamer.ws.send(JSON.stringify({ type: 'voice.change', voice_id: v.id }));
     }
-    if (agent?.id) {
-      api.updateAgent(agent.id, { voice_id: v.id, voice_name: v.name }).catch(() => {});
+    if (activeAgent?.id) {
+      api.updateAgent(activeAgent.id, { voice_id: v.id, voice_name: v.name }).catch(() => {});
     }
   };
 
@@ -62,7 +118,7 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
   }, [state]);
 
   useEffect(() => {
-    if (!agent) return;
+    if (!activeAgent) return;
 
     const newStreamer = new AudioStreamer({
       onStateChange: (newState) => {
@@ -104,7 +160,7 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
       }
     });
 
-    newStreamer.connect(agent.id);
+    newStreamer.connect(activeAgent.id);
     setStreamer(newStreamer);
 
     // Setup Canvas Waveform animation loop
@@ -165,7 +221,7 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
       stopWebSpeech();
       newStreamer.disconnect();
     };
-  }, [agent?.id]);
+  }, [activeAgent?.id]);
 
   // Global browser audio unlock listener
   useEffect(() => {
@@ -291,7 +347,8 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
     } else {
       if (!streamer.ws || streamer.ws.readyState !== WebSocket.OPEN) {
         setState('connecting');
-        await streamer.connect(agent.id);
+        const targetId = activeAgent?.id || 'b1697412-6442-4f31-af04-d9f767d6eb5f';
+        await streamer.connect(targetId);
       }
       await streamer.startMic();
       startWebSpeech();
@@ -354,8 +411,58 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center justify-between p-4 sm:p-8 max-w-4xl mx-auto">
-      
+    <div className="relative min-h-[calc(100vh-4rem)] flex flex-col items-center justify-between p-4 sm:p-8 max-w-4xl mx-auto w-full">
+      {/* Top Navbar matching SARA Screenshot */}
+      <div className="w-full flex items-center justify-between border-b border-white/10 pb-3 mb-2">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-white text-black font-extrabold flex items-center justify-center text-sm shadow-md font-display">
+            S
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-extrabold text-white tracking-widest text-sm">S A R A</span>
+              <span className="text-[10px] bg-white/10 text-sara-300 px-1.5 py-0.5 rounded font-mono">v1.0</span>
+            </div>
+            <div className="text-[11px] text-sara-400">Configurable Multilingual Voice Agent</div>
+          </div>
+        </div>
+
+        {/* Center Pill Tabs */}
+        <div className="hidden md:flex items-center gap-1 p-1 bg-white/5 border border-white/10 rounded-lg text-xs">
+          <button className="px-3 py-1 rounded-md bg-white text-black font-semibold flex items-center gap-1.5 shadow-sm">
+            <Radio className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+            <span>Voice Agent</span>
+          </button>
+          <button onClick={() => onNavigate && onNavigate('dashboard')} className="px-3 py-1 rounded-md text-sara-400 hover:text-white transition-all">
+            Workforce OS
+          </button>
+          <button onClick={() => onNavigate && onNavigate('crm')} className="px-3 py-1 rounded-md text-sara-400 hover:text-white transition-all">
+            Universal CRM
+          </button>
+        </div>
+
+        {/* Right Status & Exit */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 border border-white/10 text-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span className="text-sara-300 font-mono text-[11px]">Backend Live</span>
+          </div>
+
+          {(onClose || onNavigate) && (
+            <button
+              onClick={() => {
+                if (onClose) onClose();
+                else if (onNavigate) onNavigate('dashboard');
+              }}
+              className="px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white text-xs font-medium border border-white/20 transition-all flex items-center gap-1.5"
+              title="Return to Workspace"
+            >
+              <span>✕ Return</span>
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* Safari Audio Unmute / Speaker Check Banner */}
       <div className="w-full max-w-xl mx-auto mt-1 mb-2 px-3.5 py-2 rounded-xl bg-amber-500/15 border border-amber-400/40 flex items-center justify-between text-xs text-amber-200 shadow-lg shadow-amber-500/5 animate-fadeIn">
         <div className="flex items-center gap-2">
@@ -470,15 +577,20 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
       {/* Central Interactive Voice Visualizer */}
       <div className="my-auto flex flex-col items-center justify-center py-4 w-full">
         
-        {/* Breathing animated SARA Orb */}
+        {/* Breathing animated SARA Orb - Tap to Talk */}
         <div className="relative mb-6">
           <div 
-            className={`w-36 h-36 sm:w-44 sm:h-44 rounded-full sara-orb ${state}`}
+            onClick={toggleMicrophone}
+            className={`w-36 h-36 sm:w-44 sm:h-44 rounded-full sara-orb ${state} cursor-pointer hover:scale-105 active:scale-95 transition-all shadow-2xl`}
+            title={isMicOn ? "Microphone Active (Tap to pause)" : "Tap Orb to Speak with SARA"}
           >
             <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-sara-950 flex flex-col items-center justify-center text-center shadow-inner border border-white/15">
               <span className="text-xs font-semibold tracking-widest text-white">SARA</span>
               <span className="px-2 py-0.5 mt-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-[10px] text-emerald-300 font-mono font-medium">
                 {activeVoiceName}
+              </span>
+              <span className="text-[9px] font-mono text-emerald-400/90 mt-1 uppercase tracking-wider font-bold">
+                {isMicOn ? "● LIVE" : "TAP TO TALK"}
               </span>
             </div>
           </div>
@@ -560,6 +672,15 @@ export default function VoiceScreen({ agent, onTurnMetrics }) {
       {/* Bottom Controls: Microphone, Barge-in, Text Input */}
       <div className="w-full max-w-lg pb-4">
         <div className="flex flex-col items-center justify-center gap-2 mb-4">
+          {!isMicOn && state !== 'speaking' && (
+            <button
+              onClick={toggleMicrophone}
+              className="mb-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-black font-bold text-xs tracking-wide transition-all shadow-xl shadow-emerald-500/25 flex items-center gap-2 active:scale-95 animate-pulse"
+            >
+              <Mic className="w-4 h-4" />
+              <span>Tap to Speak with SARA (Telugu / English Live)</span>
+            </button>
+          )}
           <div className="flex items-center gap-4">
             {/* Voice Conversation Mic Button */}
             <button

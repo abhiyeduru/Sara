@@ -43,9 +43,9 @@ class SentenceChunker:
             word_count = len(potential_chunk.split())
 
             # Emit on natural spoken boundaries without chopping words abruptly
-            is_strong_boundary = any(p in match.group() for p in [".", "?", "!", "\n"])
+            is_strong_boundary = any(p in match.group() for p in [".", "?", "!", "\n", "।"])
             is_pause_boundary = any(p in match.group() for p in [",", ";", ":"])
-            if (is_strong_boundary and word_count >= 2) or (is_pause_boundary and word_count >= 2) or (word_count >= self.min_chunk_words):
+            if (is_strong_boundary and word_count >= 3) or (is_pause_boundary and word_count >= 5) or (word_count >= self.max_chunk_words):
                 ready_chunks.append(potential_chunk)
                 self.buffer = self.buffer[end_pos:].lstrip()
             else:

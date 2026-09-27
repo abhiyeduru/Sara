@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from server.database import get_db
 from server.auth import get_current_user
-from server.models import User, ConversationSession, ConversationMessage, LatencyMetric
+from server.models import User, ConversationSession, SessionMessage, LatencyMetric
 from server.schemas import ConversationSessionResponse, LatencyMetricResponse
 
 router = APIRouter(prefix="/api/sessions", tags=["Sessions & Metrics"])

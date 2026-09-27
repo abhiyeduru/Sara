@@ -216,6 +216,61 @@ def seed_default_agents(db, user_id: str):
 
 def init_db():
     from server import models
+    # Safe SQLite column migration for dev databases
+    try:
+        with engine.connect() as conn:
+            # Check users columns
+            res = conn.execute(text("PRAGMA table_info(users);")).fetchall()
+            existing_cols = {r[1] for r in res}
+            cols_to_add = {
+                "name": "VARCHAR(255)",
+                "phone": "VARCHAR(50)",
+                "avatar_url": "VARCHAR(500)",
+                "auth_provider": "VARCHAR(50) DEFAULT 'firebase'",
+                "status": "VARCHAR(30) DEFAULT 'active'",
+                "updated_at": "TIMESTAMP"
+            }
+            for col, col_def in cols_to_add.items():
+                if col not in existing_cols:
+                    conn.execute(text(f"ALTER TABLE users ADD COLUMN {col} {col_def};"))
+
+            # Check calls columns
+            c_res = conn.execute(text("PRAGMA table_info(calls);")).fetchall()
+            c_existing = {r[1] for r in c_res}
+            c_cols = {
+                "twilio_call_sid": "VARCHAR(100)",
+                "lead_id": "VARCHAR(64)",
+                "employee_id": "VARCHAR(64)",
+                "from_number": "VARCHAR(50)",
+                "to_number": "VARCHAR(50)",
+                "answered_at": "TIMESTAMP",
+                "recording_url": "VARCHAR(500)",
+                "transcript_url": "VARCHAR(500)",
+                "credits_used": "FLOAT DEFAULT 0.0",
+                "cost": "FLOAT DEFAULT 0.0",
+                "updated_at": "TIMESTAMP"
+            }
+            for col, col_def in c_cols.items():
+                if col not in c_existing:
+                    conn.execute(text(f"ALTER TABLE calls ADD COLUMN {col} {col_def};"))
+
+            # Check phone_numbers columns
+            p_res = conn.execute(text("PRAGMA table_info(phone_numbers);")).fetchall()
+            p_existing = {r[1] for r in p_res}
+            p_cols = {
+                "twilio_sid": "VARCHAR(100)",
+                "assigned_employee_id": "VARCHAR(64)",
+                "phone_number": "VARCHAR(50)",
+                "friendly_name": "VARCHAR(150)"
+            }
+            for col, col_def in p_cols.items():
+                if col not in p_existing:
+                    conn.execute(text(f"ALTER TABLE phone_numbers ADD COLUMN {col} {col_def};"))
+
+            conn.commit()
+    except Exception:
+        pass
+
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:

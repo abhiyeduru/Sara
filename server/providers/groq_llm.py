@@ -194,3 +194,36 @@ class GroqLLM(LLMProvider):
                 "total_ms": round(total_ms, 2),
                 "done": True
             }
+
+    async def generate_response(
+        self,
+        system_prompt: str,
+        user_message: str,
+        max_tokens: int = 250,
+        temperature: float = 0.3
+    ) -> str:
+        """
+        Generate complete text response from Groq or offline fallback.
+        """
+        if not self.client:
+            return generate_grounded_offline_reply(user_message, system_prompt)
+
+        try:
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: self.client.chat.completions.create(
+                    model=self.model,
+                    messages=[
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_message},
+                    ],
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            )
+            return response.choices[0].message.content or ""
+        except Exception as e:
+            logger.warning(f"Groq API call error: {e}. Falling back to grounded response.")
+            return generate_grounded_offline_reply(user_message, system_prompt)
+

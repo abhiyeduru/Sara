@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.database import SessionLocal
 from server.models import (
-    VoiceAgent, ConversationSession, ConversationMessage, ConversationState, LatencyMetric, User
+    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User
 )
 from server.engine.conversation_manager import ConversationManager
 from server.engine.chunker import SentenceChunker
@@ -19,12 +19,30 @@ from server.providers.openai_llm import OpenAILLM
 from server.providers.groq_llm import GroqLLM
 from server.providers.cartesia_tts import CartesiaTTS
 
+from server.providers.sarvam_tts import SarvamTTS
+
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
 stt_provider = SarvamSTT()
 llm_provider = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
-tts_provider = CartesiaTTS()
+sarvam_tts = SarvamTTS()
+cartesia_tts = CartesiaTTS()
+
+class UnifiedTTS:
+    def __init__(self, sarvam: SarvamTTS, cartesia: CartesiaTTS):
+        self.sarvam = sarvam
+        self.cartesia = cartesia
+
+    async def synthesize_speech(self, text: str, voice_id: str, language: str = "en") -> Dict[str, Any]:
+        if voice_id and (voice_id.startswith("sarvam-") or "sarvam" in voice_id.lower()):
+            res = await self.sarvam.synthesize_speech(text=text, voice_id=voice_id, language=language)
+            if res.get("audio_bytes"):
+                return res
+        return await self.cartesia.synthesize_speech(text=text, voice_id=voice_id, language=language)
+
+tts_provider = UnifiedTTS(sarvam_tts, cartesia_tts)
+synthesize_speech = tts_provider.synthesize_speech
 
 def get_synth_lang(phrase_text: str) -> str:
     """Dynamically determine native TTS language based on actual script content"""
@@ -113,7 +131,7 @@ async def voice_websocket_endpoint(
             greeting_voice = "4459a9a5-69d6-4680-b970-e13dc51845b6"
 
         # Synthesize and send initial greeting
-        greeting_audio = await tts_provider.synthesize_speech(
+        greeting_audio = await synthesize_speech(
             text=greeting_prompt,
             voice_id=greeting_voice,
             language=agent.primary_language or "en"
@@ -129,7 +147,7 @@ async def voice_websocket_endpoint(
             })
 
             # Record greeting message
-            msg = ConversationMessage(
+            msg = SessionMessage(
                 session_id=session_record.id,
                 role="agent",
                 content=greeting_prompt,
@@ -158,7 +176,7 @@ async def voice_websocket_endpoint(
                     prompt_text = "మీరు లైన్‌లో ఉన్నారా అండీ? నేను మీకు ఏ విధంగా సహాయపడగలను?" if is_agent_te else "Are you still there? Please let me know how I can help."
                     try:
                         voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
-                        tts_res = await tts_provider.synthesize_speech(
+                        tts_res = await synthesize_speech(
                             text=prompt_text,
                             voice_id=voice_to_use,
                             language="te" if is_agent_te else (agent.primary_language or "en")
@@ -179,7 +197,7 @@ async def voice_websocket_endpoint(
                     closing_text = "మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు అండీ. మీకు ఎప్పుడు కావాలన్నా మళ్ళీ మాట్లాడవచ్చు. సెలవు!" if is_agent_te else "Thank you for contacting us. You can reconnect whenever you're ready. Have a great day!"
                     try:
                         voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
-                        tts_res = await tts_provider.synthesize_speech(
+                        tts_res = await synthesize_speech(
                             text=closing_text,
                             voice_id=voice_to_use,
                             language="te" if is_agent_te else (agent.primary_language or "en")
@@ -325,7 +343,7 @@ async def voice_websocket_endpoint(
             })
 
             # Save User Message to Database
-            user_msg = ConversationMessage(
+            user_msg = SessionMessage(
                 session_id=session_record.id,
                 role="user",
                 content=user_text,
@@ -345,8 +363,8 @@ async def voice_websocket_endpoint(
 
             # Low-Latency Streaming LLM -> Sentence Chunker -> TTS
             await websocket.send_json({"type": "llm.started"})
-            # Fluid melodic chunking: 2 words minimum creates immediate speech output (~300ms TTFA)
-            chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=10)
+            # Fluid melodic chunking: 4-16 words creates complete, human-sounding prosody without chopping
+            chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=16)
 
             full_response_text = []
             first_token_time = None
@@ -390,7 +408,7 @@ async def voice_websocket_endpoint(
                         phrase = normalize_numbers_to_english(phrase)
                         target_synth_lang = get_synth_lang(phrase)
                         tts_start = time.perf_counter()
-                        tts_res = await tts_provider.synthesize_speech(
+                        tts_res = await synthesize_speech(
                             text=phrase,
                             voice_id=active_voice_id,
                             language=target_synth_lang
@@ -417,7 +435,7 @@ async def voice_websocket_endpoint(
                 for phrase in remaining_phrases:
                     phrase = normalize_numbers_to_english(phrase)
                     target_synth_lang = get_synth_lang(phrase)
-                    tts_res = await tts_provider.synthesize_speech(
+                    tts_res = await synthesize_speech(
                         text=phrase,
                         voice_id=active_voice_id,
                         language=target_synth_lang
@@ -453,7 +471,7 @@ async def voice_websocket_endpoint(
             db.add(metric)
 
             # Save Agent Message
-            agent_msg = ConversationMessage(
+            agent_msg = SessionMessage(
                 session_id=session_record.id,
                 role="agent",
                 content=complete_agent_reply,
@@ -503,8 +521,9 @@ async def voice_websocket_endpoint(
     except WebSocketDisconnect:
         logger.info(f"Client disconnected from session {session_record.id if session_record else 'unknown'}")
         if session_record:
+            from datetime import datetime, timezone
             session_record.status = "completed"
-            session_record.ended_at = get_utc_now()
+            session_record.ended_at = datetime.now(timezone.utc)
             db.commit()
 
             # Auto-log completed voice call into Saadhyam CRM
@@ -514,7 +533,7 @@ async def voice_websocket_endpoint(
                 import uuid
 
                 duration = int((session_record.ended_at - session_record.started_at).total_seconds()) if session_record.started_at else 0
-                msgs = db.query(ConversationMessage).filter(ConversationMessage.session_id == session_record.id).all()
+                msgs = db.query(SessionMessage).filter(SessionMessage.session_id == session_record.id).all()
                 if msgs:
                     crm_call = CallRecord(
                         id=str(uuid.uuid4()),

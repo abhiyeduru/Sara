@@ -1,38 +1,56 @@
+"""
+SARA AI — Main Application Entry Point
+AI Workforce Operating System — FastAPI Backend
+"""
 import logging
-from fastapi import FastAPI, Depends
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
+
 from server.config import settings
 from server.database import engine, get_db, init_db
-from server.routes import agents, voices, sessions, websocket, crm
 
-# Configure logging
+# ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("sara")
 
-from contextlib import asynccontextmanager
 
+# ── Lifespan ─────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Initializing SARA database tables...")
+    logger.info("🧠 SARA AI Workforce OS — starting up...")
     try:
         init_db()
-        logger.info("Database tables and default agents verified.")
+        logger.info("✅ Database tables initialised.")
     except Exception as e:
-        logger.error(f"Database initialization error: {e}")
+        logger.error(f"Database initialisation error: {e}")
     yield
+    logger.info("🛑 SARA AI shutting down.")
 
+
+# ── App ───────────────────────────────────────────────────────────────────────
 app = FastAPI(
-    title="SARA — Configurable AI Voice Agent Platform",
-    version="1.0.0",
-    description="Low-latency real-time multilingual AI voice agent system",
-    lifespan=lifespan
+    title="SARA AI — Workforce Operating System",
+    version="2.0.0",
+    description=(
+        "Complete AI Workforce OS — Create, manage, and orchestrate AI employees "
+        "for sales, support, marketing, and operations."
+    ),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan,
 )
 
-# CORS Middleware allowing client communication
+# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,40 +59,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-import os
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 
-# Include Routers
+# ── Health Check ──────────────────────────────────────────────────────────────
+@app.get("/api/health", tags=["System"])
+def health_check():
+    """Health check validating DB connectivity."""
+    db_ok = False
+    try:
+        db: Session = next(get_db())
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        pass
+
+    db_type = "PostgreSQL" if "postgres" in str(engine.url) else "SQLite"
+    return {
+        "status": "healthy" if db_ok else "degraded",
+        "version": "2.0.0",
+        "database": f"{db_type} ({'connected' if db_ok else 'error'})",
+        "llm_primary": settings.PRIMARY_LLM,
+        "features": [
+            "AI Workforce Management",
+            "Voice Calling",
+            "CRM & Lead Management",
+            "Workflow Automation",
+            "Approval Engine",
+            "RAG / Knowledge Base",
+            "Real-time Events",
+            "Billing & Credits",
+            "RBAC & Multi-Tenant",
+        ],
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# v1 API Routers
+# ══════════════════════════════════════════════════════════════════════════════
+from server.api.v1.workspaces.router import router as workspaces_router
+from server.api.v1.employees.router  import router as employees_router
+from server.api.v1.tasks.router      import router as tasks_router
+from server.api.v1.workflows.router  import router as workflows_router
+from server.api.v1.leads.router      import router as leads_router
+from server.api.v1.calls.router      import router as calls_router
+from server.api.v1.approvals.router  import router as approvals_router
+from server.api.v1.analytics.router  import router as analytics_router
+from server.api.v1.billing.router    import router as billing_router
+from server.api.v1.activity.router   import router as activity_router
+from server.api.v1.integrations.router import router as integrations_router, mcp_router
+from server.api.v1.knowledge.router import router as knowledge_router
+from server.api.v1.teams.router import router as teams_router
+from server.api.v1.voice.router import router as voice_router
+from server.api.v1.phone_numbers.router import router as phone_numbers_router
+
+app.include_router(workspaces_router)
+app.include_router(employees_router)
+app.include_router(teams_router)
+app.include_router(tasks_router)
+app.include_router(workflows_router)
+app.include_router(leads_router)
+app.include_router(calls_router)
+app.include_router(voice_router)
+app.include_router(phone_numbers_router)
+app.include_router(approvals_router)
+app.include_router(analytics_router)
+app.include_router(billing_router)
+app.include_router(activity_router)
+app.include_router(integrations_router)
+app.include_router(mcp_router)
+app.include_router(knowledge_router)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Legacy Routers (voice agent system — fully preserved)
+# ══════════════════════════════════════════════════════════════════════════════
+from server.routes import agents, voices, sessions, websocket, crm
+
 app.include_router(agents.router)
 app.include_router(voices.router)
 app.include_router(sessions.router)
 app.include_router(websocket.router)
 app.include_router(crm.router)
 
-@app.get("/api/health")
-def health_check(db: Session = Depends(get_db)):
-    """Health check validating database connectivity and AI provider configs"""
-    db_ok = False
-    try:
-        from sqlalchemy import text
-        db.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        pass
 
-    db_type = "Neon PostgreSQL (Connected)" if "postgres" in str(engine.url) else "SQLite (Local Active)"
-    return {
-        "status": "healthy" if db_ok else "degraded",
-        "database": db_type if db_ok else "Database Error",
-        "llm_provider": "Groq (qwen/qwen3.8-27b)",
-        "tts_provider": "Cartesia (sonic-2)",
-        "stt_provider": "Sarvam AI (saarika:v2.5)",
-        "languages": ["en", "te", "hi"]
-    }
-
-# Mount static frontend build if present
-CLIENT_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client", "dist")
+# ── Serve React SPA ───────────────────────────────────────────────────────────
+CLIENT_DIST = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "client", "dist"
+)
 if os.path.exists(CLIENT_DIST):
     assets_dir = os.path.join(CLIENT_DIST, "assets")
     if os.path.exists(assets_dir):
@@ -82,17 +151,23 @@ if os.path.exists(CLIENT_DIST):
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        if full_path.startswith("api/") or full_path.startswith("ws/"):
-            return {"error": "Not Found"}
+        if full_path.startswith(("api/", "ws/", "docs", "redoc")):
+            from fastapi import Response
+            return Response(status_code=404)
         target = os.path.join(CLIENT_DIST, full_path)
         if os.path.isfile(target):
             return FileResponse(target)
         index_html = os.path.join(CLIENT_DIST, "index.html")
         if os.path.isfile(index_html):
             return FileResponse(index_html)
-        return {"message": "SARA API is running"}
+        return {"message": "SARA AI Workforce OS — API running on /docs"}
+
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("server.main:app", host=settings.HOST, port=settings.PORT, reload=True)
-
+    uvicorn.run(
+        "server.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=True,
+    )
