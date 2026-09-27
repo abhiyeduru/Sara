@@ -159,12 +159,23 @@ export class AudioStreamer {
     if (window.location.port === '5173' || window.location.port === '5174') {
       wsHost = `${window.location.hostname}:8000`;
     }
-    const wsUrl = `${protocol}//${wsHost}/ws/voice/${agentId}`;
+    const customWs = (typeof window !== 'undefined' && window.SARA_WS_URL) || 
+      (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_WS_URL);
+    const wsUrl = customWs ? `${customWs}/ws/voice/${agentId}` : `${protocol}//${wsHost}/ws/voice/${agentId}`;
 
     return new Promise((resolve) => {
-      this.ws = new WebSocket(wsUrl);
+      try {
+        this.ws = new WebSocket(wsUrl);
+      } catch (e) {
+        console.warn('WebSocket init exception:', e);
+        this.reconnectAttempts = 3;
+        this.onEvent({ type: 'ws_unavailable' });
+        resolve(false);
+        return;
+      }
 
       this.ws.onopen = () => {
+        this.reconnectAttempts = 0;
         this.updateState('connected');
         this.onEvent({ type: 'connected', message: 'WebSocket Connected' });
         resolve(true);
@@ -180,7 +191,7 @@ export class AudioStreamer {
       };
 
       this.ws.onerror = (err) => {
-        console.warn('WebSocket status note:', err);
+        console.warn('WebSocket connection note:', err?.message || 'Handshake failed or host unreachable');
         this.updateState('error');
         resolve(false);
       };
@@ -189,14 +200,15 @@ export class AudioStreamer {
         if (event.code === 1000 || event.code === 1005) {
           console.debug('WebSocket closed normally:', event.code);
         } else {
-          console.warn('WebSocket connection closed unexpectedly:', event.code, event.reason);
+          console.warn('WebSocket connection closed:', event.code, event.reason || '');
         }
         this.updateState('idle');
         this.stopPlayback();
 
-        // If mic is still open or session was active, automatically reconnect
-        if (this.isRecording && this.agentId) {
-          console.log('Active session detected — attempting auto-reconnect in 1.2s...');
+        // If mic is still open or session was active, attempt auto-reconnect up to max 3 times
+        this.reconnectAttempts = (this.reconnectAttempts || 0) + 1;
+        if (this.isRecording && this.agentId && this.reconnectAttempts <= 2) {
+          console.log(`Active session detected — attempting auto-reconnect (${this.reconnectAttempts}/2)...`);
           setTimeout(() => {
             if (this.isRecording && this.agentId) {
               this.connect(this.agentId).then((success) => {
@@ -205,7 +217,9 @@ export class AudioStreamer {
                 }
               });
             }
-          }, 1200);
+          }, 1500);
+        } else if (this.reconnectAttempts > 2) {
+          this.onEvent({ type: 'ws_unavailable' });
         }
       };
 

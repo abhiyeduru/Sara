@@ -4,6 +4,7 @@ import json
 import asyncio
 import logging
 import re
+import uuid
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from sqlalchemy.orm import Session
@@ -68,51 +69,90 @@ async def voice_websocket_endpoint(
 
     try:
         # 1. Fetch Agent configuration
-        agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id).first()
+        agent = None
+        if agent_id and agent_id != "agent_sara_default":
+            agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id).first()
         if not agent:
-            # Fallback to any agent or default
             agent = db.query(VoiceAgent).first()
 
         if not agent:
-            await websocket.send_json({"type": "error", "message": "No voice agent configured in database"})
-            await websocket.close()
-            return
+            try:
+                from server.database import seed_default_agents
+                seed_default_agents(db, "user_business_owner_1")
+                agent = db.query(VoiceAgent).first()
+            except Exception as seed_err:
+                logger.warning(f"Could not auto-seed agents: {seed_err}")
+
+        if not agent:
+            # Fallback in-memory SARA agent
+            class FallbackAgent:
+                id = "agent_sara_default"
+                user_id = "user_business_owner_1"
+                name = "SARA"
+                role_title = "Property Advisor"
+                business_type = "Real Estate"
+                voice_id = "sarvam-te-pooja"
+                voice_name = "Pooja"
+                primary_language = "te"
+                generated_prompt = None
+                faqs = []
+            agent = FallbackAgent()
 
         # 2. Get or generate prompt
-        system_prompt = agent.generated_prompt.full_prompt if agent.generated_prompt else "You are SARA, a helpful business voice assistant."
-        greeting_prompt = agent.generated_prompt.greeting_prompt if agent.generated_prompt else f"Hi, welcome to {agent.name}. How can I assist you today?"
-        faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in agent.faqs]
-
-        # 3. Create persistent ConversationSession in Neon Postgres
-        session_record = ConversationSession(
-            agent_id=agent.id,
-            user_id=agent.user_id,
-            active_language=agent.primary_language or "en",
-            current_stage="GREETING",
-            status="active"
+        system_prompt = agent.generated_prompt.full_prompt if getattr(agent, 'generated_prompt', None) else (
+            "You are SARA, an ultra-intelligent, respectful, and warm AI property advisor for ABC Properties in Hyderabad. "
+            "You speak natively in conversational Telugu with pristine clarity, blending common English terms naturally (e.g. 2 BHK, Gachibowli, ₹85 Lakhs). "
+            "Always be sweet, polite, and helpful."
         )
-        db.add(session_record)
-        db.flush()
+        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else "నమస్కారం అండీ! నేను సారా. ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+        faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])]
 
-        conv_state = ConversationState(
-            session_id=session_record.id,
-            agent_id=agent.id,
-            conversation_stage="GREETING"
-        )
-        db.add(conv_state)
-        db.commit()
+        # 3. Create persistent ConversationSession in DB (safe fallback)
+        session_id = f"sess_{uuid.uuid4().hex[:12]}"
+        try:
+            # Check user exists
+            usr = db.query(User).filter(User.id == agent.user_id).first() if hasattr(agent, 'user_id') else None
+            if not usr:
+                usr = db.query(User).first()
+            target_user_id = usr.id if usr else "user_business_owner_1"
+
+            # Check agent exists in DB before linking FK
+            db_agent = db.query(VoiceAgent).filter(VoiceAgent.id == getattr(agent, 'id', None)).first()
+            if db_agent:
+                session_record = ConversationSession(
+                    agent_id=db_agent.id,
+                    user_id=target_user_id,
+                    active_language=getattr(agent, 'primary_language', 'te') or "te",
+                    current_stage="GREETING",
+                    status="active"
+                )
+                db.add(session_record)
+                db.flush()
+
+                conv_state = ConversationState(
+                    session_id=session_record.id,
+                    agent_id=db_agent.id,
+                    conversation_stage="GREETING"
+                )
+                db.add(conv_state)
+                db.commit()
+                session_id = session_record.id
+        except Exception as db_err:
+            logger.warning(f"Session record persistence bypassed: {db_err}")
+            db.rollback()
+            session_record = None
 
         # 4. Initialize ConversationManager
         manager = ConversationManager(
-            session_id=session_record.id,
+            session_id=session_id,
             system_prompt=system_prompt,
             greeting_prompt=greeting_prompt,
             faqs=faq_list,
-            voice_id=agent.voice_id,
+            voice_id=getattr(agent, 'voice_id', 'sarvam-te-pooja'),
             llm_provider=llm_provider,
             tts_provider=tts_provider,
             stt_provider=stt_provider,
-            initial_language=agent.primary_language or "en"
+            initial_language=getattr(agent, 'primary_language', 'te') or "te"
         )
 
         # Notify frontend that session has started
@@ -530,7 +570,6 @@ async def voice_websocket_endpoint(
             try:
                 from server.models import CallRecord, CallTranscript, CallIntelligence
                 from server.engine.crm_intelligence import analyze_call_transcript
-                import uuid
 
                 duration = int((session_record.ended_at - session_record.started_at).total_seconds()) if session_record.started_at else 0
                 msgs = db.query(SessionMessage).filter(SessionMessage.session_id == session_record.id).all()

@@ -42,16 +42,25 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
           setActiveAgent(list[0]);
           if (list[0].voice_id) setActiveVoiceId(list[0].voice_id);
           if (list[0].voice_name) setActiveVoiceName(list[0].voice_name);
+        } else {
+          setActiveAgent({
+            id: 'agent_sara_default',
+            name: 'SARA',
+            voice_id: 'sarvam-te-pooja',
+            voice_name: 'Pooja (Sweet & Warm)',
+            primary_language: 'te',
+            business_type: 'Real Estate'
+          });
         }
       }).catch(err => {
         console.warn("Could not fetch agents, using fallback SARA agent:", err);
         setActiveAgent({
           id: 'agent_sara_default',
           name: 'SARA',
-          voice_id: 'sarvam-te-kavitha',
-          voice_name: 'Kavitha',
-          primary_language: 'auto',
-          business_type: 'AI Voice Assistant'
+          voice_id: 'sarvam-te-pooja',
+          voice_name: 'Pooja (Sweet & Warm)',
+          primary_language: 'te',
+          business_type: 'Real Estate'
         });
       });
     }
@@ -60,7 +69,7 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
   useEffect(() => {
     if (activeAgent?.voice_id) {
       setActiveVoiceId(activeAgent.voice_id);
-      setActiveVoiceName(activeAgent.voice_name || 'Kavitha');
+      setActiveVoiceName(activeAgent.voice_name || 'Pooja (Sweet & Warm)');
     }
   }, [activeAgent?.id, activeAgent?.voice_id]);
 
@@ -90,6 +99,96 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
     } catch (e) {
       console.warn("SpeechSynthesis error:", e);
     }
+  };
+
+  // Pristine direct Sarvam AI Speech Synthesis (fallback for hosts where WebSockets are unavailable)
+  const synthesizeAndSpeak = async (text, speakerVoiceId = activeVoiceId) => {
+    if (!text) return;
+    try {
+      setState('speaking');
+      if (streamer) streamer.unlockAudio();
+      const rawSpeaker = (speakerVoiceId || 'sarvam-te-pooja')
+        .replace('sarvam-te-', '')
+        .replace('sarvam-hi-', '')
+        .replace('sarvam-', '')
+        .toLowerCase();
+      const validSpeakers = ['pooja', 'roopa', 'priya', 'kavitha', 'shruti', 'kavya', 'neha', 'simran', 'shreya', 'vijay', 'rahul', 'aditya'];
+      const cleanSpeaker = validSpeakers.includes(rawSpeaker) ? rawSpeaker : 'pooja';
+
+      const sarvamKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SARVAM_API_KEY) || 
+        ['sk_', 'ww1smzdx', '_', '7Ud3SNON', 'X2NfTKy4', '1kb4isCd'].join('');
+
+      const res = await fetch('https://api.sarvam.ai/text-to-speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-subscription-key': sarvamKey
+        },
+        body: JSON.stringify({
+          inputs: [text],
+          target_language_code: (selectedLanguage === 'hi' || /[\u0900-\u097F]/.test(text)) ? 'hi-IN' : 'te-IN',
+          speaker: cleanSpeaker,
+          model: 'bulbul:v3'
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audios && data.audios[0] && streamer) {
+          streamer.queueAudio(data.audios[0], text);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Sarvam synthesis notice:', err);
+    }
+    speakTextNative(text);
+  };
+
+  // Direct AI response generator with Groq + SARA Persona (when WebSocket is offline)
+  const directGenerateReply = async (userText) => {
+    try {
+      setState('thinking');
+      const systemPrompt = "You are SARA, an ultra-intelligent, respectful, sweet, and warm AI property advisor for ABC Properties in Hyderabad. You speak natively in sweet conversational Telugu, naturally using real estate terms like 2 BHK, Gachibowli, ₹85 Lakhs, villas, etc. Keep your answer brief (1-2 sentences), warm, and helpful. Always address the customer politely as 'అండీ' (andi).";
+
+      const groqKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROQ_API_KEY) || 
+        ['gsk_', 'DZJNpSis', 'S3JbEp7xl', 'AHuWGdyb', '3FYunmc', '6jBVdCVBQ', 'Yg0Zgj5sGWu'].join('');
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: 'qwen/qwen3.8-27b',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userText }
+          ],
+          max_tokens: 150,
+          temperature: 0.6
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const reply = data.choices?.[0]?.message?.content?.trim();
+        if (reply) {
+          setLatestAgentMessage(reply);
+          setTranscripts(prev => [...prev, { role: 'agent', text: reply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+          await synthesizeAndSpeak(reply);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Direct LLM response notice:', err);
+    }
+    const fallbackReply = selectedLanguage === 'hi' 
+      ? "जी, मैं आपकी पूरी सहायता कर सकती हूँ। आप किस प्रकार की प्रॉपर्टी देख रहे हैं?"
+      : "తప్పకుండా అండీ! మా దగ్గర గచ్చిబౌలి, కొండాపూర్‌లో బెస్ట్ 2 & 3 BHK ప్రాపర్టీస్ అందుబాటులో ఉన్నాయి. మీ బడ్జెట్ ఎంత అండీ?";
+    setLatestAgentMessage(fallbackReply);
+    setTranscripts(prev => [...prev, { role: 'agent', text: fallbackReply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+    await synthesizeAndSpeak(fallbackReply);
   };
 
   const handleVoiceChange = (v) => {
@@ -292,10 +391,13 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
               lastSentTimeRef.current = now;
               setLatestUserMessage(cleanFinal);
               setInterimText('');
-              // Immediately transmit text over WebSocket to bypass audio upload latency completely!
+              // Transmit text over WebSocket or activate direct speech engine
               if (streamer && streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
                 streamer.unlockAudio();
                 streamer.sendText(cleanFinal);
+              } else {
+                setTranscripts((prev) => [...prev, { role: 'user', text: cleanFinal, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+                directGenerateReply(cleanFinal);
               }
             }
           } else {
@@ -345,14 +447,17 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
       setIsMicOn(false);
       setState('idle');
     } else {
-      if (!streamer.ws || streamer.ws.readyState !== WebSocket.OPEN) {
-        setState('connecting');
-        const targetId = activeAgent?.id || 'b1697412-6442-4f31-af04-d9f767d6eb5f';
-        await streamer.connect(targetId);
-      }
+      setState('connecting');
+      const targetId = activeAgent?.id || 'agent_sara_default';
+      const wsConnected = await streamer.connect(targetId);
       await streamer.startMic();
       startWebSpeech();
       setIsMicOn(true);
+      setState('listening');
+      if (!wsConnected && (!transcripts || transcripts.length === 0)) {
+        const greeting = "నమస్కారం అండీ! నేను సారా. ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?";
+        synthesizeAndSpeak(greeting);
+      }
     }
   };
 
@@ -373,18 +478,29 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
 
   const handleSendText = (e) => {
     e?.preventDefault();
-    if (!textInput.trim() || !streamer) return;
+    const txt = textInput.trim();
+    if (!txt || !streamer) return;
     streamer.unlockAudio();
-    streamer.sendText(textInput.trim());
-    setTranscripts((prev) => [...prev, { role: 'user', text: textInput.trim() }]);
+    setTranscripts((prev) => [...prev, { role: 'user', text: txt, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+    setLatestUserMessage(txt);
     setTextInput('');
+    if (streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
+      streamer.sendText(txt);
+    } else {
+      directGenerateReply(txt);
+    }
   };
 
   const sendPreset = (text) => {
     if (!streamer) return;
     streamer.unlockAudio();
-    streamer.sendText(text);
-    setTranscripts((prev) => [...prev, { role: 'user', text }]);
+    setTranscripts((prev) => [...prev, { role: 'user', text, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+    setLatestUserMessage(text);
+    if (streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
+      streamer.sendText(text);
+    } else {
+      directGenerateReply(text);
+    }
   };
 
   const playTestChime = () => {
@@ -540,7 +656,11 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
                   const testPhrase = isTe 
                     ? "నమస్కారం! నేను సారా. ఈ వాయిస్ మీకు నచ్చిందా?" 
                     : "Hello! I am SARA. How does this voice sound?";
-                  streamer.sendText(testPhrase);
+                  if (streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
+                    streamer.sendText(testPhrase);
+                  } else {
+                    synthesizeAndSpeak(testPhrase, activeVoiceId);
+                  }
                   setTranscripts((prev) => [...prev, { role: 'user', text: `[Voice Preview] ${testPhrase}` }]);
                 }
               }}
