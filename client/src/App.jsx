@@ -157,10 +157,37 @@ export default function App() {
   const [showAskSara, setShowAskSara] = useState(false);
   const meta = PAGE_META[page] || {};
 
-  // Check URL params for Google OAuth redirect callback
+  // Check URL params & hash fragment for Google OAuth redirect callback
   useEffect(() => {
     try {
+      // Normalize path if user was routed to an auth or API endpoint
+      if (window.location.pathname.includes('/auth/google')) {
+        window.history.replaceState({}, document.title, '/' + window.location.search + window.location.hash);
+      }
+
       const urlParams = new URLSearchParams(window.location.search);
+      let hashParams = new URLSearchParams();
+      if (window.location.hash && window.location.hash.startsWith('#')) {
+        hashParams = new URLSearchParams(window.location.hash.substring(1));
+      }
+
+      const parseJwt = (token) => {
+        try {
+          const base64Url = token.split('.')[1];
+          if (!base64Url) return null;
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(
+            atob(base64)
+              .split('')
+              .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+              .join('')
+          );
+          return JSON.parse(jsonPayload);
+        } catch (e) {
+          return null;
+        }
+      };
+
       if (urlParams.get('google_auth') === 'success') {
         const token = urlParams.get('token') || '';
         const userObj = {
@@ -180,11 +207,28 @@ export default function App() {
           setShowOnboarding(true);
         }
         window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (hashParams.get('id_token') || hashParams.get('access_token')) {
+        const rawToken = hashParams.get('id_token') || hashParams.get('access_token');
+        const jwtPayload = parseJwt(rawToken);
+        if (jwtPayload && jwtPayload.email) {
+          const userObj = {
+            id: `google_${jwtPayload.sub || Date.now()}`,
+            name: jwtPayload.name || jwtPayload.given_name || jwtPayload.email.split('@')[0],
+            email: jwtPayload.email,
+            avatar_url: jwtPayload.picture || '',
+            auth_provider: 'google'
+          };
+          localStorage.setItem('sara_token', rawToken);
+          localStorage.setItem('sara_user', JSON.stringify(userObj));
+          setCurrentUser(userObj);
+          setNeedsOnboarding(false);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
       } else if (currentUser) {
         fetch('/api/v1/auth/me')
           .then(r => r.json())
           .then(data => {
-            if (data.needs_business_onboarding) {
+            if (data && data.needs_business_onboarding) {
               setNeedsOnboarding(true);
               setShowOnboarding(true);
             }
@@ -192,7 +236,7 @@ export default function App() {
           .catch(() => {});
       }
     } catch (e) {
-      console.error(e);
+      console.error('Auth callback error:', e);
     }
   }, []);
 

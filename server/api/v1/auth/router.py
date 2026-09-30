@@ -231,12 +231,21 @@ async def demo_login(
 
 
 @router.get("/google/login")
-def google_oauth_redirect():
+def google_oauth_redirect(
+    request: Request,
+    redirect_to: Optional[str] = Query(None)
+):
     """
     Redirect browser to Google OAuth 2.0 Authorization Endpoint.
     """
     if not settings.GOOGLE_CLIENT_ID:
         raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID is not configured.")
+
+    # Determine originating frontend base URL to pass in OAuth state
+    frontend_base = redirect_to or "http://localhost:5174"
+    referer = request.headers.get("referer", "")
+    if "saadhyam.com" in referer or "vercel.app" in referer or "saadhyam.com" in str(request.base_url):
+        frontend_base = "https://sara.saadhyam.com"
 
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
@@ -244,7 +253,8 @@ def google_oauth_redirect():
         "response_type": "code",
         "scope": "openid email profile",
         "access_type": "offline",
-        "prompt": "select_account"
+        "prompt": "select_account",
+        "state": frontend_base
     }
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
     return RedirectResponse(url)
@@ -252,19 +262,32 @@ def google_oauth_redirect():
 
 @router.get("/google/callback")
 async def google_oauth_callback(
+    request: Request,
     code: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """
     Exchange Google OAuth code for tokens, retrieve profile, and redirect to frontend.
     """
+    # Determine target frontend URL dynamically
+    frontend_target = "http://localhost:5174"
+    if state and state.startswith("http"):
+        frontend_target = state.rstrip("/")
+    else:
+        referer = request.headers.get("referer", "")
+        if "saadhyam.com" in referer or "saadhyam.com" in str(request.base_url) or "vercel.app" in referer:
+            frontend_target = "https://sara.saadhyam.com"
+
     if error or not code:
-        return RedirectResponse(f"http://localhost:5174/?auth_error={error or 'cancelled'}")
+        return RedirectResponse(f"{frontend_target}/?auth_error={error or 'cancelled'}")
 
     token_url = "https://oauth2.googleapis.com/token"
     candidate_uris = [
         settings.GOOGLE_REDIRECT_URI,
+        "https://sara.saadhyam.com/api/v1/auth/google/callback",
+        "https://sara.saadhyam.com/api/space/google/callback/",
         "http://localhost:8001/api/space/google/callback/",
         "http://localhost:8001/api/space/google/callback",
         "http://localhost:8000/api/v1/auth/google/callback",
@@ -295,7 +318,7 @@ async def google_oauth_callback(
 
             if not tokens:
                 logger.error(f"Failed to exchange Google code across all candidate URIs.")
-                return RedirectResponse("http://localhost:5174/?auth_error=exchange_failed")
+                return RedirectResponse(f"{frontend_target}/?auth_error=exchange_failed")
 
             id_token = tokens.get("id_token")
             access_token = tokens.get("access_token")
@@ -308,7 +331,7 @@ async def google_oauth_callback(
             user_data = userinfo_res.json() if userinfo_res.status_code == 200 else {}
     except Exception as e:
         logger.error(f"Google OAuth callback error: {e}")
-        return RedirectResponse("http://localhost:5174/?auth_error=server_error")
+        return RedirectResponse(f"{frontend_target}/?auth_error=server_error")
 
     sub = user_data.get("sub") or "google_user"
     email = user_data.get("email", "")
@@ -341,7 +364,7 @@ async def google_oauth_callback(
     encoded_avatar = urllib.parse.quote(picture)
 
     return RedirectResponse(
-        f"http://localhost:5174/?google_auth=success&token={id_token or access_token}&user_id={user.id}&name={encoded_name}&email={encoded_email}&avatar={encoded_avatar}&needs_onboarding={needs_onboarding}"
+        f"{frontend_target}/?google_auth=success&token={id_token or access_token}&user_id={user.id}&name={encoded_name}&email={encoded_email}&avatar={encoded_avatar}&needs_onboarding={needs_onboarding}"
     )
 
 
