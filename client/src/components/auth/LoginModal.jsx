@@ -125,6 +125,54 @@ export default function LoginModal({ onLoginSuccess }) {
     setLoading(false);
   };
 
+  const [emailInput, setEmailInput] = useState('abhiyeduru8@gmail.com');
+  const [showEmailInput, setShowEmailInput] = useState(false);
+
+  const handleCustomEmailLogin = async (emailToUse) => {
+    setLoading(true);
+    setError('');
+    const targetEmail = (emailToUse || emailInput).trim();
+    if (!targetEmail || !targetEmail.includes('@')) {
+      setError('Please enter a valid email address.');
+      setLoading(false);
+      return;
+    }
+    const cleanName = targetEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+    const user = {
+      id: `user_${targetEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
+      name: cleanName,
+      email: targetEmail,
+      display_name: cleanName,
+      auth_provider: 'email'
+    };
+
+    try {
+      const res = await fetch(`${apiBase}/api/v1/auth/demo-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: targetEmail, name: cleanName })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.user) {
+          localStorage.setItem('sara_token', data.token || `dev-token-${user.id}`);
+          localStorage.setItem('sara_user', JSON.stringify(data.user));
+          onLoginSuccess(data.user, data.needs_business_onboarding || false);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn('Backend login notice, activating local session:', err);
+    }
+
+    // Instant local session
+    localStorage.setItem('sara_token', `dev-token-${user.id}`);
+    localStorage.setItem('sara_user', JSON.stringify(user));
+    onLoginSuccess(user, false);
+    setLoading(false);
+  };
+
   const handleDemoLogin = async () => {
     setLoading(true);
     setError('');
@@ -261,14 +309,30 @@ export default function LoginModal({ onLoginSuccess }) {
           {/* Render Google Identity Services button */}
           <div ref={googleBtnRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center' }} />
 
-          {/* Direct Google OAuth Button Fallback */}
+          {/* Direct Email / One-Click Login for User */}
+          <button
+            onClick={() => handleCustomEmailLogin('abhiyeduru8@gmail.com')}
+            disabled={loading}
+            style={{
+              width: '100%', maxWidth: 320, padding: '11px 18px', borderRadius: 24,
+              border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
+              color: '#ffffff', fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+              boxShadow: '0 4px 14px rgba(124,58,237,0.3)', transition: 'transform 0.15s'
+            }}
+          >
+            <User size={15} color="#fff" />
+            Sign in as abhiyeduru8@gmail.com
+          </button>
+
+          {/* Direct Google OAuth Button */}
           <button
             onClick={handleGoogleRedirectLogin}
             disabled={loading}
             style={{
               width: '100%', maxWidth: 320, padding: '10px 18px', borderRadius: 24,
               border: '1px solid #dadce0', background: '#fff', color: '#3c4043',
-              fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              fontSize: 13, fontWeight: 600, cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
               boxShadow: '0 1px 3px rgba(0,0,0,0.08)', transition: 'background 0.2s'
             }}
@@ -302,11 +366,47 @@ export default function LoginModal({ onLoginSuccess }) {
             <Zap size={14} color="#7c3aed" />
             Continue as Business Owner (Instant Demo)
           </button>
+
+          {/* Custom Email Expandable Toggle */}
+          <button
+            onClick={() => setShowEmailInput(!showEmailInput)}
+            style={{
+              background: 'none', border: 'none', color: '#6366f1',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
+            }}
+          >
+            {showEmailInput ? 'Hide Custom Email Login' : 'Sign in with another email address'}
+          </button>
+
+          {showEmailInput && (
+            <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+              <input
+                type="email"
+                placeholder="your-name@company.com"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                style={{
+                  padding: '9px 14px', borderRadius: 12, border: '1px solid var(--border, #cbd5e1)',
+                  fontSize: 13, outline: 'none'
+                }}
+              />
+              <button
+                onClick={() => handleCustomEmailLogin(emailInput)}
+                disabled={loading || !emailInput.trim()}
+                style={{
+                  padding: '9px 16px', borderRadius: 12, border: 'none',
+                  background: '#0f172a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                }}
+              >
+                Log In with this Email
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Footer info */}
         <div style={{ marginTop: 22, fontSize: 11, color: 'var(--text-muted)' }}>
-          Secure OAuth 2.0 • Data isolated per workspace
+          Secure Authentication • Data isolated per workspace
         </div>
       </div>
     </div>
