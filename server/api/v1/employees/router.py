@@ -40,7 +40,10 @@ class EmployeeCreate(BaseModel):
     voice_id: Optional[str] = None
     voice_name: Optional[str] = None
     voice_gender: str = "female"
+    voice_language: Optional[str] = "te"
     primary_model: str = "groq"
+    call_script: Optional[dict] = None
+    universal_spec: Optional[dict] = None
     skills: List[SkillIn] = []
     permissions: List[PermissionIn] = []
     working_hours: dict = {"start": "09:00", "end": "21:00", "days": ["mon","tue","wed","thu","fri","sat"]}
@@ -150,12 +153,14 @@ async def create_employee(
         communication_style=body.communication_style,
         sales_behavior=body.sales_behavior,
         languages=body.languages,
-        voice_id=body.voice_id,
-        voice_name=body.voice_name,
+        voice_id=body.voice_id or "sarvam-te-kavitha",
+        voice_name=body.voice_name or "Kavitha",
         voice_gender=body.voice_gender,
+        voice_language=body.voice_language or "te",
         primary_model=body.primary_model,
         working_hours=body.working_hours,
-        status="draft",
+        status="active",
+        universal_spec=body.universal_spec or ({"call_script": body.call_script} if body.call_script else {}),
     )
     db.add(emp)
     db.flush()
@@ -437,4 +442,58 @@ async def rewrite_script(
             },
             "note": "Script retained with suggested guidance: " + body.prompt
         }
+
+
+class EmployeeCallRequest(BaseModel):
+    phone_number: str
+    lead_name: Optional[str] = "Customer"
+    variables: Optional[dict] = None
+    from_number: Optional[str] = None
+
+
+@router.post("/{employee_id}/call")
+async def trigger_employee_call(
+    employee_id: str,
+    body: EmployeeCallRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Triggers an outbound call using the specified AI Employee's profile and script.
+    """
+    emp = db.query(AIEmployee).filter(
+        AIEmployee.id == employee_id,
+        AIEmployee.workspace_id == user.id,
+    ).first()
+    if not emp:
+        emp = db.query(AIEmployee).filter(AIEmployee.id == employee_id).first()
+        if not emp:
+            raise HTTPException(404, "AI Employee not found")
+
+    from server.services.voice.call_service import CallService
+    clean_to = body.phone_number.strip().replace(" ", "").replace("-", "")
+    if clean_to.startswith("0"):
+        clean_to = "+91" + clean_to[1:]
+    elif not clean_to.startswith("+"):
+        clean_to = f"+91{clean_to}" if len(clean_to) == 10 else f"+{clean_to}"
+
+    call_res = CallService.initiate_outbound_call(
+        db=db,
+        user=user,
+        employee_id=emp.id,
+        to_number=clean_to,
+        from_number=body.from_number,
+    )
+    return {
+        "success": True,
+        "call_id": call_res.get("call_id"),
+        "twilio_call_sid": call_res.get("twilio_call_sid"),
+        "status": call_res.get("status"),
+        "is_simulated": call_res.get("is_simulated", False),
+        "error_detail": call_res.get("error_detail"),
+        "employee_name": emp.name,
+        "to": clean_to,
+        "message": f"Outbound call to {clean_to} initiated with {emp.name}."
+    }
+
 

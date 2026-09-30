@@ -4,9 +4,11 @@ AI Workforce Operating System — FastAPI Backend
 """
 import logging
 import os
+import threading
 from contextlib import asynccontextmanager
+from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -110,7 +112,22 @@ from server.api.v1.knowledge.router import router as knowledge_router
 from server.api.v1.teams.router import router as teams_router
 from server.api.v1.voice.router import router as voice_router
 from server.api.v1.phone_numbers.router import router as phone_numbers_router
+from server.api.v1.campaigns.router import router as campaigns_router
+from server.api.v1.auth.router import router as auth_router, google_oauth_callback
 
+app.include_router(auth_router)
+
+# Google Workspace / OAuth Redirect Aliases
+@app.get("/api/space/google/callback", tags=["Authentication & Onboarding"], include_in_schema=False)
+@app.get("/api/space/google/callback/", tags=["Authentication & Onboarding"], include_in_schema=False)
+@app.get("/space/google/callback", tags=["Authentication & Onboarding"], include_in_schema=False)
+@app.get("/space/google/callback/", tags=["Authentication & Onboarding"], include_in_schema=False)
+async def space_google_oauth_callback(
+    code: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    return await google_oauth_callback(code=code, error=error, db=db)
 app.include_router(workspaces_router)
 app.include_router(employees_router)
 app.include_router(teams_router)
@@ -120,6 +137,7 @@ app.include_router(leads_router)
 app.include_router(calls_router)
 app.include_router(voice_router)
 app.include_router(phone_numbers_router)
+app.include_router(campaigns_router)
 app.include_router(approvals_router)
 app.include_router(analytics_router)
 app.include_router(billing_router)

@@ -1,10 +1,12 @@
 import time
+import re
 import httpx
 import logging
 from typing import Dict, Any, Optional, List
 import cartesia
 from server.config import settings
 from server.providers.base import TTSProvider
+from server.providers.edge_tts_provider import EdgeTTSProvider
 
 logger = logging.getLogger(__name__)
 
@@ -236,14 +238,10 @@ class CartesiaTTS(TTSProvider):
         except Exception as e:
             logger.warning(f"Sarvam TTS fallback exception: {e}")
 
-        offline_wav = generate_offline_audio(duration=0.5)
-        return {
-            "audio_bytes": offline_wav,
-            "latency_ms": round((time.perf_counter() - start_time) * 1000, 2),
-            "sample_rate": 24000,
-            "format": "audio/wav",
-            "provider": "offline_fallback"
-        }
+        # High-fidelity Edge Neural fallback
+        if not hasattr(self, '_edge_tts'):
+            self._edge_tts = EdgeTTSProvider()
+        return await self._edge_tts.synthesize_speech(text, voice_id=speaker, language=target_lang)
 
     @staticmethod
     def _normalize_telugu_speech_text(text: str) -> str:

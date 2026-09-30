@@ -35,8 +35,9 @@ function freePort(port) {
   } catch {}
 }
 
-console.log(`${YELLOW}[SETUP] Checking port availability (8000, 5174)...${RESET}`);
+console.log(`${YELLOW}[SETUP] Checking port availability (8000, 8001, 5174)...${RESET}`);
 freePort(8000);
+freePort(8001);
 freePort(5174);
 
 // 1. Launch Backend Server (FastAPI / Python)
@@ -81,14 +82,52 @@ clientProcess.stderr.on('data', (data) => {
   lines.forEach(line => console.log(`${YELLOW}[CLIENT]${RESET} ${line}`));
 });
 
+// 3. OAuth Proxy (port 8001 -> 8000)
+// Forward incoming Google OAuth callbacks on port 8001 to FastAPI backend on port 8000
+const oauthProxy = http.createServer((req, res) => {
+  const options = {
+    hostname: '127.0.0.1',
+    port: 8000,
+    path: req.url,
+    method: req.method,
+    headers: {
+      ...req.headers,
+      host: 'localhost:8000',
+      'x-forwarded-host': req.headers.host || 'localhost:8001',
+      'x-forwarded-proto': 'http',
+    }
+  };
+
+  const proxyReq = http.request(options, (proxyRes) => {
+    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    proxyRes.pipe(res, { end: true });
+  });
+
+  proxyReq.on('error', (err) => {
+    res.writeHead(502, { 'Content-Type': 'text/plain' });
+    res.end('OAuth Proxy Gateway Error: ' + err.message);
+  });
+
+  req.pipe(proxyReq, { end: true });
+});
+
+oauthProxy.on('error', (err) => {
+  console.log(`${YELLOW}[OAUTH PROXY] Notice: ${err.message}${RESET}`);
+});
+
+oauthProxy.listen(8001, '0.0.0.0', () => {
+  console.log(`${CYAN}[OAUTH PROXY] Bridge active on http://localhost:8001 -> forwarding to :8000${RESET}`);
+});
+
 // Helper: Check backend health
 function checkHealth() {
   const req = http.get('http://127.0.0.1:8000/api/health', (res) => {
     if (res.statusCode === 200) {
       console.log(`\n${GREEN}${BOLD}✓ SARA Platform is Ready & Active!${RESET}`);
-      console.log(`${CYAN}  ► Frontend Web Application: ${BOLD}http://localhost:5174${RESET}`);
-      console.log(`${CYAN}  ► Backend REST & WebSocket:  ${BOLD}http://localhost:8000${RESET}`);
-      console.log(`${CYAN}  ► Interactive API Docs:      ${BOLD}http://localhost:8000/docs${RESET}\n`);
+      console.log(`${CYAN}  ► Frontend Web Application:  ${BOLD}http://localhost:5174${RESET}`);
+      console.log(`${CYAN}  ► Backend REST & WebSocket:   ${BOLD}http://localhost:8000${RESET}`);
+      console.log(`${CYAN}  ► Google OAuth Callback Port: ${BOLD}http://localhost:8001${RESET}`);
+      console.log(`${CYAN}  ► Interactive API Docs:       ${BOLD}http://localhost:8000/docs${RESET}\n`);
     } else {
       setTimeout(checkHealth, 1000);
     }
@@ -104,6 +143,9 @@ setTimeout(checkHealth, 1500);
 function cleanup() {
   console.log(`\n${YELLOW}[SHUTDOWN] Stopping SARA processes cleanly...${RESET}`);
   try {
+    oauthProxy.close();
+  } catch {}
+  try {
     serverProcess.kill('SIGINT');
   } catch {}
   try {
@@ -111,6 +153,7 @@ function cleanup() {
   } catch {}
   setTimeout(() => {
     freePort(8000);
+    freePort(8001);
     freePort(5174);
     process.exit(0);
   }, 500);

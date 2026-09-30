@@ -27,23 +27,34 @@ router = APIRouter(tags=["Voice Stream"])
 
 stt_provider = SarvamSTT()
 llm_provider = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
+from server.providers.edge_tts_provider import EdgeTTSProvider
+
 sarvam_tts = SarvamTTS()
 cartesia_tts = CartesiaTTS()
+edge_tts_provider = EdgeTTSProvider()
 
 class UnifiedTTS:
-    def __init__(self, sarvam: SarvamTTS, cartesia: CartesiaTTS):
+    def __init__(self, sarvam: SarvamTTS, cartesia: CartesiaTTS, edge: EdgeTTSProvider):
         self.sarvam = sarvam
         self.cartesia = cartesia
+        self.edge = edge
 
     async def synthesize_speech(self, text: str, voice_id: str, language: str = "en") -> Dict[str, Any]:
-        if voice_id and (voice_id.startswith("sarvam-") or "sarvam" in voice_id.lower()):
-            res = await self.sarvam.synthesize_speech(text=text, voice_id=voice_id, language=language)
+        try:
+            if voice_id and (voice_id.startswith("sarvam-") or "sarvam" in voice_id.lower()):
+                res = await self.sarvam.synthesize_speech(text=text, voice_id=voice_id, language=language)
+                if res.get("audio_bytes"):
+                    return res
+            res = await self.cartesia.synthesize_speech(text=text, voice_id=voice_id, language=language)
             if res.get("audio_bytes"):
                 return res
-        return await self.cartesia.synthesize_speech(text=text, voice_id=voice_id, language=language)
+        except Exception as e:
+            logger.warning(f"Primary TTS notice: {e}")
+        return await self.edge.synthesize_speech(text=text, voice_id=voice_id, language=language)
 
-tts_provider = UnifiedTTS(sarvam_tts, cartesia_tts)
+tts_provider = UnifiedTTS(sarvam_tts, cartesia_tts, edge_tts_provider)
 synthesize_speech = tts_provider.synthesize_speech
+
 
 def get_synth_lang(phrase_text: str) -> str:
     """Dynamically determine native TTS language based on actual script content"""

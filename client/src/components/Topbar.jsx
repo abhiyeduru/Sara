@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Bell, Zap, ChevronDown, Command, Sparkles, Mic } from 'lucide-react';
 
-export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onSearch }) {
+export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onSearch, currentUser, onLogout, onOpenOnboarding }) {
   const [searchVal, setSearchVal] = useState('');
   const [credits, setCredits] = useState('...');
+  const [showUserMenu, setShowUserMenu] = useState(false);
 
   useEffect(() => {
     fetch('/api/v1/billing/balance')
@@ -92,18 +93,76 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           }} />
         </button>
 
-        {/* Profile */}
-        <div style={{ display:'flex', alignItems:'center', gap: 7, cursor:'pointer',
-          padding: '4px 8px', borderRadius: 8, transition:'background 0.15s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='var(--surface-soft)'}
-          onMouseLeave={e=>e.currentTarget.style.background='transparent'}
-        >
-          <div className="avatar avatar-sm" style={{
-            background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
-            color: '#fff', fontWeight: 700, fontSize: 12
-          }}>A</div>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Abhi</div>
-          <ChevronDown size={13} color="var(--text-muted)" />
+        {/* Profile Dropdown */}
+        <div style={{ position: 'relative' }}>
+          <div
+            onClick={() => setShowUserMenu(!showUserMenu)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+              padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)',
+              background: 'var(--bg-secondary, #f8fafc)', transition: 'background 0.15s'
+            }}
+          >
+            {currentUser?.avatar_url ? (
+              <img src={currentUser.avatar_url} alt="Avatar" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+            ) : (
+              <div style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                color: '#fff', fontWeight: 700, fontSize: 11,
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}>
+                {(currentUser?.name || currentUser?.email || 'U')[0].toUpperCase()}
+              </div>
+            )}
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {currentUser?.name || 'Account'}
+            </div>
+            <ChevronDown size={13} color="var(--text-muted)" />
+          </div>
+
+          {showUserMenu && (
+            <div style={{
+              position: 'absolute', right: 0, top: 38, width: 220, background: '#fff',
+              borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', border: '1px solid var(--border)',
+              zIndex: 100, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 6
+            }}>
+              <div style={{ padding: '4px 8px 8px', borderBottom: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{currentUser?.name || 'User'}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{currentUser?.email}</div>
+              </div>
+
+              {onOpenOnboarding && (
+                <button
+                  onClick={() => { setShowUserMenu(false); onOpenOnboarding(); }}
+                  style={{
+                    background: 'none', border: 'none', textAlign: 'left', padding: '8px 10px',
+                    borderRadius: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary, #f8fafc)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  🏢 Edit Business Details
+                </button>
+              )}
+
+              {onLogout && (
+                <button
+                  onClick={() => { setShowUserMenu(false); onLogout(); }}
+                  style={{
+                    background: 'none', border: 'none', textAlign: 'left', padding: '8px 10px',
+                    borderRadius: 6, fontSize: 12, fontWeight: 600, color: '#ef4444',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = '#fef2f2'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  🚪 Log Out
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </header>

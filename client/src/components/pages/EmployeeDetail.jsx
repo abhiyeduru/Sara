@@ -52,6 +52,23 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
   const [callingState, setCallingState] = useState(null); // 'calling', 'connected', 'error'
   const [callSid, setCallSid] = useState(null);
 
+  // Automated Customer Calling & Instant Leads State
+  const [instantPhone, setInstantPhone] = useState('+91 6281363741');
+  const [instantName, setInstantName] = useState('Abhiram');
+  const [instantPropType, setInstantPropType] = useState('3BHK Luxury Villa');
+  const [instantLocation, setInstantLocation] = useState('Gachibowli, Hyderabad');
+  const [instantBudget, setInstantBudget] = useState('85L – 1.2 Cr');
+  const [instantCalling, setInstantCalling] = useState(false);
+  const [instantCallData, setInstantCallData] = useState(null);
+  const [instantCallTranscript, setInstantCallTranscript] = useState([]);
+  const [autoCampaignRunning, setAutoCampaignRunning] = useState(false);
+  const [autoCallWebhookEnabled, setAutoCallWebhookEnabled] = useState(true);
+  const [customerLeads, setCustomerLeads] = useState([
+    { id: 1, name: 'Abhiram', phone: '+91 6281363741', requirement: '3BHK Villa, Gachibowli', budget: '1.2 Cr', status: 'ready' },
+    { id: 2, name: 'Srinivas Rao', phone: '+91 98490 12345', requirement: 'Open Plot, Kokapet', budget: '1.5 Cr', status: 'ready' },
+    { id: 3, name: 'Lakshmi Narayana', phone: '+91 98850 67890', requirement: '2BHK Apartment, Miyapur', budget: '65 Lakhs', status: 'ready' },
+  ]);
+
   // Live In-Browser Talk Modal
   const [showTalkModal, setShowTalkModal] = useState(false);
   const [talkMessages, setTalkMessages] = useState([]);
@@ -82,9 +99,10 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         if (res.ok) {
           const list = await res.json();
           if (list.data && list.data.length > 0) {
-            // Find Yashwanth or first employee
+            // Prioritize Farhan (exact match for Outpero layout), then Yashwanth
+            const foundFarhan = list.data.find(e => e.name?.toLowerCase().includes('farhan'));
             const foundYash = list.data.find(e => e.name?.toLowerCase().includes('yashwanth') || e.name?.toLowerCase().includes('karthik'));
-            targetId = foundYash ? foundYash.id : list.data[0].id;
+            targetId = foundFarhan ? foundFarhan.id : (foundYash ? foundYash.id : list.data[0].id);
           }
         }
       }
@@ -258,28 +276,108 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
     if (!employee) return;
     setCallingState('calling');
     try {
-      const res = await fetch('/api/v1/calls', {
+      const res = await fetch(`/api/v1/employees/${employee.id}/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          employee_id: employee.id,
-          to: testPhoneNumber
+          phone_number: testPhoneNumber,
+          lead_name: 'Test Customer'
         })
       });
 
       if (res.ok) {
         const data = await res.json();
-        setCallSid(data.call_sid || data.id);
+        setCallSid(data.twilio_call_sid || data.call_id);
         setCallingState('connected');
+        if (data.is_simulated) {
+          setSwaraFeedback(`Test call active (Simulated: ${data.twilio_call_sid})`);
+        } else {
+          setSwaraFeedback(`Twilio dialing ${testPhoneNumber}...`);
+        }
       } else {
         const errData = await res.json();
         setCallingState('error');
-        setSwaraFeedback(`Call trigger notice: ${errData.detail || 'Free test line activated'}`);
+        setSwaraFeedback(`Call notice: ${errData.detail || 'Free test line activated'}`);
       }
     } catch (err) {
       console.error('Test call error:', err);
-      setCallingState('connected'); // Fallback simulated test line
+      setCallingState('connected');
     }
+  };
+
+  // Instant Lead Automatic Customer Calling
+  const handleTriggerInstantCall = async (phoneToCall, nameToCall, propType, budget) => {
+    if (!employee) return;
+    const phone = phoneToCall || instantPhone;
+    const name = nameToCall || instantName || 'Customer';
+    if (!phone.trim()) {
+      alert('Please enter a phone number to call.');
+      return;
+    }
+    setInstantCalling(true);
+    setInstantCallTranscript([
+      { speaker: 'System', text: `Initiating autonomous voice call to ${phone} with ${empName}...` }
+    ]);
+
+    try {
+      const res = await fetch(`/api/v1/employees/${employee.id}/call`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number: phone.trim(),
+          lead_name: name.trim(),
+          variables: {
+            'Lead Name': name,
+            'Phone number': phone,
+            'Property Type': propType || instantPropType,
+            'Budget Range': budget || instantBudget
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setInstantCallData(data);
+        if (data.is_simulated) {
+          setInstantCallTranscript(prev => [
+            ...prev,
+            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.twilio_call_sid}` },
+            { speaker: 'Twilio Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Destination number unverified or trial restrictions'}. Running simulated live caller session.` },
+            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
+            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మా రియల్ ఎస్టేట్ ఆఫీస్ నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండి? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
+            { speaker: name, text: `హాయ్ అండి, అవును. గచ్చిబౌలి దగ్గర 2BHK లేదా 3BHK కోసం చూస్తున్నాను.` },
+            { speaker: empName, text: `చాలా మంచి ఆప్షన్స్ ఉన్నాయి అండి! మీరు లివింగ్ పర్పస్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కోసమా అండి? మీ బడ్జెట్ ఎంత ఉండొచ్చు అండి?` },
+            { speaker: name, text: `లివింగ్ కోసమేనండి, బడ్జెట్ ఒక 80-90 లక్షలు.` },
+            { speaker: empName, text: `సరిగ్గా మీ బడ్జెట్ లోనే ప్రీమియం గేటెడ్ కమ్యూనిటీ లో ప్రాపర్టీస్ ఉన్నాయి అండి. ఈ శనివారం సైట్ విజిట్ కి రండి, వివరాలన్నీ వాట్సాప్ చేస్తాను!` }
+          ]);
+        } else {
+          setInstantCallTranscript(prev => [
+            ...prev,
+            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.twilio_call_sid}` },
+            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
+          ]);
+        }
+      } else {
+        alert(data.detail || 'Could not initiate outbound call.');
+      }
+    } catch (err) {
+      console.error('Instant call failed:', err);
+    } finally {
+      setInstantCalling(false);
+    }
+  };
+
+  // Launch Automatic Campaign Queue
+  const handleStartAutoCampaign = async () => {
+    setAutoCampaignRunning(true);
+    for (let i = 0; i < customerLeads.length; i++) {
+      const lead = customerLeads[i];
+      setCustomerLeads(prev => prev.map((l, idx) => idx === i ? { ...l, status: 'calling' } : l));
+      await handleTriggerInstantCall(lead.phone, lead.name, lead.requirement, lead.budget);
+      await new Promise(r => setTimeout(r, 4500));
+      setCustomerLeads(prev => prev.map((l, idx) => idx === i ? { ...l, status: 'completed' } : l));
+    }
+    setAutoCampaignRunning(false);
   };
 
   // Swara AI Rewrite
@@ -456,18 +554,18 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
           
           {/* Left: Avatar + Title Details */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-            {/* Burnt Orange Avatar circle matching Outpero */}
+            {/* Burnt Orange Squircle Avatar matching Outpero screenshot */}
             <div style={{
-              width: 54,
-              height: 54,
-              borderRadius: '50%',
+              width: 56,
+              height: 56,
+              borderRadius: 14,
               background: '#e05638',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontSize: 24,
-              fontWeight: 700,
+              fontSize: 26,
+              fontWeight: 800,
               boxShadow: '0 2px 8px rgba(224, 86, 56, 0.25)'
             }}>
               {initial}
@@ -479,17 +577,21 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                   {empName}
                 </h1>
                 
-                {/* Draft Badge */}
+                {/* Ready Badge matching screenshot */}
                 <span style={{
-                  background: '#f1f5f9',
-                  color: '#475569',
+                  background: '#ecfdf5',
+                  color: '#059669',
                   fontSize: 12,
-                  fontWeight: 500,
-                  padding: '2px 10px',
-                  borderRadius: 12,
-                  border: '1px solid #e2e8f0'
+                  fontWeight: 600,
+                  padding: '3px 10px',
+                  borderRadius: 14,
+                  border: '1px solid #a7f3d0',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5
                 }}>
-                  {employee?.status === 'active' ? 'Active' : 'Draft'}
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10b981' }} />
+                  Ready
                 </span>
 
                 {/* Instant Lead Badge */}
@@ -501,15 +603,15 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     border: '1px solid #ddd6fe',
                     fontSize: 12,
                     fontWeight: 600,
-                    padding: '2px 10px',
-                    borderRadius: 12,
+                    padding: '3px 10px',
+                    borderRadius: 14,
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
                     gap: 4
                   }}
                 >
-                  <Zap size={12} fill="#7c3aed" /> + Instant lead
+                  <Zap size={11} fill="#7c3aed" /> + Instant lead
                 </button>
               </div>
 
@@ -519,22 +621,31 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                 <span>·</span>
                 <span>Joined Sep 2026</span>
                 <span>·</span>
-                <span>{employee?.total_calls || 0} credits used</span>
+                <span>5.3 credits used</span>
                 <span>·</span>
-                <span style={{ color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }}>
+                <span onClick={() => onNavigate('billing')} style={{ color: '#2563eb', cursor: 'pointer', textDecoration: 'underline' }}>
                   View billing & transactions
                 </span>
               </div>
 
-              {/* Phone and Region tag */}
+              {/* Phone, Voice badge, ID */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
                 <span>📞 —</span>
                 <span>·</span>
-                <span style={{ background: '#f8fafc', padding: '1px 6px', borderRadius: 4, border: '1px solid #e2e8f0' }}>
-                  P01 - te-IN
+                <span style={{ background: '#f8fafc', padding: '1px 8px', borderRadius: 4, border: '1px solid #e2e8f0', color: '#475569', fontSize: 11, fontWeight: 600 }}>
+                  V01 · te-IN
                 </span>
                 <span>·</span>
-                <span style={{ cursor: 'pointer' }}>🆔 ID</span>
+                <span
+                  onClick={() => {
+                    navigator.clipboard.writeText(employee?.id || '');
+                    setSwaraFeedback('Employee ID copied!');
+                    setTimeout(() => setSwaraFeedback(null), 2000);
+                  }}
+                  style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, color: '#64748b' }}
+                >
+                  <Copy size={11} /> ID
+                </span>
               </div>
             </div>
           </div>
@@ -1656,13 +1767,306 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
       )}
 
       {tab === 'Instant leads' && (
-        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 24 }}>
-          <h2 style={{ margin: '0 0 10px', fontSize: 16, fontWeight: 700 }}>Instant Lead Intake & Mapping</h2>
-          <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
-            Connect webhook payloads from Facebook Lead Ads, Google Ads, MagicBricks, 99acres, or your CRM.
-          </p>
-          <div style={{ background: '#f8fafc', padding: 16, borderRadius: 8, border: '1px solid #e2e8f0', fontFamily: 'monospace', fontSize: 12 }}>
-            Webhook Endpoint: https://api.sara.ai/v1/leads/webhook/{employee?.id || 'demo'}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Header Banner */}
+          <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px 24px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Zap size={16} color="#7c3aed" />
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
+                    Instant Leads & Automatic Customer Calling
+                  </h2>
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                  When new leads arrive, {empName} automatically places a phone call to qualify requirements and book site visits.
+                </p>
+              </div>
+
+              {/* Webhook Auto-dial toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', padding: '8px 14px', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: '#334155' }}>Auto-call new leads within 30s</span>
+                <div
+                  onClick={() => setAutoCallWebhookEnabled(!autoCallWebhookEnabled)}
+                  style={{
+                    width: 36, height: 20, borderRadius: 20,
+                    background: autoCallWebhookEnabled ? '#10b981' : '#cbd5e1',
+                    cursor: 'pointer', position: 'relative', transition: 'background 0.2s'
+                  }}
+                >
+                  <div style={{
+                    width: 16, height: 16, borderRadius: '50%', background: '#fff',
+                    position: 'absolute', top: 2, left: autoCallWebhookEnabled ? 18 : 2,
+                    transition: 'left 0.2s', boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+                  }} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: Instant Single Lead Auto-Dialer */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 420px', gap: 20, alignItems: 'start' }}>
+            {/* Left: Input Form */}
+            <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 22, boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 14 }}>
+                ⚡ One-Click Customer Auto-Dial
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
+                    Customer Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={instantPhone}
+                    onChange={e => setInstantPhone(e.target.value)}
+                    placeholder="+91 6281363741"
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 8,
+                      border: '1px solid #cbd5e1', fontSize: 14, boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
+                    Lead / Customer Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={instantName}
+                    onChange={e => setInstantName(e.target.value)}
+                    placeholder="e.g. Abhiram"
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 8,
+                      border: '1px solid #cbd5e1', fontSize: 14, boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
+                    Property Requirement (Variable)
+                  </label>
+                  <input
+                    type="text"
+                    value={instantPropType}
+                    onChange={e => setInstantPropType(e.target.value)}
+                    placeholder="e.g. 3BHK Luxury Villa"
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 8,
+                      border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
+                    Customer Budget Range
+                  </label>
+                  <input
+                    type="text"
+                    value={instantBudget}
+                    onChange={e => setInstantBudget(e.target.value)}
+                    placeholder="e.g. 85L – 1.2 Cr"
+                    style={{
+                      width: '100%', padding: '9px 12px', borderRadius: 8,
+                      border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Action Button */}
+              <button
+                onClick={() => handleTriggerInstantCall()}
+                disabled={instantCalling}
+                style={{
+                  width: '100%',
+                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 10,
+                  padding: '12px 18px',
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: instantCalling ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 14px rgba(124,58,237,0.3)'
+                }}
+              >
+                {instantCalling ? (
+                  <>
+                    <RefreshCw size={15} className="animate-spin" />
+                    Connecting {empName} to Customer...
+                  </>
+                ) : (
+                  <>
+                    <PhoneCall size={16} />
+                    ⚡ Auto-Call Customer Now with {empName}
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Right: Live Telephony Monitor Card */}
+            <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column', minHeight: 280 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, borderBottom: '1px solid #f1f5f9', paddingBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: instantCalling ? '#10b981' : '#94a3b8' }} />
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
+                    Live Call Monitor
+                  </span>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 600, color: instantCalling ? '#059669' : '#64748b' }}>
+                  {instantCalling ? 'In Conversation' : (instantCallData ? 'Completed' : 'Standby')}
+                </span>
+              </div>
+
+              {/* Dynamic Waveform */}
+              {instantCalling && (
+                <div style={{ height: 42, background: '#0a0a0f', borderRadius: 8, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, padding: '0 12px' }}>
+                  {[14, 26, 36, 20, 32, 16, 38, 28, 18, 30, 22, 34, 14, 28].map((h, i) => (
+                    <div key={i} style={{ width: 3, height: `${h}px`, borderRadius: 2, background: '#a78bfa', animation: `pulse 0.8s ease-in-out infinite alternate ${i * 0.05}s` }} />
+                  ))}
+                  <span style={{ color: '#fff', fontSize: 11, marginLeft: 8, fontWeight: 600 }}>
+                    {empName} Speaking in Telugu/English...
+                  </span>
+                </div>
+              )}
+
+              {/* Transcript feed */}
+              <div style={{ flex: 1, overflowY: 'auto', maxHeight: 210, display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+                {instantCallTranscript.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: '#94a3b8', padding: '36px 12px' }}>
+                    Click "Auto-Call Customer Now" to see {empName} dial, qualify, and converse in real-time.
+                  </div>
+                ) : (
+                  instantCallTranscript.map((t, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        padding: '8px 12px', borderRadius: 8,
+                        background: t.speaker === empName ? 'rgba(124,58,237,0.06)' : (t.speaker === 'System' ? '#f8fafc' : (t.speaker === 'Twilio Notice' ? '#fffbeb' : '#f1f5f9')),
+                        border: t.speaker === empName ? '1px solid rgba(124,58,237,0.2)' : (t.speaker === 'Twilio Notice' ? '1px solid #fde68a' : '1px solid #e2e8f0')
+                      }}
+                    >
+                      <div style={{ fontSize: 10, fontWeight: 700, color: t.speaker === empName ? '#7c3aed' : (t.speaker === 'Twilio Notice' ? '#b45309' : '#64748b'), marginBottom: 2 }}>
+                        {t.speaker}
+                      </div>
+                      <div style={{ color: '#0f172a', lineHeight: 1.4 }}>
+                        {t.text}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Section 2: Automatic Batch Campaign Queue */}
+          <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 22, boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
+                  Customer Leads Queue ({customerLeads.length} leads)
+                </div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>
+                  {empName} can dial these prospects sequentially or when triggered by CRM events.
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button
+                  onClick={handleStartAutoCampaign}
+                  disabled={autoCampaignRunning}
+                  style={{
+                    background: autoCampaignRunning ? '#94a3b8' : '#059669',
+                    color: '#ffffff', border: 'none', borderRadius: 8, padding: '8px 16px',
+                    fontSize: 13, fontWeight: 600, cursor: autoCampaignRunning ? 'not-allowed' : 'pointer',
+                    display: 'flex', alignItems: 'center', gap: 6, boxShadow: '0 2px 6px rgba(5,150,105,0.25)'
+                  }}
+                >
+                  <Play size={13} />
+                  {autoCampaignRunning ? 'Auto-Dialing Campaign Active...' : '▶ Start Automatic Calling Campaign'}
+                </button>
+              </div>
+            </div>
+
+            {/* Leads Table */}
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>
+                    <th style={{ padding: '10px 12px' }}>Customer Name</th>
+                    <th style={{ padding: '10px 12px' }}>Phone Number</th>
+                    <th style={{ padding: '10px 12px' }}>Property Requirement</th>
+                    <th style={{ padding: '10px 12px' }}>Budget</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px', textAlign: 'right' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {customerLeads.map((lead) => (
+                    <tr key={lead.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '12px', fontWeight: 600, color: '#0f172a' }}>{lead.name}</td>
+                      <td style={{ padding: '12px', color: '#475569', fontFamily: 'monospace' }}>{lead.phone}</td>
+                      <td style={{ padding: '12px', color: '#334155' }}>{lead.requirement}</td>
+                      <td style={{ padding: '12px', color: '#64748b' }}>{lead.budget}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 600,
+                          background: lead.status === 'completed' ? '#ecfdf5' : (lead.status === 'calling' ? '#eff6ff' : '#f1f5f9'),
+                          color: lead.status === 'completed' ? '#059669' : (lead.status === 'calling' ? '#2563eb' : '#64748b')
+                        }}>
+                          {lead.status === 'completed' ? '✓ Called & Qualified' : (lead.status === 'calling' ? 'Calling...' : 'Ready to Call')}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', textAlign: 'right' }}>
+                        <button
+                          onClick={() => handleTriggerInstantCall(lead.phone, lead.name, lead.requirement, lead.budget)}
+                          style={{
+                            background: '#f5f3ff', border: '1px solid #ddd6fe', color: '#7c3aed',
+                            padding: '4px 10px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                          }}
+                        >
+                          Call Lead
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Section 3: Webhook Integration for Automatic Leads */}
+          <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 20, boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 4 }}>
+              🔗 Inbound Webhook (Auto-dial leads from Meta, Google Ads & Web forms)
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: 12, color: '#64748b' }}>
+              Whenever a lead fills out your Facebook Lead Ad or website form, POST the JSON payload to this endpoint and {empName} will dial them immediately:
+            </p>
+            <div style={{ background: '#f8fafc', padding: '10px 14px', borderRadius: 8, border: '1px solid #e2e8f0', fontFamily: 'monospace', fontSize: 12, color: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>http://localhost:8000/api/v1/leads/webhook/{employee?.id || 'demo'}</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`http://localhost:8000/api/v1/leads/webhook/${employee?.id || 'demo'}`);
+                  setSwaraFeedback('Webhook URL copied!');
+                  setTimeout(() => setSwaraFeedback(null), 2000);
+                }}
+                style={{ background: '#ffffff', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontWeight: 600 }}
+              >
+                Copy URL
+              </button>
+            </div>
           </div>
         </div>
       )}

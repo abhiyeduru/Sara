@@ -228,6 +228,13 @@ class SarvamTTS(TTSProvider):
             "model": "bulbul:v3"
         }
 
+        # If Sarvam is exhausted, route directly to EdgeTTS fallback
+        if getattr(SarvamTTS, '_sarvam_exhausted', False):
+            if not hasattr(self, '_edge_tts'):
+                from server.providers.edge_tts_provider import EdgeTTSProvider
+                self._edge_tts = EdgeTTSProvider()
+            return await self._edge_tts.synthesize_speech(text=text, voice_id=voice_id, language=language)
+
         try:
             client = await self._get_client()
             r = await client.post(self.endpoint, headers=headers, json=payload)
@@ -238,6 +245,7 @@ class SarvamTTS(TTSProvider):
                 audios = res.get("audios", [])
                 if audios:
                     raw_audio = base64.b64decode(audios[0])
+                    SarvamTTS._sarvam_exhausted = False
                     return {
                         "audio_bytes": raw_audio,
                         "latency_ms": round(elapsed_ms, 2),
@@ -247,8 +255,17 @@ class SarvamTTS(TTSProvider):
                         "speaker": speaker,
                         "language": lang_code
                     }
-            logger.error(f"Sarvam TTS Error {r.status_code}: {r.text}")
-            return {"error": f"Sarvam error {r.status_code}: {r.text}"}
+            if r.status_code in [401, 402]:
+                SarvamTTS._sarvam_exhausted = True
+                logger.warning(f"Sarvam TTS credit exhausted ({r.status_code}): switching to high-fidelity Edge Neural TTS.")
+            else:
+                logger.error(f"Sarvam TTS Error {r.status_code}: {r.text}")
         except Exception as e:
             logger.exception(f"Sarvam TTS Exception: {e}")
-            return {"error": str(e)}
+
+        # Seamless fallback to Edge Neural TTS
+        if not hasattr(self, '_edge_tts'):
+            from server.providers.edge_tts_provider import EdgeTTSProvider
+            self._edge_tts = EdgeTTSProvider()
+        return await self._edge_tts.synthesize_speech(text=text, voice_id=voice_id, language=language)
+

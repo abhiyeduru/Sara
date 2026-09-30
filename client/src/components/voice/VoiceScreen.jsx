@@ -101,46 +101,29 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
     }
   };
 
-  // Pristine direct Sarvam AI Speech Synthesis (fallback for hosts where WebSockets are unavailable)
+  // Pristine Neural Speech Synthesis using backend voice engine
   const synthesizeAndSpeak = async (text, speakerVoiceId = activeVoiceId) => {
     if (!text) return;
     try {
       setState('speaking');
       if (streamer) streamer.unlockAudio();
-      const rawSpeaker = (speakerVoiceId || 'sarvam-te-pooja')
-        .replace('sarvam-te-', '')
-        .replace('sarvam-hi-', '')
-        .replace('sarvam-', '')
-        .toLowerCase();
-      const validSpeakers = ['pooja', 'roopa', 'priya', 'kavitha', 'shruti', 'kavya', 'neha', 'simran', 'shreya', 'vijay', 'rahul', 'aditya'];
-      const cleanSpeaker = validSpeakers.includes(rawSpeaker) ? rawSpeaker : 'pooja';
 
-      const sarvamKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SARVAM_API_KEY) || 
-        ['sk_', 'ww1smzdx', '_', '7Ud3SNON', 'X2NfTKy4', '1kb4isCd'].join('');
-
-      const res = await fetch('https://api.sarvam.ai/text-to-speech', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-subscription-key': sarvamKey
-        },
-        body: JSON.stringify({
-          inputs: [text],
-          target_language_code: (selectedLanguage === 'hi' || /[\u0900-\u097F]/.test(text)) ? 'hi-IN' : 'te-IN',
-          speaker: cleanSpeaker,
-          model: 'bulbul:v3'
-        })
-      });
-
+      const encodedText = encodeURIComponent(text);
+      const res = await fetch(`/api/voices/preview/${speakerVoiceId || 'sarvam-te-pooja'}?text=${encodedText}`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.audios && data.audios[0] && streamer) {
-          streamer.queueAudio(data.audios[0], text);
-          return;
-        }
+        const blob = await res.blob();
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64data = reader.result?.split(',')[1];
+          if (base64data && streamer) {
+            streamer.queueAudio(base64data, text);
+          }
+        };
+        reader.readAsDataURL(blob);
+        return;
       }
     } catch (err) {
-      console.warn('Sarvam synthesis notice:', err);
+      console.warn('Voice synthesis notice:', err);
     }
     speakTextNative(text);
   };
@@ -656,12 +639,7 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
                   const testPhrase = isTe 
                     ? "నమస్కారం! నేను సారా. ఈ వాయిస్ మీకు నచ్చిందా?" 
                     : "Hello! I am SARA. How does this voice sound?";
-                  if (streamer.ws && streamer.ws.readyState === WebSocket.OPEN) {
-                    streamer.sendText(testPhrase);
-                  } else {
-                    synthesizeAndSpeak(testPhrase, activeVoiceId);
-                  }
-                  setTranscripts((prev) => [...prev, { role: 'user', text: `[Voice Preview] ${testPhrase}` }]);
+                  synthesizeAndSpeak(testPhrase, activeVoiceId);
                 }
               }}
               title="Test selected voice audio"

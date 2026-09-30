@@ -663,11 +663,14 @@ export class AudioStreamer {
         } catch (decodeErr) {
           // HTML5 Audio Blob Fallback
           console.warn('WebAudio decode notice, playing via HTML5 Audio:', decodeErr);
-          const blob = new Blob([bytes], { type: 'audio/wav' });
+          const isWav = bytes.length > 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46;
+          const mimeType = isWav ? 'audio/wav' : 'audio/mpeg';
+          const blob = new Blob([bytes], { type: mimeType });
           const blobUrl = URL.createObjectURL(blob);
           const htmlAudio = new Audio(blobUrl);
           this.isPlaying = true;
           this.updateState('speaking');
+
           if (phraseText) {
             const lang = /[\u0C00-\u0C7F]/.test(phraseText) ? 'te' : (/[\u0900-\u097F]/.test(phraseText) ? 'hi' : 'en');
             this.onTranscript({ role: 'agent', text: phraseText, language: lang });

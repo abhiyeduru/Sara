@@ -114,6 +114,10 @@ class CallService:
         status_callback_url = f"{base_url}/api/v1/voice/status/{call_id}"
 
         twilio_sid = None
+        error_msg = None
+        is_simulated = False
+
+        # Attempt 1: Standard Twilio Outbound Call
         try:
             tw_call = twilio_client.calls.create(
                 to=clean_to,
@@ -125,23 +129,43 @@ class CallService:
             )
             twilio_sid = tw_call.sid
             call_record.twilio_call_sid = twilio_sid
+            call_record.status = "initiated"
             db.commit()
-            logger.info(f"✅ Twilio Call created: SID={twilio_sid}, CallID={call_id}")
-        except Exception as e:
-            logger.error(f"Twilio call initiation error: {e}")
-            # If Twilio trial or unverified number error, log simulation details for seamless local testing
-            call_record.status = "ringing"
-            call_record.twilio_call_sid = f"CA_sim_{call_id[:16]}"
-            db.commit()
+            logger.info(f"✅ Twilio Call created successfully: SID={twilio_sid}, CallID={call_id}")
+        except Exception as e1:
+            logger.warning(f"Standard Twilio call parameters failed ({e1}). Retrying with minimal parameters...")
+            # Attempt 2: Minimal parameters (fixes trial account parameter restrictions)
+            try:
+                tw_call = twilio_client.calls.create(
+                    to=clean_to,
+                    from_=resolved_from,
+                    url=twiml_url,
+                )
+                twilio_sid = tw_call.sid
+                call_record.twilio_call_sid = twilio_sid
+                call_record.status = "initiated"
+                db.commit()
+                logger.info(f"✅ Twilio Call created with minimal parameters: SID={twilio_sid}, CallID={call_id}")
+            except Exception as e2:
+                error_msg = str(e2)
+                is_simulated = True
+                logger.error(f"Twilio call failed: {error_msg}")
+                call_record.status = "simulated"
+                call_record.twilio_call_sid = f"CA_sim_{call_id[:16]}"
+                db.commit()
 
         voice_events_bus.publish(call_id, "call.initiated", {
             "twilio_sid": call_record.twilio_call_sid,
+            "is_simulated": is_simulated,
+            "error": error_msg,
         })
 
         return {
             "call_id": call_record.id,
             "twilio_call_sid": call_record.twilio_call_sid,
             "status": call_record.status,
+            "is_simulated": is_simulated,
+            "error_detail": error_msg,
             "employee": {
                 "id": emp.id,
                 "name": emp.name,

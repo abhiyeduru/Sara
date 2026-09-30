@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 
@@ -24,7 +24,10 @@ import Teams from './components/pages/Teams';
 import MCPConnections from './components/pages/MCPConnections';
 import PhoneNumbers from './components/pages/PhoneNumbers';
 import TalkWithSara from './components/pages/TalkWithSara';
+import CampaignsStudio from './components/pages/CampaignsStudio';
 import ComingSoon from './components/pages/ComingSoon';
+import LoginModal from './components/auth/LoginModal';
+import BusinessOnboardingModal from './components/auth/BusinessOnboardingModal';
 
 import { UsersRound, GraduationCap, Zap, Megaphone, PhoneIncoming, MessageCircle,
   Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic } from 'lucide-react';
@@ -35,14 +38,14 @@ const PAGE_META = {
   ask:               { title: 'Ask Sara', subtitle: 'Your AI workplace assistant' },
   employees:         { title: 'My AI Employees', subtitle: 'Manage your AI workforce' },
   'employees/new':   { title: 'Create AI Employee', subtitle: 'Build a new AI employee with Sara' },
-  'employee-detail': { title: 'Lakshmi — Sales AI', subtitle: 'AI Employee Profile' },
+  'employee-detail': { title: 'Farhan — Real Estate Lead Caller', subtitle: 'AI Employee Profile & Call Script Studio' },
   teams:             { title: 'AI Teams', subtitle: 'Organize AI employees into teams' },
   tasks:             { title: 'Task Center', subtitle: 'All AI and human tasks' },
   workflows:         { title: 'Workflows', subtitle: 'Automated business workflows' },
   training:          { title: 'Knowledge & Training', subtitle: 'Train your AI employees with business facts' },
   calls:             { title: 'Voice Calls', subtitle: 'AI-powered voice calling dashboard' },
-  'instant-leads':   { title: 'Instant Leads', subtitle: 'Real-time lead management' },
-  campaigns:         { title: 'Campaigns', subtitle: 'Bulk outreach campaigns' },
+  'instant-leads':   { title: 'Instant Lead Calling', subtitle: 'Self-serve direct outbound calling with Sara' },
+  campaigns:         { title: 'Saadhyam Voice AI Studio', subtitle: 'Self-serve single dialer & Google Sheet auto campaigns' },
   inbound:           { title: 'Inbound Calls', subtitle: 'Manage incoming calls' },
   whatsapp:          { title: 'WhatsApp', subtitle: 'WhatsApp AI inbox' },
   conversations:     { title: 'Conversations', subtitle: 'Unified communication center' },
@@ -85,8 +88,8 @@ function renderPage(page, onNavigate, pageParams = {}) {
     case 'billing':         return <Billing onNavigate={onNavigate} />;
     case 'settings':        return <SettingsPage onNavigate={onNavigate} />;
 
-    case 'instant-leads':   return <ComingSoon title="Instant Leads" subtitle="Receive and auto-route leads to AI employees in real-time." icon={Zap} ctaLabel="Configure Lead Routing" onCta={() => {}} />;
-    case 'campaigns':       return <ComingSoon title="Campaigns" subtitle="Launch bulk AI-powered outreach campaigns." icon={Megaphone} ctaLabel="Create Campaign" onCta={() => {}} />;
+    case 'instant-leads':   return <CampaignsStudio onNavigate={onNavigate} />;
+    case 'campaigns':       return <CampaignsStudio onNavigate={onNavigate} />;
     case 'inbound':         return <ComingSoon title="Inbound Calls" subtitle="Configure AI employees to handle inbound customer calls." icon={PhoneIncoming} ctaLabel="Set Up Inbound" onCta={() => {}} />;
     case 'whatsapp':        return <ComingSoon title="WhatsApp" subtitle="Connect WhatsApp Business to your AI employees." icon={MessageCircle} ctaLabel="Connect WhatsApp" onCta={() => onNavigate('integrations')} />;
     case 'conversations':   return <ComingSoon title="Conversations" subtitle="Unified inbox for all AI-customer interactions." icon={Inbox} ctaLabel="View Calls" onCta={() => onNavigate('calls')} />;
@@ -139,38 +142,125 @@ function AskSaraPanel({ onClose, currentPage }) {
 }
 
 export default function App() {
-  const [page, setPage] = useState('dashboard');
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('sara_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [page, setPage] = useState('campaigns');
   const [pageParams, setPageParams] = useState({});
   const [showAskSara, setShowAskSara] = useState(false);
   const meta = PAGE_META[page] || {};
+
+  // Check URL params for Google OAuth redirect callback
+  useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('google_auth') === 'success') {
+        const token = urlParams.get('token') || '';
+        const userObj = {
+          id: urlParams.get('user_id'),
+          name: decodeURIComponent(urlParams.get('name') || ''),
+          email: decodeURIComponent(urlParams.get('email') || ''),
+          avatar_url: decodeURIComponent(urlParams.get('avatar') || ''),
+          auth_provider: 'google'
+        };
+        const needsSetup = urlParams.get('needs_onboarding') === '1';
+
+        localStorage.setItem('sara_token', token);
+        localStorage.setItem('sara_user', JSON.stringify(userObj));
+        setCurrentUser(userObj);
+        setNeedsOnboarding(needsSetup);
+        if (needsSetup) {
+          setShowOnboarding(true);
+        }
+        window.history.replaceState({}, document.title, window.location.pathname);
+      } else if (currentUser) {
+        fetch('/api/v1/auth/me')
+          .then(r => r.json())
+          .then(data => {
+            if (data.needs_business_onboarding) {
+              setNeedsOnboarding(true);
+              setShowOnboarding(true);
+            }
+          })
+          .catch(() => {});
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
 
   const handleNavigate = (newPage, params = {}) => {
     setPage(newPage);
     setPageParams(params || {});
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('sara_token');
+    localStorage.removeItem('sara_user');
+    setCurrentUser(null);
+    setNeedsOnboarding(false);
+    setShowOnboarding(false);
+  };
+
   // Ask and Voice Assistant are full-screen without standard topbar
   const isFullPage = page === 'ask' || page === 'talk-sara';
 
+  // 1. If not logged in, show Google Login screen
+  if (!currentUser) {
+    return (
+      <LoginModal
+        onLoginSuccess={(user, needsSetup) => {
+          setCurrentUser(user);
+          setNeedsOnboarding(needsSetup);
+          if (needsSetup) {
+            setShowOnboarding(true);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="app-shell">
+      {/* Step 2: Post-Login Business Details Onboarding Modal */}
+      {showOnboarding && (
+        <BusinessOnboardingModal
+          user={currentUser}
+          onComplete={(bizData) => {
+            setShowOnboarding(false);
+            setNeedsOnboarding(false);
+            handleNavigate('campaigns');
+          }}
+        />
+      )}
+
       {/* Sidebar */}
       <Sidebar activePage={page} onNavigate={handleNavigate} />
 
       {/* Main */}
       <div className="main-content">
-        {/* Topbar — hide for Ask Sara & Voice Assistant (they have dedicated headers) */}
+        {/* Topbar */}
         {!isFullPage && (
           <Topbar
             title={meta.title}
             subtitle={meta.subtitle}
             onAskSara={() => setShowAskSara(s => !s)}
             onTalkWithSara={() => handleNavigate('talk-sara')}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+            onOpenOnboarding={() => setShowOnboarding(true)}
           />
         )}
 
         {/* Page */}
-        <div style={{ flex:1, overflow:'auto' }}>
+        <div style={{ flex: 1, overflow: 'auto' }}>
           {renderPage(page, handleNavigate, pageParams)}
         </div>
       </div>

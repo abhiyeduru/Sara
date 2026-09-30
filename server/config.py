@@ -50,6 +50,11 @@ class Settings:
     TWILIO_API_KEY: str = os.getenv("TWILIO_API_KEY", "")
     TWILIO_API_SECRET: str = os.getenv("TWILIO_API_SECRET", "")
     TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
-    TWILIO_WEBHOOK_BASE_URL: str = os.getenv("TWILIO_WEBHOOK_BASE_URL", "https://sara.saadhyam.com")
+    TWILIO_WEBHOOK_BASE_URL: str = os.getenv("TWILIO_WEBHOOK_BASE_URL", "http://localhost:8000")
+
+    # Google Workspace Hub OAuth
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8001/api/space/google/callback/")
 
 settings = Settings()
