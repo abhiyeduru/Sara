@@ -1,6 +1,6 @@
 import { getCurrentUserToken } from "./firebase";
 
-const API_BASE = ""; // Relative path proxied by Vite to http://localhost:8000
+const API_BASE = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || ""; // Proxied locally by Vite or connects to remote backend
 
 export async function request(endpoint, options = {}) {
   const token = await getCurrentUserToken();
