@@ -27,8 +27,8 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
   const [selectedLanguage, setSelectedLanguage] = useState(agent?.primary_language || 'auto');
   const [latestAgentMessage, setLatestAgentMessage] = useState(
     agent?.primary_language === 'te' 
-      ? "నమస్కారం అండీ! నేను సారా. మీకు ఏ విధంగా సహాయపడగలను?" 
-      : "Hi, welcome to ABC Properties. I'm SARA. How can I help you today?"
+      ? "నమస్కారం అండీ! నేను సారా. మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?" 
+      : "Hi, welcome to Mentneo Properties. I'm SARA. How can I help you today?"
   );
   const [textInput, setTextInput] = useState('');
   const [activeLanguage, setActiveLanguage] = useState(agent?.primary_language || 'te');
@@ -132,7 +132,7 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
   const directGenerateReply = async (userText) => {
     try {
       setState('thinking');
-      const systemPrompt = "You are SARA, an ultra-intelligent, respectful, sweet, and warm AI property advisor for ABC Properties in Hyderabad. You speak natively in sweet conversational Telugu, naturally using real estate terms like 2 BHK, Gachibowli, ₹85 Lakhs, villas, etc. Keep your answer brief (1-2 sentences), warm, and helpful. Always address the customer politely as 'అండీ' (andi).";
+      const systemPrompt = "You are SARA, an ultra-intelligent, respectful, sweet, and warm AI property advisor for Mentneo Properties in Hyderabad. You speak natively in sweet conversational Telugu and English, naturally using real estate terms like 2 BHK, Gachibowli, Kokapet, ₹85 Lakhs, villas, etc. Keep your answer brief (1-2 sentences), warm, and helpful. Always address the customer politely as 'అండీ' (andi).";
 
       const groqKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GROQ_API_KEY) || 
         ['gsk_', 'DZJNpSis', 'S3JbEp7xl', 'AHuWGdyb', '3FYunmc', '6jBVdCVBQ', 'Yg0Zgj5sGWu'].join('');
@@ -168,7 +168,7 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
     }
     const fallbackReply = selectedLanguage === 'hi' 
       ? "जी, मैं आपकी पूरी सहायता कर सकती हूँ। आप किस प्रकार की प्रॉपर्टी देख रहे हैं?"
-      : "తప్పకుండా అండీ! మా దగ్గర గచ్చిబౌలి, కొండాపూర్‌లో బెస్ట్ 2 & 3 BHK ప్రాపర్టీస్ అందుబాటులో ఉన్నాయి. మీ బడ్జెట్ ఎంత అండీ?";
+      : "తప్పకుండా అండీ! మా దగ్గర మెంట్‌నియో ప్రాపర్టీస్‌లో గచ్చిబౌలి, కొండాపూర్, కోకాపేట్‌లో బెస్ట్ 2 & 3 BHK ప్రాపర్టీస్ ₹85 లక్షల నుండి అందుబాటులో ఉన్నాయి. మీ బడ్జెట్ ఎంత అండీ?";
     setLatestAgentMessage(fallbackReply);
     setTranscripts(prev => [...prev, { role: 'agent', text: fallbackReply, timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     await synthesizeAndSpeak(fallbackReply);
@@ -438,8 +438,9 @@ export default function VoiceScreen({ agent, onTurnMetrics, onClose, onNavigate 
       setIsMicOn(true);
       setState('listening');
       if (!wsConnected && (!transcripts || transcripts.length === 0)) {
-        const greeting = "నమస్కారం అండీ! నేను సారా. ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?";
+        const greeting = "నమస్కారం అండీ! నేను సారా. మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?";
         synthesizeAndSpeak(greeting);
+
       }
     }
   };

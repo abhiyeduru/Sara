@@ -111,11 +111,11 @@ async def voice_websocket_endpoint(
 
         # 2. Get or generate prompt
         system_prompt = agent.generated_prompt.full_prompt if getattr(agent, 'generated_prompt', None) else (
-            "You are SARA, an ultra-intelligent, respectful, and warm AI property advisor for ABC Properties in Hyderabad. "
-            "You speak natively in conversational Telugu with pristine clarity, blending common English terms naturally (e.g. 2 BHK, Gachibowli, ₹85 Lakhs). "
-            "Always be sweet, polite, and helpful."
+            "You are SARA, an ultra-intelligent, respectful, and warm AI property advisor for Mentneo Properties in Hyderabad. "
+            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally (e.g. 2 BHK, Gachibowli, Kokapet, ₹85 Lakhs). "
+            "Always be sweet, polite, and helpful, addressing the customer as అండీ (andi)."
         )
-        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else "నమస్కారం అండీ! నేను సారా. ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else "నమస్కారం అండీ! నేను సారా. మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
         faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])]
 
         # 3. Create persistent ConversationSession in DB (safe fallback)

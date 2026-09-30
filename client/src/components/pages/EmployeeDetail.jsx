@@ -98,12 +98,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         const res = await fetch('/api/v1/employees');
         if (res.ok) {
           const list = await res.json();
-          if (list.data && list.data.length > 0) {
-            // Prioritize Farhan (exact match for Outpero layout), then Yashwanth
+            // Prioritize Sara AI Employee, then Farhan, then Yashwanth
+            const foundSara = list.data.find(e => e.name?.toLowerCase().trim() === 'sara');
             const foundFarhan = list.data.find(e => e.name?.toLowerCase().includes('farhan'));
             const foundYash = list.data.find(e => e.name?.toLowerCase().includes('yashwanth') || e.name?.toLowerCase().includes('karthik'));
-            targetId = foundFarhan ? foundFarhan.id : (foundYash ? foundYash.id : list.data[0].id);
-          }
+            targetId = foundSara ? foundSara.id : (foundFarhan ? foundFarhan.id : (foundYash ? foundYash.id : list.data[0].id));
+
         }
       }
 
@@ -344,11 +344,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
             { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.twilio_call_sid}` },
             { speaker: 'Twilio Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Destination number unverified or trial restrictions'}. Running simulated live caller session.` },
             { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
-            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మా రియల్ ఎస్టేట్ ఆఫీస్ నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండి? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
+            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండీ? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
             { speaker: name, text: `హాయ్ అండి, అవును. గచ్చిబౌలి దగ్గర 2BHK లేదా 3BHK కోసం చూస్తున్నాను.` },
-            { speaker: empName, text: `చాలా మంచి ఆప్షన్స్ ఉన్నాయి అండి! మీరు లివింగ్ పర్పస్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కోసమా అండి? మీ బడ్జెట్ ఎంత ఉండొచ్చు అండి?` },
+            { speaker: empName, text: `చాలా మంచి ఆప్షన్స్ ఉన్నాయి అండి! మెంట్‌నియో గేటెడ్ కమ్యూనిటీ లో ₹85 లక్షల నుండి ప్రారంభమవుతున్నాయి. మీరు లివింగ్ పర్పస్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కోసమా అండి?` },
             { speaker: name, text: `లివింగ్ కోసమేనండి, బడ్జెట్ ఒక 80-90 లక్షలు.` },
-            { speaker: empName, text: `సరిగ్గా మీ బడ్జెట్ లోనే ప్రీమియం గేటెడ్ కమ్యూనిటీ లో ప్రాపర్టీస్ ఉన్నాయి అండి. ఈ శనివారం సైట్ విజిట్ కి రండి, వివరాలన్నీ వాట్సాప్ చేస్తాను!` }
+            { speaker: empName, text: `సరిగ్గా మీ బడ్జెట్ లోనే 100% HMDA & RERA అప్రూవ్డ్ క్లబ్‌హౌస్ ఫ్లాట్స్ అందుబాటులో ఉన్నాయి అండి. ఈ శనివారం సైట్ విజిట్ కి రండి, వివరాలన్నీ వాట్సాప్ చేస్తాను!` }
+
           ]);
         } else {
           setInstantCallTranscript(prev => [

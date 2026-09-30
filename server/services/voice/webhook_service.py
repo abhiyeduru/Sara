@@ -34,13 +34,14 @@ class WebhookService:
             ).first()
 
         greeting = (
-            f"Hello, this is {emp.name if emp else 'Sara'} from ABC Properties. "
+            f"Hello, this is {emp.name if emp else 'Sara'} from Mentneo Properties. "
             "I'm reaching out regarding your recent inquiry. How can I help you today?"
         )
         if emp and emp.name == "Arjun":
             greeting = f"Hello! This is Arjun from SARA Customer Support. How may I assist you today?"
-        elif emp and emp.name == "Lakshmi":
-            greeting = f"Namaste! This is Lakshmi from ABC Properties in Hyderabad. I'm following up on your premium villa inquiry. Is now a good time to speak?"
+        elif emp and (emp.name == "Sara" or emp.name == "Lakshmi"):
+            greeting = f"Namaste! This is {emp.name} from Mentneo Properties in Hyderabad. I'm following up on your premium 2 and 3 BHK apartment inquiry. Is now a good time to speak?"
+
 
         # Record greeting in transcript
         if call:
@@ -156,7 +157,7 @@ class WebhookService:
 
         # Build prompt for AI Employee
         system_prompt = (
-            f"You are {emp.name if emp else 'Sara'}, {emp.role if emp else 'AI Real Estate Specialist'} at ABC Properties.\n"
+            f"You are {emp.name if emp else 'Sara'}, {emp.role if emp else 'AI Real Estate Specialist'} at Mentneo Properties.\n"
             f"Personality: {emp.personality if emp else 'Professional & Friendly'}.\n"
             f"Communication Style: Short, natural, conversational spoken responses (1 to 2 sentences max). Do not use bullet points or markdown.\n"
             f"Instructions:\n"
