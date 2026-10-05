@@ -3,6 +3,7 @@ SARA AI — Voice Telephony Call Service (Plivo / Exotel)
 Orchestrates outbound call initiation, permission checks, credit balance verification,
 and Plivo/Exotel Call creation. Completely decoupled from Twilio.
 """
+import os
 import uuid
 import logging
 from typing import Optional, Dict, Any
@@ -142,9 +143,13 @@ class CallService:
         })
 
         # 7. Execute Call via Plivo API or Simulation
-        base_url = (getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None) or "http://localhost:8000").rstrip("/")
-        if "localhost" in base_url and settings.PUBLIC_BASE_URL:
-            base_url = settings.PUBLIC_BASE_URL.rstrip("/")
+        base_url = (
+            os.getenv("PLIVO_WEBHOOK_BASE_URL")
+            or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None)
+            or os.getenv("PUBLIC_BASE_URL")
+            or settings.PUBLIC_BASE_URL
+            or "http://localhost:8000"
+        ).rstrip("/")
 
         answer_url = f"{base_url}/api/v1/voice/plivo/answer/{call_id}"
         hangup_url = f"{base_url}/api/v1/voice/plivo/hangup/{call_id}"

@@ -31,13 +31,17 @@ def _generate_plivo_media_stream_xml(request: Request, call_id: str, employee_id
     Generate Plivo Bidirectional Media Stream XML.
     Uses <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">wss://...
     """
-    ws_base = os.getenv("PUBLIC_WS_URL") or settings.PUBLIC_WS_URL
-    if ws_base:
-        ws_url = f"{ws_base.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+    # Automatically derive public WebSocket URL from the incoming request's host
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host")
+    if host and ("trycloudflare.com" in host or "loca.lt" in host or "ngrok" in host):
+        ws_url = f"wss://{host}/api/v1/voice/plivo/media-stream?call_id={call_id}"
     else:
-        host = request.headers.get("x-forwarded-host") or request.headers.get("host") or f"{settings.HOST}:{settings.PORT}"
-        scheme = "wss" if request.headers.get("x-forwarded-proto") == "https" or "https" in str(request.base_url) else "ws"
-        ws_url = f"{scheme}://{host}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+        ws_base = os.getenv("PUBLIC_WS_URL") or settings.PUBLIC_WS_URL
+        if ws_base:
+            ws_url = f"{ws_base.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+        else:
+            scheme = "wss" if request.headers.get("x-forwarded-proto") == "https" or "https" in str(request.base_url) else "ws"
+            ws_url = f"{scheme}://{host or f'{settings.HOST}:{settings.PORT}'}/api/v1/voice/plivo/media-stream?call_id={call_id}"
 
     if employee_id:
         ws_url += f"&amp;employee_id={employee_id}"
