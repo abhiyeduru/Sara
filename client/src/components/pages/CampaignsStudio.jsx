@@ -696,8 +696,7 @@ export default function CampaignsStudio({ onNavigate }) {
                   <div style={{ fontSize: 12, color: '#14532d', lineHeight: 1.5 }}>
                     Outbound calls are routed through your verified Plivo line (<strong>+91 80 6552 2007</strong>).
                   </div>
-                </div>
-              )}
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                     <button
                       onClick={() => onNavigate && onNavigate('talk_with_sara')}
                       style={{
