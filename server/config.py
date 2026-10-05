@@ -22,7 +22,7 @@ class Settings:
     # OpenAI LLM
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "openai")
+    PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "groq")
 
     # Groq LLM (Ultra-Low Latency ~120ms TTFT)
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")

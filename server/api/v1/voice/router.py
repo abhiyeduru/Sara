@@ -4,6 +4,7 @@ Handles Plivo Voice Webhooks, Bidirectional Media Streams,
 Outbound Calls, Inbound Call Routing, and Provider Health Monitoring.
 Completely decoupled from Twilio.
 """
+import os
 import logging
 import uuid
 from typing import Optional, Dict, Any
@@ -30,8 +31,9 @@ def _generate_plivo_media_stream_xml(request: Request, call_id: str, employee_id
     Generate Plivo Bidirectional Media Stream XML.
     Uses <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">wss://...
     """
-    if settings.PUBLIC_WS_URL:
-        ws_url = f"{settings.PUBLIC_WS_URL.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+    ws_base = os.getenv("PUBLIC_WS_URL") or settings.PUBLIC_WS_URL
+    if ws_base:
+        ws_url = f"{ws_base.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
     else:
         host = request.headers.get("x-forwarded-host") or request.headers.get("host") or f"{settings.HOST}:{settings.PORT}"
         scheme = "wss" if request.headers.get("x-forwarded-proto") == "https" or "https" in str(request.base_url) else "ws"

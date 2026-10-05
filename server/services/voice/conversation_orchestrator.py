@@ -89,7 +89,34 @@ class ConversationOrchestrator:
         self.fallback_groq = GroqLLM()
 
         self.active_turn_task: Optional[asyncio.Task] = None
+        self.speaking_start_time: float = 0.0
+        self.is_speaking: bool = False
+        self.use_groq_primary: bool = (getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq")
         self._system_prompt = self._compile_system_prompt()
+
+    def get_initial_greeting(self) -> str:
+        """Construct warm, respectful, business-tailored initial greeting."""
+        emp_name = self.employee.name if self.employee else "Sara"
+        lang = (self.language or "te").lower()
+        biz_name = "మా సంస్థ"
+
+        if self.db and self.employee:
+            try:
+                ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
+                if ws and ws.name:
+                    biz_name = ws.name
+                bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
+                if bp and bp.business_name:
+                    biz_name = bp.business_name
+            except Exception:
+                pass
+
+        if lang in ["te", "telugu"]:
+            return f"నమస్కారం అండి! నేను {biz_name} నుంచి {emp_name} మాట్లాడుతున్నాను. మీకు ఎలా సహాయం చేయగలను అండి?"
+        elif lang in ["hi", "hindi"]:
+            return f"नमस्ते जी! मैं {biz_name} से {emp_name} बात कर रही हूँ। मैं आपकी क्या सहायता कर सकती हूँ?"
+        else:
+            return f"Hello! This is {emp_name} from {biz_name}. How can I assist you today?"
 
     def set_state(self, new_state: str) -> None:
         """Explicit state transition with event logging."""
@@ -179,28 +206,46 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 
     async def handle_barge_in(self) -> None:
         """
-        Executed immediately when Deepgram detects speech_started.
-        Stops current speaking turn, flushes audio, and returns to LISTENING.
+        Executed when Deepgram STT detects speech activity.
+        Stops current speaking turn ONLY IF assistant is actively SPEAKING
+        and has passed the minimum duration grace period.
         """
-        if self.state in [ConversationState.SPEAKING, ConversationState.THINKING, ConversationState.TOOL_EXECUTION]:
-            logger.info(f"[Call {self.call_id}] Barge-in triggered -> interrupting assistant turn")
-            self.set_state(ConversationState.INTERRUPTED)
+        now = time.perf_counter()
 
-            # Cancel active generation task
-            if self.active_turn_task and not self.active_turn_task.done():
-                self.active_turn_task.cancel()
+        # 1. Never interrupt during THINKING, TOOL_EXECUTION, or IDLE
+        if self.state != ConversationState.SPEAKING or not self.is_speaking:
+            logger.debug(f"[Call {self.call_id}] Barge-in ignored: state is {self.state} (not actively SPEAKING)")
+            return
 
-            # Cancel TTS synthesis
-            self.cartesia_service.cancel()
-            self.openai_service.cancel()
+        # 2. Prevent self-interruption from speaker echo, carrier noise, or initial speech onset
+        speaking_duration = now - self.speaking_start_time
+        min_speaking_duration = 0.9  # Must have spoken for at least 900ms
+        if speaking_duration < min_speaking_duration:
+            logger.debug(f"[Call {self.call_id}] Barge-in ignored: speaking duration {speaking_duration:.2f}s < {min_speaking_duration}s grace period")
+            return
 
-            # Flush Twilio buffered audio packets
-            if self.flush_audio_callback:
+        logger.info(f"[Call {self.call_id}] Barge-in confirmed (spoken {speaking_duration:.2f}s) -> interrupting assistant turn")
+        self.set_state(ConversationState.INTERRUPTED)
+        self.is_speaking = False
+
+        # Cancel active turn task
+        if self.active_turn_task and not self.active_turn_task.done():
+            self.active_turn_task.cancel()
+
+        # Cancel TTS synthesis
+        self.cartesia_service.cancel()
+        self.openai_service.cancel()
+
+        # Flush buffered audio in carrier queue
+        if self.flush_audio_callback:
+            try:
                 res = self.flush_audio_callback()
                 if asyncio.iscoroutine(res):
                     await res
+            except Exception as e:
+                logger.warning(f"[Call {self.call_id}] Error in flush_audio_callback: {e}")
 
-            self.set_state(ConversationState.LISTENING)
+        self.set_state(ConversationState.LISTENING)
 
     async def handle_user_utterance(self, text: str, confidence: float = 0.95, detected_lang: str = "en") -> None:
         """
@@ -265,61 +310,102 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
         tts_first_audio_ms = 0.0
 
         try:
-            # 1. Stream response tokens from OpenAI
-            llm_stream = self.openai_service.stream_conversation_turn(
-                messages=self.messages,
-                system_prompt=self._system_prompt,
-                enable_tools=True
+            use_groq = (
+                getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq"
+                or not self.openai_service.api_key
+                or getattr(self, "use_groq_primary", False)
             )
 
-            async for event in llm_stream:
-                if self.state == ConversationState.INTERRUPTED:
-                    break
+            if use_groq:
+                # Ultra-low latency (~150ms) direct streaming via Groq
+                async for gchunk in self.fallback_groq.stream_chat(
+                    messages=self.messages,
+                    system_prompt=self._system_prompt,
+                    max_tokens=150
+                ):
+                    if self.state == ConversationState.INTERRUPTED:
+                        break
+                    tok = gchunk.get("token", "")
+                    if tok:
+                        if gchunk.get("first_token"):
+                            first_token_time = time.perf_counter()
+                            llm_first_token_ms = (first_token_time - turn_start_time) * 1000
+                            if self.send_event_callback:
+                                try:
+                                    res = self.send_event_callback({
+                                        "type": "llm_first_token",
+                                        "ttft_ms": round(llm_first_token_ms, 2)
+                                    })
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception:
+                                    pass
 
-                ev_type = event.get("type")
+                        full_reply_tokens.append(tok)
+                        phrases = chunker.process_token(tok)
+                        for phrase in phrases:
+                            if self.state == ConversationState.INTERRUPTED:
+                                break
+                            await self._synthesize_and_send_chunk(
+                                phrase, turn_start_time, first_audio_time is None
+                            )
+                            if first_audio_time is None:
+                                first_audio_time = time.perf_counter()
+            else:
+                # 1. Stream response tokens from OpenAI
+                llm_stream = self.openai_service.stream_conversation_turn(
+                    messages=self.messages,
+                    system_prompt=self._system_prompt,
+                    enable_tools=True
+                )
 
-                # Handle text token
-                if ev_type == "token":
-                    token = event.get("token", "")
-                    if event.get("first_token"):
-                        first_token_time = time.perf_counter()
-                        llm_first_token_ms = (first_token_time - turn_start_time) * 1000
-                        if self.send_event_callback:
-                            try:
-                                res = self.send_event_callback({
-                                    "type": "llm_first_token",
-                                    "ttft_ms": round(llm_first_token_ms, 2)
-                                })
-                                if asyncio.iscoroutine(res):
-                                    await res
-                            except Exception:
-                                pass
+                async for event in llm_stream:
+                    if self.state == ConversationState.INTERRUPTED:
+                        break
 
-                    full_reply_tokens.append(token)
+                    ev_type = event.get("type")
 
-                    # Sentence boundary detection
-                    phrases = chunker.process_token(token)
-                    for phrase in phrases:
-                        if self.state == ConversationState.INTERRUPTED:
-                            break
-                        await self._synthesize_and_send_chunk(
-                            phrase, turn_start_time, first_audio_time is None
-                        )
-                        if first_audio_time is None:
-                            first_audio_time = time.perf_counter()
+                    # Handle text token
+                    if ev_type == "token":
+                        token = event.get("token", "")
+                        if event.get("first_token"):
+                            first_token_time = time.perf_counter()
+                            llm_first_token_ms = (first_token_time - turn_start_time) * 1000
+                            if self.send_event_callback:
+                                try:
+                                    res = self.send_event_callback({
+                                        "type": "llm_first_token",
+                                        "ttft_ms": round(llm_first_token_ms, 2)
+                                    })
+                                    if asyncio.iscoroutine(res):
+                                        await res
+                                except Exception:
+                                    pass
 
-                # Handle Tool Call
-                elif ev_type == "tool_call":
-                    self.set_state(ConversationState.TOOL_EXECUTION)
-                    tool_name = event.get("name")
-                    tool_args = event.get("arguments", {})
-                    await self._execute_tool(tool_name, tool_args)
+                        full_reply_tokens.append(token)
 
-                # Handle Error / Insufficient Quota
-                elif ev_type == "error":
-                    code = event.get("code")
-                    if code == "insufficient_quota":
-                        logger.warning("OpenAI quota exceeded. Routing turn through ultra-low latency Groq fallback.")
+                        # Sentence boundary detection
+                        phrases = chunker.process_token(token)
+                        for phrase in phrases:
+                            if self.state == ConversationState.INTERRUPTED:
+                                break
+                            await self._synthesize_and_send_chunk(
+                                phrase, turn_start_time, first_audio_time is None
+                            )
+                            if first_audio_time is None:
+                                first_audio_time = time.perf_counter()
+
+                    # Handle Tool Call
+                    elif ev_type == "tool_call":
+                        self.set_state(ConversationState.TOOL_EXECUTION)
+                        tool_name = event.get("name")
+                        tool_args = event.get("arguments", {})
+                        await self._execute_tool(tool_name, tool_args)
+
+                    # Handle Error / Insufficient Quota
+                    elif ev_type == "error":
+                        self.use_groq_primary = True
+                        logger.warning("Routing turn through ultra-low latency Groq fallback.")
                         async for gchunk in self.fallback_groq.stream_chat(
                             messages=self.messages,
                             system_prompt=self._system_prompt,
@@ -343,6 +429,12 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
                     await self._synthesize_and_send_chunk(p, turn_start_time, first_audio_time is None)
                     if first_audio_time is None:
                         first_audio_time = time.perf_counter()
+
+            # Fallback if no tokens generated
+            if not full_reply_tokens and self.state != ConversationState.INTERRUPTED:
+                fallback_msg = "నమస్కారం అండి! నేను వింటున్నాను, చెప్పండి అండి." if self.language in ["te", "telugu"] else "I am here, please tell me."
+                full_reply_tokens.append(fallback_msg)
+                await self._synthesize_and_send_chunk(fallback_msg, turn_start_time, True)
 
             # Finalize turn
             complete_text = normalize_numbers_to_english("".join(full_reply_tokens).strip())
@@ -396,21 +488,26 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
                     logger.debug(f"Could not persist LatencyMetric: {e}")
 
             if self.state not in [ConversationState.ENDING, ConversationState.ENDED]:
+                self.is_speaking = False
                 self.set_state(ConversationState.LISTENING)
 
         except asyncio.CancelledError:
+            self.is_speaking = False
             logger.info(f"[Call {self.call_id}] Turn task cancelled due to barge-in.")
         except Exception as e:
+            self.is_speaking = False
             logger.error(f"[Call {self.call_id}] Error in agent turn: {e}", exc_info=True)
             self.set_state(ConversationState.LISTENING)
 
     async def _synthesize_and_send_chunk(self, text_chunk: str, turn_start_time: float, is_first: bool) -> None:
         """Synthesize text chunk via Cartesia Sonic and push directly to audio callback."""
-        if not text_chunk or not text_chunk.strip():
+        if not text_chunk or not text_chunk.strip() or self.state == ConversationState.INTERRUPTED:
             return
 
         normalized = normalize_numbers_to_english(text_chunk.strip())
         self.set_state(ConversationState.SPEAKING)
+        self.speaking_start_time = time.perf_counter()
+        self.is_speaking = True
 
         synth_res = await self.cartesia_service.synthesize(
             text=normalized,
@@ -421,7 +518,7 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
         )
 
         audio_bytes = synth_res.get("audio_bytes", b"")
-        if audio_bytes and self.send_audio_callback:
+        if audio_bytes and self.send_audio_callback and self.state != ConversationState.INTERRUPTED:
             if asyncio.iscoroutinefunction(self.send_audio_callback):
                 await self.send_audio_callback(audio_bytes, normalized)
             else:

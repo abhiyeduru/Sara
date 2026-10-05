@@ -37,6 +37,7 @@ class PlivoMediaGateway:
         self.deepgram_service: Optional[DeepgramSTTService] = None
         self.orchestrator: Optional[ConversationOrchestrator] = None
         self.is_running = True
+        self._playback_counter = 0
 
     async def handle_stream(self) -> None:
         """Main lifecycle loop for Plivo WebSocket Media Stream."""
@@ -130,26 +131,24 @@ class PlivoMediaGateway:
             logger.error("Failed to connect to Deepgram STT stream for Plivo call")
 
         # 3. Send initial greeting
-        greeting_text = (
-            f"Hello, this is {employee.name if employee else 'Sara'}. "
-            "Thank you for connecting with us today. How may I assist you?"
-        )
-        if employee and employee.mission:
-            greeting_text = f"Hello, I am {employee.name}. How can I assist you today?"
-
+        greeting_text = self.orchestrator.get_initial_greeting()
         asyncio.create_task(self._send_greeting(greeting_text))
 
     async def _send_greeting(self, greeting_text: str) -> None:
         """Synthesize and stream initial greeting to caller."""
-        await asyncio.sleep(0.3)  # Brief pause for audio stream stabilization
+        await asyncio.sleep(0.5)  # Stabilization pause for audio stream
         if self.orchestrator and self.is_running:
+            logger.info(f"Streaming initial greeting: '{greeting_text}'")
             await self.orchestrator._synthesize_and_send_chunk(greeting_text, time.perf_counter(), True)
             self.orchestrator.transcript_history.append({
                 "speaker": self.orchestrator.employee.name if self.orchestrator.employee else "Sara",
                 "role": "assistant",
                 "text": greeting_text,
-                "timestamp": time.time()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             })
+            if self.orchestrator.state == ConversationState.SPEAKING:
+                self.orchestrator.is_speaking = False
+                self.orchestrator.set_state(ConversationState.LISTENING)
 
     async def _on_media(self, message: Dict[str, Any]) -> None:
         """Forward incoming caller audio from Plivo directly into Deepgram STT."""
@@ -180,26 +179,29 @@ class PlivoMediaGateway:
         """
         Chunk and stream synthesized μ-law audio packets to Plivo WebSocket via playAudio.
         """
-        if not self.ws:
+        if not self.ws or not mulaw_audio:
             return
 
-        # Chunk into 160-byte frames (20ms at 8kHz μ-law)
-        chunks = AudioCodecService.chunk_mulaw(mulaw_audio, chunk_size=160)
+        playback_id = self._playback_counter
+        # 320 bytes = 40ms of 8kHz μ-law audio
+        chunks = AudioCodecService.chunk_mulaw(mulaw_audio, chunk_size=320)
+        logger.info(f"Streaming {len(chunks)} audio frames to Plivo for: '{text[:40]}...'")
         for chunk in chunks:
-            if not self.is_running:
+            if not self.is_running or self._playback_counter != playback_id:
+                logger.debug(f"Audio playback halted (current gen: {self._playback_counter}, playback id: {playback_id})")
                 break
             b64_payload = AudioCodecService.encode_base64_payload(chunk)
             play_msg = {
                 "event": "playAudio",
                 "media": {
                     "contentType": "audio/x-mulaw",
-                    "sampleRate": "8000",
+                    "sampleRate": 8000,
                     "payload": b64_payload,
                 }
             }
             try:
                 await self.ws.send_text(json.dumps(play_msg))
-                await asyncio.sleep(0.018)  # Smooth playback pacing
+                await asyncio.sleep(0.035)  # 35ms sleep for 40ms audio chunk
             except Exception as e:
                 logger.warning(f"Error streaming audio to Plivo: {e}")
                 break
@@ -209,6 +211,7 @@ class PlivoMediaGateway:
         Send Plivo clearAudio event to flush currently playing audio queue.
         Provides zero-latency barge-in interruption.
         """
+        self._playback_counter += 1
         if not self.ws:
             return
 
