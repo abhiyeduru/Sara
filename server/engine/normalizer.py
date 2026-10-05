@@ -33,3 +33,21 @@ def normalize_numbers_to_english(text: str) -> str:
     text = re.sub(r'(\d+)\s*స్క్వేర్\s*ఫీట్', r'\1 Sq Ft', text)
 
     return text
+
+def clean_for_speech(text: str) -> str:
+    """
+    Remove emojis, markdown bold/italics, and other non-spoken characters
+    so that TTS engines synthesize cleanly, naturally, and without artifact pauses.
+    """
+    if not text:
+        return ""
+    # Remove markdown bold/italics/bullet markers
+    text = re.sub(r'[*_#`~]', '', text)
+    # Remove emojis (supplementary symbols, pictographs, dingbats)
+    text = re.sub(r'[\U00010000-\U0010ffff]', '', text)
+    text = re.sub(r'[\u2600-\u27BF]', '', text)
+    text = re.sub(r'[\uD800-\uDBFF][\uDC00-\uDFFF]', '', text)
+    # Clean redundant whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+

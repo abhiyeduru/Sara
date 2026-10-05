@@ -40,7 +40,7 @@ export default function CampaignsStudio({ onNavigate }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [leadName, setLeadName] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [selectedVoice, setSelectedVoice] = useState('te-IN-Standard-A');
+  const [selectedVoice, setSelectedVoice] = useState('330c4fa0-1da3-4c55-8e97-951bfd724e20');
   const [leadSource, setLeadSource] = useState('manual_direct');
   const [compliance, setCompliance] = useState(null);
   const [isCalling, setIsCalling] = useState(false);
@@ -521,10 +521,9 @@ export default function CampaignsStudio({ onNavigate }) {
                   onChange={(e) => setSelectedVoice(e.target.value)}
                   style={{ width: '100%', fontSize: 13 }}
                 >
-                  <option value="te-IN-Standard-A">Sara — Telugu & English (Sarvam AI)</option>
-                  <option value="cartesia-sara">Sara — Conversational English (Cartesia Sonic)</option>
-                  <option value="hi-IN-Standard-A">Sara — Hindi & English (Sarvam AI)</option>
-                  <option value="polly-aditi">Aditi — Indian English (AWS Polly)</option>
+                  <option value="330c4fa0-1da3-4c55-8e97-951bfd724e20">Priya — Telugu & English (Cartesia Sonic)</option>
+                  <option value="3a8e6fea-81e5-4d4d-8755-86093146cdb8">Lakshmi — Indian English (Cartesia Sonic)</option>
+                  <option value="563605b0-aa1e-4509-a78c-02cf584742a7">Arjun — Conversational Professional (Cartesia Sonic)</option>
                 </select>
               </div>
             </div>

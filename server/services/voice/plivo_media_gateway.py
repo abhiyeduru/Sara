@@ -172,10 +172,20 @@ class PlivoMediaGateway:
         if not clean or not self.orchestrator:
             return
 
-        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks actual words during playback
-        if self.orchestrator.is_speaking and len(clean.split()) >= 1:
-            logger.info(f"Caller spoken words ('{clean}') -> triggering genuine barge-in")
-            await self.orchestrator.handle_barge_in()
+        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks substantive words during playback
+        if self.orchestrator.is_speaking:
+            words = clean.split()
+            single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
+            is_greeting = len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words)
+            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen"}
+            has_interruption = any(w.lower().strip("!.,? ") in interruption_words for w in words)
+
+            if not is_greeting and (len(words) >= 3 or has_interruption):
+                logger.info(f"Caller spoken words ('{clean}') -> triggering genuine barge-in")
+                await self.orchestrator.handle_barge_in()
+            else:
+                logger.debug(f"Ignoring non-interruptive backchannel/greeting during assistant speech: '{clean}'")
+
 
         # 2. Process final customer utterance
         if is_final:

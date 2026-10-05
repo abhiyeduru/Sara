@@ -18,7 +18,7 @@ from server.models import (
     Workspace, BusinessProfile
 )
 from server.engine.chunker import SentenceChunker
-from server.engine.normalizer import normalize_numbers_to_english
+from server.engine.normalizer import normalize_numbers_to_english, clean_for_speech
 from server.services.voice.deepgram_service import DeepgramSTTService
 from server.services.voice.cartesia_service import CartesiaTTSService
 from server.services.voice.openai_voice_service import OpenAIVoiceService
@@ -297,7 +297,7 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
     async def _execute_agent_turn(self, user_text: str, turn_start_time: float) -> None:
         """Execute LLM streaming, phrase chunking, TTS generation, and audio dispatch."""
         self.set_state(ConversationState.THINKING)
-        chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=14)
+        chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
 
         full_reply_tokens: List[str] = []
         first_token_time: Optional[float] = None
@@ -500,7 +500,11 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
         if not text_chunk or not text_chunk.strip() or self.state == ConversationState.INTERRUPTED:
             return
 
-        normalized = normalize_numbers_to_english(text_chunk.strip())
+        cleaned = clean_for_speech(text_chunk.strip())
+        normalized = normalize_numbers_to_english(cleaned)
+        if not normalized.strip():
+            return
+
         self.set_state(ConversationState.SPEAKING)
         self.speaking_start_time = time.perf_counter()
         self.is_speaking = True

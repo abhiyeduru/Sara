@@ -41,7 +41,7 @@ class QuickCallRequest(BaseModel):
     instruction: str
     lead_name: Optional[str] = "Valued Customer"
     business_name: Optional[str] = None
-    voice_id: Optional[str] = "te-IN-Standard-A"
+    voice_id: Optional[str] = "330c4fa0-1da3-4c55-8e97-951bfd724e20"
     language: Optional[str] = "te"
 
 
@@ -274,6 +274,13 @@ async def trigger_quick_call(
         f"4. State all numbers, timings, and prices clearly in English.\n"
     )
 
+    valid_uuid = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    clean_voice = str(body.voice_id or "").strip().lower()
+    if not re.match(valid_uuid, clean_voice):
+        clean_voice = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+
+    target_lang = body.language or "te"
+
     if not emp:
         # Create an on-the-fly representative
         emp = AIEmployee(
@@ -282,18 +289,18 @@ async def trigger_quick_call(
             role=f"{biz_name} Voice Representative",
             department="Sales",
             system_prompt=system_prompt,
-            voice_id=body.voice_id,
-            voice_provider="sarvam" if "te" in body.voice_id else "cartesia",
-            language=body.language or "te",
+            voice_id=clean_voice,
+            voice_language=target_lang,
             status="active"
         )
         db.add(emp)
         db.commit()
         db.refresh(emp)
     else:
-        # Update system prompt with fresh call context
+        # Update system prompt and validated voice ID
         emp.system_prompt = system_prompt
-        emp.voice_id = body.voice_id
+        emp.voice_id = clean_voice
+        emp.voice_language = target_lang
         db.commit()
 
     # Create Lead record if not existing
