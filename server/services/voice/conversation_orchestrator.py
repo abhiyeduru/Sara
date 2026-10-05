@@ -194,7 +194,10 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
    - NEVER assume an unrelated industry or invent facts outside the business context.
 5. **Concise & Turn-Based**:
    - Keep each turn to 1-3 crisp, pleasant sentences so the customer can converse naturally without long monologues.
-6. **Actions & Tools**:
+6. **No Repetitive Greetings**:
+   - Do NOT repeatedly re-introduce yourself with your full name or company name in subsequent turns if you have already greeted the customer in this call.
+   - If the customer says "Hello?", "Yes", or asks a question, reply directly to what they said with warmth (e.g. "చెప్పండి అండి, మీకు ఎలాంటి ప్రాపర్టీ కావాలి?" or "Yes, please tell me how I can help").
+7. **Actions & Tools**:
    - If customer shares details or requests a callback: use `create_lead`.
    - If customer wants an appointment or demo: use `schedule_appointment`.
    - If customer asks for a human supervisor: politely use `transfer_to_human`.
@@ -206,25 +209,13 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 
     async def handle_barge_in(self) -> None:
         """
-        Executed when Deepgram STT detects speech activity.
-        Stops current speaking turn ONLY IF assistant is actively SPEAKING
-        and has passed the minimum duration grace period.
+        Executed when genuine caller speech is detected during assistant playback.
+        Stops current speaking turn, flushes audio queue, and transitions to LISTENING.
         """
-        now = time.perf_counter()
-
-        # 1. Never interrupt during THINKING, TOOL_EXECUTION, or IDLE
-        if self.state != ConversationState.SPEAKING or not self.is_speaking:
-            logger.debug(f"[Call {self.call_id}] Barge-in ignored: state is {self.state} (not actively SPEAKING)")
+        if not self.is_speaking and self.state != ConversationState.SPEAKING:
             return
 
-        # 2. Prevent self-interruption from speaker echo, carrier noise, or initial speech onset
-        speaking_duration = now - self.speaking_start_time
-        min_speaking_duration = 0.9  # Must have spoken for at least 900ms
-        if speaking_duration < min_speaking_duration:
-            logger.debug(f"[Call {self.call_id}] Barge-in ignored: speaking duration {speaking_duration:.2f}s < {min_speaking_duration}s grace period")
-            return
-
-        logger.info(f"[Call {self.call_id}] Barge-in confirmed (spoken {speaking_duration:.2f}s) -> interrupting assistant turn")
+        logger.info(f"[Call {self.call_id}] Barge-in confirmed -> interrupting assistant turn")
         self.set_state(ConversationState.INTERRUPTED)
         self.is_speaking = False
 

@@ -74,14 +74,14 @@ class DeepgramSTTService:
 
         lang_param = self.language
         if lang_param in ["te", "telugu"]:
-            lang_param = "en-IN"
+            lang_param = "te"
         elif lang_param in ["hi", "hindi"]:
             lang_param = "hi"
         else:
             lang_param = "en"
 
         params = [
-            f"model={settings.DEEPGRAM_MODEL or 'nova-2'}",
+            f"model={settings.DEEPGRAM_MODEL or 'nova-3'}",
             f"encoding={self.encoding}",
             f"sample_rate={self.sample_rate}",
             f"channels={self.channels}",

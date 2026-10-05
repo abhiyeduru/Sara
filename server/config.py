@@ -40,7 +40,7 @@ class Settings:
     # Deepgram STT
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
     DEEPGRAM_REGION: str = os.getenv("DEEPGRAM_REGION", "global")
-    DEEPGRAM_MODEL: str = os.getenv("DEEPGRAM_MODEL", "nova-2")
+    DEEPGRAM_MODEL: str = os.getenv("DEEPGRAM_MODEL", "nova-3")
     PUBLIC_WS_URL: str = os.getenv("PUBLIC_WS_URL", "")
     PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "")
 

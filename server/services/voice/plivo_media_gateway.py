@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -162,15 +163,24 @@ class PlivoMediaGateway:
             await self.deepgram_service.send_audio(raw_audio)
 
     async def _on_deepgram_speech_started(self) -> None:
-        """Barge-in trigger: customer started speaking."""
-        if self.orchestrator:
-            await self.orchestrator.handle_barge_in()
+        """Deepgram speech activity detected - logged for telemetry."""
+        logger.debug("Deepgram SpeechStarted detected")
 
     async def _on_deepgram_transcript(self, transcript: str, is_final: bool, lang: str, confidence: float) -> None:
         """Handle transcript produced by Deepgram."""
-        if is_final and transcript.strip() and self.orchestrator:
+        clean = transcript.strip()
+        if not clean or not self.orchestrator:
+            return
+
+        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks actual words during playback
+        if self.orchestrator.is_speaking and len(clean.split()) >= 1:
+            logger.info(f"Caller spoken words ('{clean}') -> triggering genuine barge-in")
+            await self.orchestrator.handle_barge_in()
+
+        # 2. Process final customer utterance
+        if is_final:
             await self.orchestrator.handle_user_utterance(
-                text=transcript,
+                text=clean,
                 confidence=confidence,
                 detected_lang=lang
             )
