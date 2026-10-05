@@ -283,12 +283,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
       if (res.ok) {
         const data = await res.json();
-        setCallSid(data.twilio_call_sid || data.call_id);
+        setCallSid(data.call_sid || data.twilio_call_sid || data.call_id);
         setCallingState('connected');
         if (data.is_simulated) {
-          setSwaraFeedback(`Test call active (Simulated: ${data.twilio_call_sid})`);
+          setSwaraFeedback(`Test call active (Simulated: ${data.call_sid || data.twilio_call_sid})`);
         } else {
-          setSwaraFeedback(`Twilio dialing ${testPhoneNumber}...`);
+          setSwaraFeedback(`Plivo dialing ${testPhoneNumber}...`);
         }
       } else {
         const errData = await res.json();
@@ -337,8 +337,8 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         if (data.is_simulated) {
           setInstantCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.twilio_call_sid}` },
-            { speaker: 'Twilio Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Destination number unverified or trial restrictions'}. Running simulated live caller session.` },
+            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.call_sid || data.twilio_call_sid}` },
+            { speaker: 'Telephony Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Carrier session initiated'}. Running simulated live caller session.` },
             { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
             { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండీ? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
             { speaker: name, text: `హాయ్ అండి, అవును. గచ్చిబౌలి దగ్గర 2BHK లేదా 3BHK కోసం చూస్తున్నాను.` },
@@ -864,7 +864,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     }}
                   >
                     <Phone size={14} />
-                    {callingState === 'calling' ? 'Dialing Twilio...' :
+                    {callingState === 'calling' ? 'Dialing Phone...' :
                      callingState === 'connected' ? 'Call connected!' : 'Test call'}
                   </button>
                 </div>
@@ -1950,11 +1950,11 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                       key={idx}
                       style={{
                         padding: '8px 12px', borderRadius: 8,
-                        background: t.speaker === empName ? 'rgba(124,58,237,0.06)' : (t.speaker === 'System' ? '#f8fafc' : (t.speaker === 'Twilio Notice' ? '#fffbeb' : '#f1f5f9')),
-                        border: t.speaker === empName ? '1px solid rgba(124,58,237,0.2)' : (t.speaker === 'Twilio Notice' ? '1px solid #fde68a' : '1px solid #e2e8f0')
+                        background: t.speaker === empName ? 'rgba(124,58,237,0.06)' : (t.speaker === 'System' ? '#f8fafc' : (t.speaker === 'Telephony Notice' ? '#fffbeb' : '#f1f5f9')),
+                        border: t.speaker === empName ? '1px solid rgba(124,58,237,0.2)' : (t.speaker === 'Telephony Notice' ? '1px solid #fde68a' : '1px solid #e2e8f0')
                       }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: t.speaker === empName ? '#7c3aed' : (t.speaker === 'Twilio Notice' ? '#b45309' : '#64748b'), marginBottom: 2 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: t.speaker === empName ? '#7c3aed' : (t.speaker === 'Telephony Notice' ? '#b45309' : '#64748b'), marginBottom: 2 }}>
                         {t.speaker}
                       </div>
                       <div style={{ color: '#0f172a', lineHeight: 1.4 }}>

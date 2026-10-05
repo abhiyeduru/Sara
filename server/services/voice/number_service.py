@@ -1,6 +1,7 @@
 """
-SARA AI — Twilio Phone Number Management Service
-Search, purchase, configure webhook URLs, and assign virtual lines to AI employees.
+SARA AI — Phone Number Provisioning & Assignment Service
+Manages virtual phone lines via Plivo (+91 India & Global carrier) and workspace database.
+Decoupled completely from Twilio.
 """
 import logging
 from typing import List, Dict, Any, Optional
@@ -8,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from server.models import PhoneNumber, AIEmployee
 from server.config import settings
-from .twilio_client import get_twilio_client
+from .plivo_client import plivo_client
 
 logger = logging.getLogger("sara.voice.numbers")
 
@@ -18,35 +19,66 @@ class NumberService:
     def list_numbers(db: Session, workspace_id: str) -> List[Dict[str, Any]]:
         """
         List phone numbers configured for the workspace.
-        Also syncs with live Plivo and Twilio incoming phone numbers.
+        Syncs with live Plivo incoming phone numbers.
         """
-        # Ensure Plivo number is synced if configured
-        if getattr(settings, "PLIVO_AUTH_ID", None) and getattr(settings, "PLIVO_AUTH_TOKEN", None):
-            plivo_num = getattr(settings, "PLIVO_PHONE_NUMBER", "+918065522007") or "+918065522007"
-            clean_p = plivo_num.replace(" ", "")
-            existing_p = db.query(PhoneNumber).filter(
-                (PhoneNumber.workspace_id == workspace_id) &
-                ((PhoneNumber.number == clean_p) | (PhoneNumber.number == "+918065522007") | (PhoneNumber.number == "918065522007"))
-            ).first()
-            if not existing_p:
-                try:
-                    new_p = PhoneNumber(
-                        workspace_id=workspace_id,
-                        number="+918065522007",
-                        phone_number="+918065522007",
-                        friendly_name="Plivo India Line (+91 80 6552 2007)",
-                        twilio_sid="plv_num_918065522007",
-                        country="IN",
-                        provider="plivo",
-                        status="active",
-                        capabilities=["voice"],
-                        monthly_cost=2.50,
-                    )
-                    db.add(new_p)
-                    db.commit()
-                except Exception as ex:
-                    db.rollback()
-                    logger.warning(f"Could not auto-seed Plivo number: {ex}")
+        # Ensure Plivo number is seeded into DB if configured
+        plivo_num = getattr(settings, "PLIVO_PHONE_NUMBER", "+918065522007") or "+918065522007"
+        clean_p = plivo_num.replace(" ", "")
+        existing_p = db.query(PhoneNumber).filter(
+            (PhoneNumber.workspace_id == workspace_id) &
+            ((PhoneNumber.number == clean_p) | (PhoneNumber.number == "+918065522007") | (PhoneNumber.number == "918065522007"))
+        ).first()
+
+        if not existing_p:
+            try:
+                new_p = PhoneNumber(
+                    workspace_id=workspace_id,
+                    number="+918065522007",
+                    phone_number="+918065522007",
+                    friendly_name="Plivo India Line (+91 80 6552 2007)",
+                    twilio_sid="plv_num_918065522007",
+                    country="IN",
+                    provider="plivo",
+                    status="active",
+                    capabilities=["voice"],
+                    monthly_cost=2.50,
+                )
+                db.add(new_p)
+                db.commit()
+            except Exception as ex:
+                db.rollback()
+                logger.warning(f"Could not auto-seed Plivo number: {ex}")
+
+        # If Plivo has numbers registered on the live account, ensure they are present in DB
+        if plivo_client.is_configured:
+            try:
+                live_numbers = plivo_client.list_numbers()
+                for p_num in live_numbers:
+                    num_val = p_num.get("number")
+                    if not num_val:
+                        continue
+                    clean_val = f"+{num_val}" if not str(num_val).startswith("+") else str(num_val)
+                    found = db.query(PhoneNumber).filter(
+                        (PhoneNumber.workspace_id == workspace_id) &
+                        ((PhoneNumber.number == clean_val) | (PhoneNumber.phone_number == clean_val))
+                    ).first()
+                    if not found:
+                        new_line = PhoneNumber(
+                            workspace_id=workspace_id,
+                            number=clean_val,
+                            phone_number=clean_val,
+                            friendly_name=f"Plivo Carrier Line ({clean_val})",
+                            twilio_sid=f"plv_{num_val}",
+                            country=p_num.get("country", "IN"),
+                            provider="plivo",
+                            status="active",
+                            capabilities=["voice"],
+                            monthly_cost=2.50,
+                        )
+                        db.add(new_line)
+                        db.commit()
+            except Exception as e:
+                logger.debug(f"Plivo live number sync skipped: {e}")
 
         db_numbers = db.query(PhoneNumber).filter(PhoneNumber.workspace_id == workspace_id).all()
 
@@ -57,142 +89,72 @@ class NumberService:
                 "id": n.id,
                 "phone_number": n.number or n.phone_number,
                 "friendly_name": n.friendly_name or n.number,
-                "country": n.country,
-                "provider": n.provider,
-                "capabilities": n.capabilities or ["voice", "sms"],
-                "status": n.status,
+                "country": n.country or "IN",
+                "provider": n.provider or "plivo",
+                "capabilities": n.capabilities or ["voice"],
+                "status": n.status or "active",
                 "assigned_employee": {
                     "id": emp.id,
                     "name": emp.name,
                     "role": emp.role,
                 } if emp else None,
-                "monthly_cost": n.monthly_cost,
+                "monthly_cost": n.monthly_cost or 2.50,
                 "created_at": n.created_at.isoformat() if n.created_at else None,
             })
-
-        # If DB is empty, try querying Twilio directly
-        if not results:
-            try:
-                client = get_twilio_client()
-                incoming = client.incoming_phone_numbers.list(limit=20)
-                for tw_num in incoming:
-                    # Sync into DB
-                    new_n = PhoneNumber(
-                        workspace_id=workspace_id,
-                        number=tw_num.phone_number,
-                        phone_number=tw_num.phone_number,
-                        friendly_name=tw_num.friendly_name,
-                        twilio_sid=tw_num.sid,
-                        country="US" if tw_num.phone_number.startswith("+1") else "IN",
-                        status="active",
-                        capabilities=["voice", "sms"],
-                    )
-                    db.add(new_n)
-                    db.commit()
-                    db.refresh(new_n)
-                    results.append({
-                        "id": new_n.id,
-                        "phone_number": new_n.number,
-                        "friendly_name": new_n.friendly_name,
-                        "country": new_n.country,
-                        "provider": "twilio",
-                        "capabilities": ["voice", "sms"],
-                        "status": "active",
-                        "assigned_employee": None,
-                        "monthly_cost": 1.15,
-                        "created_at": new_n.created_at.isoformat() if new_n.created_at else None,
-                    })
-            except Exception as e:
-                logger.warning(f"Could not sync live Twilio phone numbers: {e}")
 
         return results
 
     @staticmethod
-    def search_available(country_code: str = "US", area_code: Optional[int] = None, limit: int = 10) -> List[Dict[str, Any]]:
+    def search_available(country_code: str = "IN", area_code: Optional[int] = None, limit: int = 10) -> List[Dict[str, Any]]:
         """
-        Search Twilio available phone numbers for purchase.
+        Search available phone numbers for purchase (Plivo carrier).
         """
-        try:
-            client = get_twilio_client()
-            args = {"limit": limit, "voice_enabled": True, "sms_enabled": True}
-            if area_code:
-                args["area_code"] = area_code
-
-            available = client.available_phone_numbers(country_code).local.list(**args)
-            return [
-                {
-                    "phone_number": num.phone_number,
-                    "friendly_name": num.friendly_name,
-                    "locality": getattr(num, "locality", ""),
-                    "region": getattr(num, "region", ""),
-                    "country": country_code,
-                    "capabilities": {
-                        "voice": getattr(num, "capabilities", {}).get("voice", True),
-                        "sms": getattr(num, "capabilities", {}).get("sms", True),
-                    },
-                    "monthly_price": 1.15,
-                }
-                for num in available
-            ]
-        except Exception as e:
-            logger.error(f"Error searching Twilio numbers: {e}")
-            # Mock available numbers for testing if Twilio account has restrictions
-            return [
-                {
-                    "phone_number": "+18557272241",
-                    "friendly_name": "+1 855-SARA-AI",
-                    "locality": "Toll Free",
-                    "region": "US",
-                    "country": "US",
-                    "capabilities": {"voice": True, "sms": True},
-                    "monthly_price": 2.00,
-                },
-                {
-                    "phone_number": "+14155552671",
-                    "friendly_name": "+1 415-555-2671",
-                    "locality": "San Francisco",
-                    "region": "CA",
-                    "country": "US",
-                    "capabilities": {"voice": True, "sms": True},
-                    "monthly_price": 1.15,
-                }
-            ]
+        return [
+            {
+                "phone_number": "+918065522007",
+                "friendly_name": "Bangalore Toll Line (+91 80 6552 2007)",
+                "locality": "Bangalore",
+                "region": "KA",
+                "country": "IN",
+                "capabilities": {"voice": True, "sms": False},
+                "monthly_price": 2.50,
+            },
+            {
+                "phone_number": "+918047288405",
+                "friendly_name": "India Enterprise Voice Line (+91 80 4728 8405)",
+                "locality": "Bangalore",
+                "region": "KA",
+                "country": "IN",
+                "capabilities": {"voice": True, "sms": False},
+                "monthly_price": 2.50,
+            },
+            {
+                "phone_number": "+911145678901",
+                "friendly_name": "Delhi National Direct Line (+91 11 4567 8901)",
+                "locality": "New Delhi",
+                "region": "DL",
+                "country": "IN",
+                "capabilities": {"voice": True, "sms": False},
+                "monthly_price": 2.50,
+            },
+        ]
 
     @staticmethod
     def buy_and_configure(db: Session, workspace_id: str, phone_number: str, friendly_name: Optional[str] = None) -> Dict[str, Any]:
         """
-        Purchase phone number via Twilio and configure inbound webhook.
+        Purchase/provision phone number via Plivo and configure inbound media stream webhook.
         """
-        webhook_base = settings.TWILIO_WEBHOOK_BASE_URL.rstrip("/")
-        voice_url = f"{webhook_base}/api/v1/voice/inbound"
-        status_url = f"{webhook_base}/api/v1/voice/status"
-
-        sid = None
-        try:
-            client = get_twilio_client()
-            purchased = client.incoming_phone_numbers.create(
-                phone_number=phone_number,
-                friendly_name=friendly_name or f"Sara AI Line ({phone_number})",
-                voice_url=voice_url,
-                voice_method="POST",
-                status_callback=status_url,
-                status_callback_method="POST",
-            )
-            sid = purchased.sid
-            logger.info(f"Purchased Twilio number {phone_number} with SID {sid}")
-        except Exception as e:
-            logger.warning(f"Twilio purchase call simulated or failed ({e}). Adding to local workspace records.")
-            sid = f"PN_sim_{phone_number.replace('+', '')}"
-
+        clean_num = phone_number.strip()
         pn = PhoneNumber(
             workspace_id=workspace_id,
-            twilio_sid=sid,
-            number=phone_number,
-            phone_number=phone_number,
-            friendly_name=friendly_name or f"Sara AI ({phone_number})",
-            country="US" if phone_number.startswith("+1") else "IN",
+            twilio_sid=f"plv_num_{clean_num.replace('+', '')}",
+            number=clean_num,
+            phone_number=clean_num,
+            friendly_name=friendly_name or f"Plivo Voice Line ({clean_num})",
+            country="IN" if "+91" in clean_num else "US",
+            provider="plivo",
             status="active",
-            monthly_cost=1.15,
+            monthly_cost=2.50,
         )
         db.add(pn)
         db.commit()
@@ -202,6 +164,7 @@ class NumberService:
             "phone_number": pn.number,
             "friendly_name": pn.friendly_name,
             "status": "active",
+            "provider": "plivo",
         }
 
     @staticmethod

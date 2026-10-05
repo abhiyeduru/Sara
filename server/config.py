@@ -63,15 +63,7 @@ class Settings:
     MEDIUM_SILENCE_SECONDS: float = float(os.getenv("MEDIUM_SILENCE_SECONDS", 14.0))
     LONG_SILENCE_SECONDS: float = float(os.getenv("LONG_SILENCE_SECONDS", 35.0))
 
-    # Twilio Voice & Telephony Layer
-    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_API_KEY: str = os.getenv("TWILIO_API_KEY", "")
-    TWILIO_API_SECRET: str = os.getenv("TWILIO_API_SECRET", "")
-    TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
-    TWILIO_WEBHOOK_BASE_URL: str = os.getenv("TWILIO_WEBHOOK_BASE_URL", "http://localhost:8000")
-
-    # Plivo Voice & Telephony Layer
+    # Plivo Voice & Telephony Layer (Primary India / Global)
     PLIVO_AUTH_ID: str = os.getenv("PLIVO_AUTH_ID", "")
     PLIVO_AUTH_TOKEN: str = os.getenv("PLIVO_AUTH_TOKEN", "")
     PLIVO_PHONE_NUMBER: str = os.getenv("PLIVO_PHONE_NUMBER", "+918065522007")

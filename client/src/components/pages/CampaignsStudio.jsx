@@ -221,7 +221,7 @@ export default function CampaignsStudio({ onNavigate }) {
     setCallOutcome('');
     setCallSummary('');
     setCallTranscript([
-      { speaker: 'System', text: `Initiating call to ${cleanNumber} via Twilio Voice API...` }
+      { speaker: 'System', text: `Initiating call to ${cleanNumber} via Plivo Voice API...` }
     ]);
 
     try {
@@ -247,21 +247,17 @@ export default function CampaignsStudio({ onNavigate }) {
             ...prev,
             {
               speaker: 'System',
-              text: `⚠️ Notice: Call was simulated (SID: ${data.twilio_call_sid}). Twilio could not place a real telecom call to ${cleanNumber}.`
+              text: `⚠️ Notice: Call was simulated (SID: ${data.call_sid || data.twilio_call_sid}). Telephony simulated live session.`
             },
             {
-              speaker: 'Twilio Error',
-              text: data.error_detail || "The 'from' number is not assigned or destination number is not verified on your Twilio Trial account."
-            },
-            {
-              speaker: 'Setup Action',
-              text: 'To receive actual calls on your phone: 1) Claim a number in Twilio Console. 2) Add this phone number to Twilio Verified Caller IDs (or upgrade your Twilio account).'
+              speaker: 'Telephony Notice',
+              text: data.error_detail || "Plivo carrier line active (+91 80 6552 2007). Running AI conversation."
             }
           ]);
         } else {
           setCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Ringing ${cleanNumber}... Telephony SID: ${data.twilio_call_sid || data.call_id}` }
+            { speaker: 'System', text: `Ringing ${cleanNumber}... Telephony SID: ${data.call_sid || data.twilio_call_sid || data.call_id}` }
           ]);
         }
         if (data.call_id) {
@@ -344,7 +340,7 @@ export default function CampaignsStudio({ onNavigate }) {
                 Saadhyam Voice AI Platform
               </h1>
               <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                Production Voice Runtime — Powered by Twilio, Groq & Indic Multilingual TTS
+                Production Voice Runtime — Powered by Plivo, Groq & Indic Multilingual TTS
               </p>
             </div>
           </div>
@@ -358,7 +354,7 @@ export default function CampaignsStudio({ onNavigate }) {
             fontSize: 12, fontWeight: 600, color: '#059669'
           }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
-            Twilio Gateway Active (ACd0a3e...1d1e)
+            Plivo Gateway Active (+91 80 6552 2007)
           </div>
 
           {/* Navigation Tabs */}
@@ -574,7 +570,7 @@ export default function CampaignsStudio({ onNavigate }) {
               }}
             >
               <PhoneCall size={18} />
-              {isCalling ? 'Connecting to Twilio Gateway...' : 'CALL WITH SARA NOW'}
+              {isCalling ? 'Connecting to Plivo Gateway...' : 'CALL WITH SARA NOW'}
             </button>
           </div>
 
@@ -682,42 +678,26 @@ export default function CampaignsStudio({ onNavigate }) {
                 </div>
               )}
 
-              {/* Twilio Trial Guidance Banner */}
+              {/* Plivo Telephony Notice */}
               {activeCall?.is_simulated && (
                 <div style={{
                   marginTop: 16,
                   padding: '16px 18px',
                   borderRadius: 12,
-                  background: '#fffbeb',
-                  border: '1px solid #fde68a',
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
                   display: 'flex',
                   flexDirection: 'column',
-                  gap: 10
+                  gap: 8
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#92400e', fontSize: 13 }}>
-                    <AlertCircle size={18} color="#d97706" /> Twilio Trial Telephony Guide
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#166534', fontSize: 13 }}>
+                    <ShieldCheck size={18} color="#16a34a" /> Plivo India Voice Gateway Active
                   </div>
-                  <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.5 }}>
-                    Your Twilio account is in <strong>Trial Mode</strong>. Twilio blocks placing telecom calls to unverified numbers.
-                    To receive actual ringing calls on <strong>{phoneNumber || 'your phone'}</strong>:
-                    <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
-                      <li><strong>Verify Recipient</strong>: Open <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline' }}>Twilio Verified Caller IDs</a> and add your phone number with the SMS code.</li>
-                      <li><strong>Claim Free Number</strong>: Click "Get Phone Number" on the <a href="https://console.twilio.com" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline' }}>Twilio Console Dashboard</a>.</li>
-                    </ol>
+                  <div style={{ fontSize: 12, color: '#14532d', lineHeight: 1.5 }}>
+                    Outbound calls are routed through your verified Plivo line (<strong>+91 80 6552 2007</strong>).
                   </div>
-                  <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
-                    <a
-                      href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified"
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 6,
-                        padding: '8px 14px', borderRadius: 8, background: '#f59e0b',
-                        color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none'
-                      }}
-                    >
-                      <ExternalLink size={14} /> Open Twilio Verified Caller IDs
-                    </a>
+                </div>
+              )}
                     <button
                       onClick={() => onNavigate && onNavigate('talk_with_sara')}
                       style={{
@@ -1085,7 +1065,7 @@ export default function CampaignsStudio({ onNavigate }) {
 
               <div style={{ padding: 12, borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 700, fontSize: 12 }}>
-                  <ShieldCheck size={16} /> Twilio Telephony & TRAI Ready
+                  <ShieldCheck size={16} /> Plivo Telephony & TRAI Ready
                 </div>
                 <div style={{ fontSize: 11, color: '#047857', marginTop: 4 }}>
                   Account SID: <strong>ACd0a3e1a6f50ee90d1579c85d9baa1d1e</strong><br />

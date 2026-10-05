@@ -56,7 +56,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
   // Provider Health
   const [providersHealth, setProvidersHealth] = useState({
-    twilio: { ready: true, status: 'Healthy' },
+    plivo: { ready: true, status: 'Healthy' },
     deepgram: { ready: true, status: 'Healthy' },
     cartesia: { ready: true, status: 'Healthy' },
     openai: { ready: true, status: 'Configured' }
@@ -203,14 +203,14 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       if (res.ok) {
         setPhoneCallId(data.call_id);
         setPhoneCallStatus(data.status || 'ringing');
-        setPhoneCallMessage(`Call initiated! Twilio Call SID: ${data.twilio_sid}`);
+        setPhoneCallMessage(`Call initiated! Plivo Call SID: ${data.call_sid || data.twilio_sid}`);
       } else {
         setPhoneCallStatus('failed');
         setPhoneCallMessage(data.detail || 'Could not place phone call.');
       }
     } catch (err) {
       setPhoneCallStatus('failed');
-      setPhoneCallMessage('Network error initiating Twilio call.');
+      setPhoneCallMessage('Network error initiating phone call.');
     } finally {
       setPhoneCalling(false);
     }
@@ -277,7 +277,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         {[
           { id: 'mic', label: 'Microphone Test', desc: 'Real-time bidirectional voice with STT & TTS', icon: Mic },
           { id: 'simulation', label: 'Text Simulation', desc: 'Interactive chat without microphone/audio', icon: MessageSquare },
-          { id: 'phone', label: 'Real Phone Test', desc: 'Twilio telephony call to actual mobile phone', icon: PhoneCall },
+          { id: 'phone', label: 'Real Phone Test', desc: 'Plivo telephony call to actual mobile phone', icon: PhoneCall },
         ].map(({ id, label, desc, icon: Icon }) => {
           const isActive = activeMode === id;
           return (
@@ -327,8 +327,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
             <strong>LLM:</strong> OpenAI {providersHealth.openai?.model || 'gpt-4o-mini'}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.twilio?.ready ? '#16a34a' : '#ea580c' }} />
-            <strong>Telephony:</strong> Twilio Voice
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.plivo?.ready ? '#16a34a' : '#ea580c' }} />
+            <strong>Telephony:</strong> Plivo India Voice (+91)
           </span>
         </div>
       </div>
@@ -501,10 +501,10 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               <div style={{ padding: '14px 18px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14, marginBottom: 4 }}>
-                  Real Twilio Phone Call Test
+                  Real Plivo Phone Call Test (+91 India Line)
                 </div>
                 <div style={{ fontSize: 12, color: '#3b82f6', lineHeight: 1.5 }}>
-                  This initiates an actual telecom phone call to your phone via Twilio Programmable Voice. When you answer, Twilio connects to the Sara Bidirectional Media Stream.
+                  This initiates an actual telecom phone call to your phone via Plivo Voice API (+91 80 6552 2007). When you answer, Plivo connects to the Sara Bidirectional Media Stream.
                 </div>
               </div>
 

@@ -219,13 +219,6 @@ async def hangup_call(
         elif c.twilio_call_sid.startswith("exo_"):
             from server.services.voice.exotel_client import exotel_client
             await exotel_client.hangup_call(c.twilio_call_sid)
-        else:
-            try:
-                from server.services.voice.twilio_client import get_twilio_client
-                client = get_twilio_client()
-                client.calls(c.twilio_call_sid).update(status="completed")
-            except Exception:
-                pass
 
     c.status = "completed"
     c.ended_at = datetime.now(timezone.utc)

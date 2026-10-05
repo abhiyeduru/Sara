@@ -154,7 +154,7 @@ export default function PhoneNumbers({ onNavigate }) {
             Telephony & Virtual Phone Lines
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            Manage active phone lines powered by Plivo (+91 India carrier) and Twilio Voice APIs. Route inbound inquiries and place autonomous outbound AI calls.
+            Manage active phone lines powered by Plivo (+91 India carrier) and SARA Voice Runtime. Route inbound inquiries and place autonomous outbound AI calls.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
@@ -213,7 +213,7 @@ export default function PhoneNumbers({ onNavigate }) {
       <div className="card" style={{ padding: '16px 20px', marginBottom: 24, background: 'linear-gradient(180deg, rgba(124,58,237,0.03), transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Production Plivo & Twilio Inbound Webhook URL
+            Production Plivo Inbound Webhook URL
           </div>
           <div style={{ fontSize: 14, fontFamily: 'monospace', color: 'var(--text-primary)', marginTop: 4 }}>
             https://sara.saadhyam.com/api/v1/voice/plivo/inbound
@@ -236,7 +236,7 @@ export default function PhoneNumbers({ onNavigate }) {
             <Hash size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />
             <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>No Phone Numbers Configured</h3>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 440, margin: '0 auto 16px' }}>
-              Add a Twilio phone number so your AI employees can receive inbound calls and place outbound phone campaigns.
+              Add a carrier phone number so your AI employees can receive inbound calls and place outbound phone campaigns.
             </p>
             <button
               onClick={() => { setShowBuyModal(true); handleSearchAvailable(); }}
@@ -352,7 +352,7 @@ export default function PhoneNumbers({ onNavigate }) {
         }}>
           <div className="card" style={{ width: '100%', maxWidth: 580, padding: 24, borderRadius: 12 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Provision Twilio Virtual Phone Line
+              Provision Plivo Virtual Phone Line
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
               Select a phone number for your AI employees. Webhooks and Speech TwiML will be configured automatically.
@@ -382,7 +382,7 @@ export default function PhoneNumbers({ onNavigate }) {
             <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 16 }}>
               {availableNumbers.length === 0 ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  Click "Search Available" to fetch live phone numbers from Twilio.
+                  Click "Search Available" to fetch live phone numbers from Plivo.
                 </div>
               ) : (
                 availableNumbers.map((num) => (
@@ -438,7 +438,7 @@ export default function PhoneNumbers({ onNavigate }) {
               Initiate Outbound AI Call
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              Trigger Twilio to dial the destination phone. The customer will converse directly with your selected AI Employee.
+              Trigger carrier to dial the destination phone. The customer will converse directly with your selected AI Employee.
             </p>
 
             {callSuccessMessage ? (
@@ -476,7 +476,6 @@ export default function PhoneNumbers({ onNavigate }) {
                   >
                     <option value="plivo">Plivo (India +91 Calling — Direct Carrier Line: +91 80 6552 2007)</option>
                     <option value="exotel">Exotel (India +91 Calling — Sarvam Telugu / Qwen)</option>
-                    <option value="twilio">Twilio (Global Telephony)</option>
                   </select>
                 </div>
 
