@@ -339,19 +339,16 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
             ...prev,
             { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.call_sid || data.twilio_call_sid}` },
             { speaker: 'Telephony Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Carrier session initiated'}. Running simulated live caller session.` },
-            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
-            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండీ? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
-            { speaker: name, text: `హాయ్ అండి, అవును. గచ్చిబౌలి దగ్గర 2BHK లేదా 3BHK కోసం చూస్తున్నాను.` },
-            { speaker: empName, text: `చాలా మంచి ఆప్షన్స్ ఉన్నాయి అండి! మెంట్‌నియో గేటెడ్ కమ్యూనిటీ లో ₹85 లక్షల నుండి ప్రారంభమవుతున్నాయి. మీరు లివింగ్ పర్పస్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కోసమా అండి?` },
-            { speaker: name, text: `లివింగ్ కోసమేనండి, బడ్జెట్ ఒక 80-90 లక్షలు.` },
-            { speaker: empName, text: `సరిగ్గా మీ బడ్జెట్ లోనే 100% HMDA & RERA అప్రూవ్డ్ క్లబ్‌హౌస్ ఫ్లాట్స్ అందుబాటులో ఉన్నాయి అండి. ఈ శనివారం సైట్ విజిట్ కి రండి, వివరాలన్నీ వాట్సాప్ చేస్తాను!` }
-
+            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
+            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, ${employee?.role || 'కస్టమర్ అడ్వైజర్'}. మీరు మా సర్వీసెస్ గురించి ఎంక్వైరీ చేశారు కదా అండీ? మీకు ఏ విధంగా సహాయపడగలనో చెప్పండి అండీ.` },
+            { speaker: name, text: `హాయ్ అండి, అవునండి. నాకు పూర్తి వివరాలు మరియు కొటేషన్ కావాలి.` },
+            { speaker: empName, text: `ఖచ్చితంగా అండి! మీ రిక్వైర్మెంట్‌కి సరిపోయే బెస్ట్ ఆప్షన్స్ మా వద్ద సిద్ధంగా ఉన్నాయి. మీకు అనుకూలమైన సమయం చెబితే వెంటనే అన్ని వివరాలు వాట్సాప్ చేసి, నెక్స్ట్ స్టెప్స్ ప్లాన్ చేస్తాను అండి!` }
           ]);
         } else {
           setInstantCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.twilio_call_sid}` },
-            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
+            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.call_sid || data.twilio_call_sid || data.call_id}` },
+            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
           ]);
         }
       } else {

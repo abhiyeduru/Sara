@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.database import SessionLocal
 from server.models import (
-    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User
+    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User,
+    Workspace, BusinessProfile
 )
 from server.engine.conversation_manager import ConversationManager
 from server.engine.chunker import SentenceChunker
@@ -129,13 +130,27 @@ async def voice_websocket_endpoint(
                 faqs = []
             agent = FallbackAgent()
 
+        # Fetch business context dynamically
+        biz_name = "మా సంస్థ"
+        try:
+            ws = db.query(Workspace).first()
+            if ws and ws.name:
+                biz_name = ws.name
+            bp = db.query(BusinessProfile).first()
+            if bp and bp.business_name:
+                biz_name = bp.business_name
+        except Exception:
+            pass
+
         # 2. Get or generate prompt
         system_prompt = agent.generated_prompt.full_prompt if getattr(agent, 'generated_prompt', None) else (
-            "You are SARA, an ultra-intelligent, respectful, and warm AI property advisor for Mentneo Properties in Hyderabad. "
-            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally (e.g. 2 BHK, Gachibowli, Kokapet, ₹85 Lakhs). "
-            "Always be sweet, polite, and helpful, addressing the customer as అండీ (andi)."
+            f"You are SARA, an ultra-intelligent, remarkably sweet, polite, and respectful AI representative for {biz_name}. "
+            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally. "
+            "Always maintain a sweet, pleasant, and helpful demeanor. Always address the customer with high respect as అండీ (andi), "
+            "using polite phrases like 'నమస్కారం అండి', 'చెప్పండి అండి', 'ఖచ్చితంగా అండి', 'తప్పకుండా చేస్తాను అండి'. "
+            f"Speak accurately based on {biz_name}'s offerings and answer their questions gracefully."
         )
-        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else "నమస్కారం అండీ! నేను సారా. మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else f"నమస్కారం అండీ! నేను సారా. {biz_name} కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
         faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])]
 
         # 3. Create persistent ConversationSession in DB (safe fallback)

@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.models import (
     Call, AIEmployee, KnowledgeSource, KnowledgeDocument, Lead,
-    ConversationSession, SessionMessage, LatencyMetric, CallEvent
+    ConversationSession, SessionMessage, LatencyMetric, CallEvent,
+    Workspace, BusinessProfile
 )
 from server.engine.chunker import SentenceChunker
 from server.engine.normalizer import normalize_numbers_to_english
@@ -109,16 +110,37 @@ class ConversationOrchestrator:
                 pass
 
     def _compile_system_prompt(self) -> str:
-        """Compile layered system prompt with business context and strict safety policies."""
+        """Compile layered system prompt with dynamic business context and sweet, polite conversational guidelines."""
         emp_name = self.employee.name if self.employee else "Sara"
-        role = self.employee.role if self.employee else "AI Property Advisor"
-        dept = self.employee.department if self.employee else "Sales"
-        mission = self.employee.mission if self.employee else "Help customers find ideal premium apartments and book site visits."
+        role = self.employee.role if self.employee else "Customer Advisor"
+        dept = self.employee.department if self.employee else "Support & Sales"
+        mission = self.employee.mission if self.employee else "Assist customers with care, introduce business services, and answer questions."
 
-        # Fetch verified business knowledge if db is available
+        # Fetch verified business profile & knowledge
+        biz_name = "మా సంస్థ (Our Business)"
+        biz_desc = ""
+        biz_industry = ""
         knowledge_context = ""
+
         if self.db and self.employee:
             try:
+                # 1. Fetch Workspace
+                ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
+                if ws and ws.name:
+                    biz_name = ws.name
+                    if ws.settings and isinstance(ws.settings, dict):
+                        bp_data = ws.settings.get("business_profile") or {}
+                        biz_desc = bp_data.get("description", "")
+                        biz_industry = bp_data.get("industry", "")
+
+                # 2. Fetch BusinessProfile table if present
+                bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
+                if bp:
+                    biz_name = bp.business_name or biz_name
+                    biz_desc = bp.description or biz_desc
+                    biz_industry = bp.industry or biz_industry
+
+                # 3. Fetch Knowledge Documents
                 docs = self.db.query(KnowledgeDocument).filter(
                     KnowledgeDocument.workspace_id == self.employee.workspace_id
                 ).limit(5).all()
@@ -128,18 +150,28 @@ class ConversationOrchestrator:
             except Exception:
                 pass
 
-        base_prompt = f"""You are {emp_name}, a professional, warm, and highly capable {role} in the {dept} department.
+        base_prompt = f"""You are {emp_name}, representing {biz_name} ({biz_industry or 'Enterprise'}) as a {role} in the {dept} team.
 Your mission: {mission}
+{f"Business Overview: {biz_desc}" if biz_desc else ""}
 
-BEHAVIORAL AND CONVERSATIONAL GUIDELINES:
-1. Speak in a natural, friendly, conversational tone with concise, elegant sentences.
-2. NEVER give robotic or overly long monologues. Keep answers to 1-3 sentences per turn so the customer can respond.
-3. If the customer asks questions about price, availability, or property specs, rely ONLY on verified facts. Do NOT invent false prices, discounts, or guarantees.
-4. If you do not have specific information, politely state that you will have an executive verify and follow up.
-5. Inquiries about site visits or appointments: Use the schedule_appointment tool to record date and time.
-6. When customer shares contact or preference details: Use the create_lead tool to store them.
-7. If the customer is frustrated, asks for a human supervisor, or has a complex request: Use the transfer_to_human tool.
-8. When the conversation naturally concludes or the customer says goodbye, warmly thank them and invoke the end_call tool.
+SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
+1. **Sweet, Polite & Warm**: Speak with genuine kindness, warmth, and respectful affection (మర్యాదగా, వినయంగా, తియ్యగా మాట్లాడండి).
+2. **Telugu & Indic Honorifics**:
+   - Always address the customer with high respect: "నమస్కారం అండి" (Namaskaram andi), "అండి" (andi), "చెప్పండి అండి", "ఖచ్చితంగా అండి", "తప్పకుండా అండి", "ధన్యవాదాలు అండి".
+   - Never be blunt, cold, or mechanical. Make the customer feel truly welcomed and valued.
+3. **Language Matching**:
+   - If the customer speaks Telugu, reply natively in sweet, natural conversational Telugu blended with common English words.
+   - If they speak English or Telugu-English mix, match their language seamlessly.
+4. **Tailored to {biz_name}**:
+   - Talk strictly about {biz_name}'s specific products, services, offerings, and policies.
+   - NEVER assume an unrelated industry or invent facts outside the business context.
+5. **Concise & Turn-Based**:
+   - Keep each turn to 1-3 crisp, pleasant sentences so the customer can converse naturally without long monologues.
+6. **Actions & Tools**:
+   - If customer shares details or requests a callback: use `create_lead`.
+   - If customer wants an appointment or demo: use `schedule_appointment`.
+   - If customer asks for a human supervisor: politely use `transfer_to_human`.
+   - When concluding, warmly thank the customer and use `end_call`.
 
 {knowledge_context}
 """
