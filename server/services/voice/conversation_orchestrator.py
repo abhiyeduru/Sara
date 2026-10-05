@@ -80,7 +80,12 @@ class ConversationOrchestrator:
         self.last_user_time = 0.0
 
         # Services
-        self.voice_id = employee.voice_id if employee and employee.voice_id else settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+        import re
+        raw_vid = str(employee.voice_id if employee and employee.voice_id else "").strip().lower()
+        if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", raw_vid):
+            self.voice_id = raw_vid
+        else:
+            self.voice_id = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
         self.language = employee.voice_language if employee and employee.voice_language else "en"
         self.speed = employee.voice_speed if employee and employee.voice_speed else 1.0
 

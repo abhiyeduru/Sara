@@ -82,9 +82,11 @@ class CartesiaTTSService:
             return {"audio_bytes": b"", "latency_ms": 0.0, "error": "Cartesia API key missing"}
 
         import re
-        target_voice = voice_id or self.default_voice_id
-        if not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", str(target_voice).strip().lower()):
-            target_voice = self.default_voice_id
+        target_voice = str(voice_id or self.default_voice_id or "").strip().lower()
+        if not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", target_voice):
+            target_voice = getattr(settings, "DEFAULT_VOICE_ID", "330c4fa0-1da3-4c55-8e97-951bfd724e20")
+            if not re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", target_voice):
+                target_voice = "330c4fa0-1da3-4c55-8e97-951bfd724e20"
 
         # Language mapping
         lang_code = "en"

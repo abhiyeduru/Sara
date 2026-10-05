@@ -80,8 +80,9 @@ class DeepgramSTTService:
         else:
             lang_param = "en"
 
+        model_to_use = "nova-3" if lang_param in ["te", "telugu"] else (getattr(settings, "DEEPGRAM_MODEL", None) or "nova-3")
         params = [
-            f"model={settings.DEEPGRAM_MODEL or 'nova-3'}",
+            f"model={model_to_use}",
             f"encoding={self.encoding}",
             f"sample_rate={self.sample_rate}",
             f"channels={self.channels}",

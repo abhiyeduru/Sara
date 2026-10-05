@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from server.database import SessionLocal
 from server.models import Call, AIEmployee
 from server.services.voice.deepgram_service import DeepgramSTTService
-from server.services.voice.conversation_orchestrator import ConversationOrchestrator
+from server.services.voice.conversation_orchestrator import ConversationOrchestrator, ConversationState
 from server.services.voice.audio_codec_service import AudioCodecService
 
 logger = logging.getLogger("sara.voice.plivo_gateway")
