@@ -143,13 +143,14 @@ class PlivoMediaGateway:
         await asyncio.sleep(0.5)  # Stabilization pause for audio stream
         if self.orchestrator and self.is_running:
             logger.info(f"Streaming initial greeting: '{greeting_text}'")
-            await self.orchestrator._synthesize_and_send_chunk(greeting_text, time.perf_counter(), True)
+            self.orchestrator.messages.append({"role": "assistant", "content": greeting_text})
             self.orchestrator.transcript_history.append({
                 "speaker": self.orchestrator.employee.name if self.orchestrator.employee else "Sara",
                 "role": "assistant",
                 "text": greeting_text,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             })
+            await self.orchestrator._synthesize_and_send_chunk(greeting_text, time.perf_counter(), True)
             if self.orchestrator.state == ConversationState.SPEAKING:
                 self.orchestrator.is_speaking = False
                 self.orchestrator.set_state(ConversationState.LISTENING)
@@ -212,14 +213,18 @@ class PlivoMediaGateway:
 
             self._pending_utterance_chunks.append(clean)
             if speech_final:
-                # Deepgram confirmed speech endpointing -> dispatch immediately
-                await self._flush_pending_utterance(lang=lang, confidence=confidence)
-            else:
-                # User might still be speaking -> reset 350ms silence debouncer
+                # Deepgram confirmed speech endpointing -> debounce 200ms to allow multi-clause utterances to merge smoothly
                 if self._utterance_flush_task and not self._utterance_flush_task.done():
                     self._utterance_flush_task.cancel()
                 self._utterance_flush_task = asyncio.create_task(
-                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.350)
+                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.200)
+                )
+            else:
+                # User might still be speaking -> reset 400ms silence debouncer
+                if self._utterance_flush_task and not self._utterance_flush_task.done():
+                    self._utterance_flush_task.cancel()
+                self._utterance_flush_task = asyncio.create_task(
+                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.400)
                 )
 
     async def _debounced_flush(self, lang: str, confidence: float, delay: float = 0.350) -> None:

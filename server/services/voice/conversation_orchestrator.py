@@ -148,15 +148,18 @@ class ConversationOrchestrator:
 
     def _compile_system_prompt(self) -> str:
         """Compile layered system prompt with dynamic business context and sweet, polite conversational guidelines."""
-        emp_name = self.employee.name if self.employee else "Sara"
-        role = self.employee.role if self.employee else "Customer Advisor"
-        dept = self.employee.department if self.employee else "Support & Sales"
-        mission = self.employee.mission if self.employee else "Assist customers with care, introduce business services, and answer questions."
+        emp_name = self.employee.name if self.employee else "Priya"
+        role = self.employee.role if self.employee else "Senior Real Estate Advisor"
+        dept = self.employee.department if self.employee else "Client Advisory"
+        mission = self.employee.mission if self.employee else "Deeply understand customer requirements (budget, BHK, location), answer all questions politely and directly, and recommend the best tailored solutions."
 
         # Fetch verified business profile & knowledge
-        biz_name = "మా సంస్థ (Our Business)"
-        biz_desc = ""
-        biz_industry = ""
+        biz_name = "ABC Properties"
+        biz_desc = "Premier real estate company in Hyderabad offering apartments, villas, and gated plots."
+        biz_industry = "Real Estate"
+        locations_str = "Gachibowli, Kondapur, Kokapet, Bachupally, Patancheru, Miyapur, Shankarpally, Medchal"
+        services_str = "1, 2 & 3 BHK Flats, Luxury High-rise Apartments, Gated Villa Plots, Bank Loan Assistance (SBI/HDFC), Free Weekend Site Visits"
+        policies_str = "All projects HMDA & RERA approved. 100% clear titles. Up to 80% bank loan assistance."
         knowledge_context = ""
 
         if self.db and self.employee:
@@ -165,57 +168,81 @@ class ConversationOrchestrator:
                 ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
                 if ws and ws.name:
                     biz_name = ws.name
-                    if ws.settings and isinstance(ws.settings, dict):
-                        bp_data = ws.settings.get("business_profile") or {}
-                        biz_desc = bp_data.get("description", "")
-                        biz_industry = bp_data.get("industry", "")
 
                 # 2. Fetch BusinessProfile table if present
-                bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
+                bp = self.db.query(BusinessProfile).filter(
+                    (BusinessProfile.user_id == self.employee.workspace_id) |
+                    (BusinessProfile.user_id == getattr(self.employee, "created_by", None))
+                ).first()
                 if bp:
                     biz_name = bp.business_name or biz_name
                     biz_desc = bp.description or biz_desc
                     biz_industry = bp.industry or biz_industry
+                    if bp.locations:
+                        locations_str = ", ".join(bp.locations) if isinstance(bp.locations, list) else str(bp.locations)
+                    if bp.services_offered:
+                        services_str = ", ".join(bp.services_offered) if isinstance(bp.services_offered, list) else str(bp.services_offered)
+                    if bp.important_policies:
+                        policies_str = bp.important_policies
 
-                # 3. Fetch Knowledge Documents
-                docs = self.db.query(KnowledgeDocument).filter(
-                    KnowledgeDocument.workspace_id == self.employee.workspace_id
+                # 3. Fetch Knowledge Sources
+                ks_list = self.db.query(KnowledgeSource).filter(
+                    (KnowledgeSource.workspace_id == self.employee.workspace_id) |
+                    (KnowledgeSource.employee_id == self.employee.id)
                 ).limit(5).all()
-                if docs:
-                    knowledge_snippets = [f"- {d.title}: {d.content[:300]}" for d in docs if d.content]
-                    knowledge_context = "\nVERIFIED BUSINESS FACTS:\n" + "\n".join(knowledge_snippets)
-            except Exception:
-                pass
+                if ks_list:
+                    snippets = []
+                    for ks in ks_list:
+                        if ks.extracted_text:
+                            snippets.append(f"[{ks.name}]:\n{ks.extracted_text.strip()}")
+                    if snippets:
+                        knowledge_context = "\nVERIFIED REAL ESTATE OFFERINGS & PRICING:\n" + "\n\n".join(snippets)
+            except Exception as e:
+                logger.warning(f"Error compiling business context: {e}")
 
-        base_prompt = f"""You are {emp_name}, representing {biz_name} ({biz_industry or 'Enterprise'}) as a {role} in the {dept} team.
+        base_prompt = f"""You are {emp_name}, representing {biz_name} ({biz_industry}) as a {role} in the {dept} team.
 Your mission: {mission}
-{f"Business Overview: {biz_desc}" if biz_desc else ""}
-
-SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
-1. **Sweet, Polite & Warm**: Speak with genuine kindness, warmth, and respectful affection (మర్యాదగా, వినయంగా, తియ్యగా మాట్లాడండి).
-2. **Telugu & Indic Honorifics**:
-   - Always address the customer with high respect: "నమస్కారం అండి" (Namaskaram andi), "అండి" (andi), "చెప్పండి అండి", "ఖచ్చితంగా అండి", "తప్పకుండా అండి", "ధన్యవాదాలు అండి".
-   - Never be blunt, cold, or mechanical. Make the customer feel truly welcomed and valued.
-3. **Language Matching**:
-   - If the customer speaks Telugu, reply natively in sweet, natural conversational Telugu blended with common English words.
-   - If they speak English or Telugu-English mix, match their language seamlessly.
-4. **Tailored to {biz_name}**:
-   - Talk strictly about {biz_name}'s specific products, services, offerings, and policies.
-   - NEVER assume an unrelated industry or invent facts outside the business context.
-5. **Ultra-Crisp & Concise Spoken Turns (CRITICAL FOR LOW LATENCY)**:
-   - Speak ONLY 1 to 2 short, sweet sentences per turn (maximum 15 to 20 words).
-   - Never speak long paragraphs or multiple bullet points over the phone.
-   - Keep conversation flowing like a natural human on a real call.
-6. **No Repetitive Greetings**:
-   - Do NOT repeatedly re-introduce yourself with your full name or company name in subsequent turns if you have already greeted the customer in this call.
-   - If the customer says "Hello" or "హలో", acknowledge with a sweet, direct 1-line reply: e.g. "హలో అండి! చెప్పండి, మీకు ఏ విధంగా సహాయపడగలను?"
-7. **Actions & Tools**:
-   - If customer shares details or requests a callback: use `create_lead`.
-   - If customer wants an appointment or demo: use `schedule_appointment`.
-   - If customer asks for a human supervisor: politely use `transfer_to_human`.
-   - When concluding, warmly thank the customer and use `end_call`.
+Business Overview: {biz_desc}
+Available Locations: {locations_str}
+Key Offerings: {services_str}
+Policies & Loans: {policies_str}
 
 {knowledge_context}
+
+CRITICAL TELEPHONE CONVERSATION RULES:
+1. **Directly Answer What The Customer Asks or Needs (HIGHEST PRIORITY)**:
+   - LISTEN carefully to what the customer actually says and answer their exact question or requirement first.
+   - If customer states a budget (e.g. 30 Lakhs / ముప్పై లక్షలు):
+     * IMMEDIATELY acknowledge and provide concrete options matching that budget!
+     * Example: "30 లక్షల బడ్జెట్‌లో మా దగ్గర పటాన్‌చెరు మరియు బాచుపల్లి వద్ద మంచి 2 BHK ఫ్లాట్స్, అలాగే శంకర్‌పల్లి వద్ద గేటెడ్ విల్లా ప్లాట్లు అందుబాటులో ఉన్నాయి అండి. మీకు ఫ్లాట్ కావాలా లేదా విల్లా ప్లాట్ చూస్తారా అండి?"
+     * NEVER ask them for their budget again if they already stated it!
+     * NEVER parrot back "30 లక్షలు అంది?" without giving options!
+   - If customer asks "Why did you call?" / "ఎందుకు కాల్ చేశారు?":
+     * Answer directly: "నమస్కారం అండి! మేము ABC Properties నుంచి కాల్ చేశాం అండి. మీకు మంచి ప్రాపర్టీ ఆప్షన్స్, బెస్ట్ డీల్స్ వివరాలు అందించడానికి కాల్ చేశాం. మీకు ఎలాంటి ప్రాపర్టీ అవసరం ఉందో తెలుసుకోవచ్చా అండి?"
+   - If customer asks "How many calls will you make?" / "ఎన్ని సార్లు కాల్ చేస్తారు?":
+     * Apologize sweetly: "క్షమించండి అండి మీకు ఇబ్బంది అయితే. మేము కేవలం వివరాలు అందించడానికే కాల్ చేశాం. మీకు ప్రస్తుతం ప్రాపర్టీ అవసరం లేకపోతే మీ నంబర్ అప్‌డేట్ చేస్తాను అండి."
+   - If customer asks about bank loans or approvals:
+     * Answer: "అన్ని ప్రాజెక్ట్స్ HMDA మరియు RERA అప్రూవ్డ్ అండి. SBI, HDFC బ్యాంకుల నుంచి 80% వరకు లోన్ సదుపాయం ఉంది."
+
+2. **No Repetitive Greetings**:
+   - The initial greeting has ALREADY been spoken.
+   - Do NOT say "నమస్కారం అండి!" or "హలో అండి!" or re-introduce your name/company in subsequent turns.
+   - If the customer says "Hello" or "హలో": acknowledge conversationally without re-introducing yourself: "చెప్పండి అండి, నేను వింటున్నాను. మీకు ఎలాంటి ప్రాపర్టీ వివరాలు కావాలి అండి?". NEVER say "నేను ABC Properties నుంచి Priya" again!
+   - In ongoing turns, start directly with: "ఖచ్చితంగా అండి", "తప్పకుండా అండి", "అవునండి", "చెప్పండి అండి".
+
+3. **Ultra-Crisp Spoken Turns (1 to 2 Short Sentences)**:
+   - Speak ONLY 1 to 2 short sentences per turn (maximum 15 to 20 words).
+   - This ensures ultra-fast audio playback with zero lag. Never speak long monologues.
+
+4. **Sweet, Warm, Respectful Telugu / English**:
+   - Speak with genuine warmth, kindness, and respectful Telugu honorifics ("అండి", "చెప్పండి అండి", "ధన్యవాదాలు అండి").
+   - Match the customer's language naturally (Telugu, English, or Telugu-English mix).
+
+5. **Call Actions**:
+   - If customer is interested in seeing properties: invite them for a free weekend site visit.
+   - If customer confirms details: use `create_lead`.
+   - If customer requests a callback or meeting: use `schedule_appointment`.
+   - When ending the call: thank them warmly with "చాలా ధన్యవాదాలు అండి. మంచి రోజు కావాలని కోరుకుంటున్నాను!" and use `end_call`.
 """
         return base_prompt
 
@@ -285,8 +312,16 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 
         logger.info(f"[Call {self.call_id}] Customer (Turn {self.turn_index}): {clean_text}")
 
-        # Record customer message
-        self.messages.append({"role": "user", "content": clean_text})
+        # Record customer message - consolidate consecutive user utterances so the LLM sees complete thought
+        if self.messages and self.messages[-1]["role"] == "user":
+            prev_content = self.messages[-1]["content"]
+            if clean_text.lower() not in prev_content.lower():
+                self.messages[-1]["content"] = f"{prev_content} {clean_text}".strip()
+            clean_text = self.messages[-1]["content"]
+            logger.info(f"[Call {self.call_id}] Consolidated user utterance into: '{clean_text}'")
+        else:
+            self.messages.append({"role": "user", "content": clean_text})
+
         self.transcript_history.append({
             "speaker": "customer",
             "role": "user",
@@ -334,11 +369,11 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
             )
 
             if use_groq:
-                # Ultra-low latency (~150ms) direct streaming via Groq (80 tokens max for crisp turns)
+                # Ultra-low latency (~150ms) direct streaming via Groq (100 tokens max for crisp turns)
                 async for gchunk in self.fallback_groq.stream_chat(
                     messages=self.messages,
                     system_prompt=self._system_prompt,
-                    max_tokens=80
+                    max_tokens=100
                 ):
                     if self.state == ConversationState.INTERRUPTED:
                         break
@@ -449,7 +484,7 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 
             # Fallback if no tokens generated
             if not full_reply_tokens and self.state != ConversationState.INTERRUPTED:
-                fallback_msg = "నమస్కారం అండి! నేను వింటున్నాను, చెప్పండి అండి." if self.language in ["te", "telugu"] else "I am here, please tell me."
+                fallback_msg = "అవునండి, నేను వింటున్నాను, చెప్పండి అండి." if self.language in ["te", "telugu"] else "Yes, I am listening, please go ahead."
                 full_reply_tokens.append(fallback_msg)
                 await self._synthesize_and_send_chunk(fallback_msg, turn_start_time, True)
 
