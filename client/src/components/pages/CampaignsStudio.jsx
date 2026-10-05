@@ -210,7 +210,8 @@ export default function CampaignsStudio({ onNavigate }) {
 
   // ── Trigger Quick Call ("Call with Sara") ──────────────────────────────────
   const handleTriggerQuickCall = async () => {
-    if (!phoneNumber.trim()) {
+    const cleanNumber = phoneNumber.replace(/=/g, '+').trim();
+    if (!cleanNumber) {
       alert('Please enter a phone number to call.');
       return;
     }
@@ -220,7 +221,7 @@ export default function CampaignsStudio({ onNavigate }) {
     setCallOutcome('');
     setCallSummary('');
     setCallTranscript([
-      { speaker: 'System', text: `Initiating call to ${phoneNumber} via Twilio Voice API...` }
+      { speaker: 'System', text: `Initiating call to ${cleanNumber} via Twilio Voice API...` }
     ]);
 
     try {
@@ -228,7 +229,7 @@ export default function CampaignsStudio({ onNavigate }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: phoneNumber.trim(),
+          phone_number: cleanNumber,
           lead_name: leadName.trim() || 'Valued Customer',
           instruction: instruction || 'Introduce our business, understand their inquiry, and schedule next steps.',
           business_name: bizProfile.business_name || 'My Business',
@@ -246,7 +247,7 @@ export default function CampaignsStudio({ onNavigate }) {
             ...prev,
             {
               speaker: 'System',
-              text: `⚠️ Notice: Call was simulated (SID: ${data.twilio_call_sid}). Twilio could not place a real call to ${phoneNumber}.`
+              text: `⚠️ Notice: Call was simulated (SID: ${data.twilio_call_sid}). Twilio could not place a real telecom call to ${cleanNumber}.`
             },
             {
               speaker: 'Twilio Error',
@@ -260,7 +261,7 @@ export default function CampaignsStudio({ onNavigate }) {
         } else {
           setCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Ringing ${phoneNumber}... Telephony SID: ${data.twilio_call_sid || data.call_id}` }
+            { speaker: 'System', text: `Ringing ${cleanNumber}... Telephony SID: ${data.twilio_call_sid || data.call_id}` }
           ]);
         }
         if (data.call_id) {
@@ -447,10 +448,11 @@ export default function CampaignsStudio({ onNavigate }) {
                     className="input"
                     value={phoneNumber}
                     onChange={(e) => {
-                      setPhoneNumber(e.target.value);
-                      checkCompliance(e.target.value);
+                      const clean = e.target.value.replace(/=/g, '+');
+                      setPhoneNumber(clean);
+                      checkCompliance(clean);
                     }}
-                    placeholder="Enter phone number (e.g. 9876543210)"
+                    placeholder="Enter phone number (e.g. 9876543210 or +91 6305259617)"
                     style={{ width: '100%', fontSize: 14, fontWeight: 600, paddingLeft: 42 }}
                   />
                   <span style={{ position: 'absolute', left: 12, top: 10, fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -676,6 +678,56 @@ export default function CampaignsStudio({ onNavigate }) {
                     • Outcome: <strong>{callOutcome}</strong><br />
                     {callSummary && <>• AI Summary: <strong>{callSummary}</strong><br /></>}
                     • 2-Way Sync: <strong>Updated Lead Record & CRM</strong>
+                  </div>
+                </div>
+              )}
+
+              {/* Twilio Trial Guidance Banner */}
+              {activeCall?.is_simulated && (
+                <div style={{
+                  marginTop: 16,
+                  padding: '16px 18px',
+                  borderRadius: 12,
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#92400e', fontSize: 13 }}>
+                    <AlertCircle size={18} color="#d97706" /> Twilio Trial Telephony Guide
+                  </div>
+                  <div style={{ fontSize: 12, color: '#78350f', lineHeight: 1.5 }}>
+                    Your Twilio account is in <strong>Trial Mode</strong>. Twilio blocks placing telecom calls to unverified numbers.
+                    To receive actual ringing calls on <strong>{phoneNumber || 'your phone'}</strong>:
+                    <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
+                      <li><strong>Verify Recipient</strong>: Open <a href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline' }}>Twilio Verified Caller IDs</a> and add your phone number with the SMS code.</li>
+                      <li><strong>Claim Free Number</strong>: Click "Get Phone Number" on the <a href="https://console.twilio.com" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'underline' }}>Twilio Console Dashboard</a>.</li>
+                    </ol>
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4, flexWrap: 'wrap' }}>
+                    <a
+                      href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified"
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '8px 14px', borderRadius: 8, background: '#f59e0b',
+                        color: '#fff', fontSize: 12, fontWeight: 700, textDecoration: 'none'
+                      }}
+                    >
+                      <ExternalLink size={14} /> Open Twilio Verified Caller IDs
+                    </a>
+                    <button
+                      onClick={() => onNavigate && onNavigate('talk_with_sara')}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '8px 14px', borderRadius: 8, background: '#7c3aed',
+                        color: '#fff', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer'
+                      }}
+                    >
+                      <Mic size={14} /> Talk Live with Sara (Browser Mic Mode)
+                    </button>
                   </div>
                 </div>
               )}

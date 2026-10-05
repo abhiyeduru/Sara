@@ -28,12 +28,12 @@ def get_twilio_client() -> Client:
     if not account_sid:
         raise ValueError("TWILIO_ACCOUNT_SID is not set in environment or .env file.")
 
-    if api_key and api_secret:
-        logger.info("Initializing Twilio client using API Key/Secret.")
-        _cached_client = Client(api_key, api_secret, account_sid=account_sid)
-    elif auth_token:
+    if account_sid and auth_token:
         logger.info("Initializing Twilio client using Account SID and Auth Token.")
         _cached_client = Client(account_sid, auth_token)
+    elif api_key and api_secret:
+        logger.info("Initializing Twilio client using API Key/Secret.")
+        _cached_client = Client(api_key, api_secret, account_sid=account_sid)
     else:
         raise ValueError("Neither TWILIO_AUTH_TOKEN nor TWILIO_API_KEY/SECRET is provided.")
 

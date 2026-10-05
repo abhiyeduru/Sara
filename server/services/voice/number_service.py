@@ -18,8 +18,36 @@ class NumberService:
     def list_numbers(db: Session, workspace_id: str) -> List[Dict[str, Any]]:
         """
         List phone numbers configured for the workspace.
-        Also syncs with live Twilio incoming phone numbers.
+        Also syncs with live Plivo and Twilio incoming phone numbers.
         """
+        # Ensure Plivo number is synced if configured
+        if getattr(settings, "PLIVO_AUTH_ID", None) and getattr(settings, "PLIVO_AUTH_TOKEN", None):
+            plivo_num = getattr(settings, "PLIVO_PHONE_NUMBER", "+918065522007") or "+918065522007"
+            clean_p = plivo_num.replace(" ", "")
+            existing_p = db.query(PhoneNumber).filter(
+                (PhoneNumber.workspace_id == workspace_id) &
+                ((PhoneNumber.number == clean_p) | (PhoneNumber.number == "+918065522007") | (PhoneNumber.number == "918065522007"))
+            ).first()
+            if not existing_p:
+                try:
+                    new_p = PhoneNumber(
+                        workspace_id=workspace_id,
+                        number="+918065522007",
+                        phone_number="+918065522007",
+                        friendly_name="Plivo India Line (+91 80 6552 2007)",
+                        twilio_sid="plv_num_918065522007",
+                        country="IN",
+                        provider="plivo",
+                        status="active",
+                        capabilities=["voice"],
+                        monthly_cost=2.50,
+                    )
+                    db.add(new_p)
+                    db.commit()
+                except Exception as ex:
+                    db.rollback()
+                    logger.warning(f"Could not auto-seed Plivo number: {ex}")
+
         db_numbers = db.query(PhoneNumber).filter(PhoneNumber.workspace_id == workspace_id).all()
 
         results = []

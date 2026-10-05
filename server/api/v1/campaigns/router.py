@@ -25,7 +25,7 @@ from server.models import (
     Lead, Call, AIEmployee, CreditAccount
 )
 from server.engine.agent_compiler import AgentCompiler
-from server.services.voice.call_service import CallService
+from server.services.voice.call_service import CallService, normalize_phone_number
 from server.services.voice.transcript_service import TranscriptService
 from server.providers.groq_llm import GroqLLM
 from server.providers.openai_llm import OpenAILLM
@@ -111,14 +111,7 @@ def check_trai_compliance(phone_number: str) -> Dict[str, Any]:
     2. Phone number format validation.
     3. National Do Not Call (DND/NDNC) simulated registry check.
     """
-    clean = re.sub(r"[^\d+]", "", phone_number)
-    if clean.startswith("0"):
-        clean = "+91" + clean[1:]
-    elif not clean.startswith("+"):
-        if len(clean) == 10:
-            clean = "+91" + clean
-        else:
-            clean = "+" + clean
+    clean = normalize_phone_number(phone_number)
 
     # IST Time check
     ist = ZoneInfo("Asia/Kolkata")
@@ -257,11 +250,7 @@ async def trigger_quick_call(
     and initiates the outbound voice call.
     """
     ws = get_user_workspace(db, user)
-    clean_to = body.phone_number.strip().replace(" ", "").replace("-", "")
-    if clean_to.startswith("0"):
-        clean_to = "+91" + clean_to[1:]
-    elif not clean_to.startswith("+"):
-        clean_to = f"+91{clean_to}" if len(clean_to) == 10 else f"+{clean_to}"
+    clean_to = normalize_phone_number(body.phone_number)
 
     # Compliance check
     comp = check_trai_compliance(clean_to)

@@ -28,18 +28,12 @@ router = APIRouter(tags=["Voice Stream"])
 from server.providers.deepgram_stt import DeepgramSTT
 
 class UnifiedSTT:
-    def __init__(self, sarvam: SarvamSTT, deepgram: DeepgramSTT):
-        self.sarvam = sarvam
+    def __init__(self, deepgram: DeepgramSTT, sarvam: SarvamSTT):
         self.deepgram = deepgram
+        self.sarvam = sarvam
 
     async def transcribe(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> Dict[str, Any]:
-        try:
-            res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
-            if res.get("transcript") and not res.get("error"):
-                return res
-        except Exception as e:
-            logger.warning(f"Sarvam STT notice: {e}")
-
+        # Deepgram is the Primary STT Provider
         if self.deepgram.api_key:
             try:
                 res = await self.deepgram.transcribe(audio_bytes, language_hint=language_hint)
@@ -48,10 +42,18 @@ class UnifiedSTT:
             except Exception as e:
                 logger.warning(f"Deepgram STT notice: {e}")
 
+        # Fallback if Deepgram encounters network issue
+        try:
+            res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
+            if res.get("transcript") and not res.get("error"):
+                return res
+        except Exception as e:
+            logger.warning(f"Secondary STT notice: {e}")
+
         return await self.sarvam._fallback_groq(audio_bytes, time.perf_counter(), language_hint=language_hint)
 
-stt_provider = UnifiedSTT(SarvamSTT(), DeepgramSTT())
-llm_provider = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
+stt_provider = UnifiedSTT(DeepgramSTT(), SarvamSTT())
+llm_provider = OpenAILLM() if settings.PRIMARY_LLM == "openai" else GroqLLM()
 from server.providers.edge_tts_provider import EdgeTTSProvider
 
 sarvam_tts = SarvamTTS()

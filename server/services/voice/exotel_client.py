@@ -49,11 +49,31 @@ class ExotelClient:
         subdomain: Optional[str] = None,
         caller_id: Optional[str] = None,
     ):
-        self.api_key = api_key or settings.EXOTEL_API_KEY
-        self.api_token = api_token or settings.EXOTEL_API_TOKEN
-        self.account_sid = account_sid or settings.EXOTEL_ACCOUNT_SID or "sara"
-        self.subdomain = subdomain or settings.EXOTEL_SUBDOMAIN or "api.exotel.com"
-        self.caller_id = caller_id or settings.EXOTEL_CALLER_ID or ""
+        self._api_key = api_key
+        self._api_token = api_token
+        self._account_sid = account_sid
+        self._subdomain = subdomain
+        self._caller_id = caller_id
+
+    @property
+    def api_key(self) -> str:
+        return self._api_key or settings.EXOTEL_API_KEY
+
+    @property
+    def api_token(self) -> str:
+        return self._api_token or settings.EXOTEL_API_TOKEN
+
+    @property
+    def account_sid(self) -> str:
+        return self._account_sid or settings.EXOTEL_ACCOUNT_SID or "mentneo4"
+
+    @property
+    def subdomain(self) -> str:
+        return self._subdomain or settings.EXOTEL_SUBDOMAIN or "api.exotel.com"
+
+    @property
+    def caller_id(self) -> str:
+        return self._caller_id or settings.EXOTEL_CALLER_ID or "08047288405"
 
     @property
     def is_configured(self) -> bool:

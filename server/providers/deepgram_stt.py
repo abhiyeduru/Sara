@@ -56,8 +56,9 @@ class DeepgramSTT(STTProvider):
         else:
             params["detect_language"] = "true"
 
+        import certifi
         try:
-            async with httpx.AsyncClient(timeout=4.0) as client:
+            async with httpx.AsyncClient(timeout=6.0, verify=certifi.where()) as client:
                 res = await client.post(self.endpoint, headers=headers, params=params, content=audio_bytes)
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000

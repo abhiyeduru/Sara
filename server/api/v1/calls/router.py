@@ -18,7 +18,7 @@ class CallCreate(BaseModel):
     to: str
     lead_id: Optional[str] = None
     from_number: Optional[str] = None
-    provider: Optional[str] = "exotel"  # "exotel", "twilio", "simulator"
+    provider: Optional[str] = "plivo"  # "plivo", "twilio", "simulator", "exotel"
     simulate: Optional[bool] = False
 
 
@@ -62,13 +62,23 @@ async def make_outbound_call(
     user: User = Depends(get_current_user),
 ):
     """
-    Trigger an outbound AI call.
-    Automatically routes to Exotel for Indian numbers (+91) or when provider='exotel'.
+    Trigger an outbound AI call via configured telephony provider (default: Plivo).
     """
-    target = body.to.strip()
-    is_indian = target.startswith("+91") or (len(target.replace(" ", "")) == 10 and target.replace(" ", "").isdigit())
-    
-    if body.provider == "exotel" or (is_indian and body.provider != "twilio"):
+    active_provider = body.provider or getattr(settings, "TELEPHONY_PROVIDER", "plivo")
+
+    if active_provider == "plivo":
+        from server.services.voice.plivo_service import PlivoService
+        return await PlivoService.initiate_outbound_call(
+            db=db,
+            user=user,
+            employee_id=body.employee_id,
+            to_number=body.to,
+            lead_id=body.lead_id,
+            from_number=body.from_number,
+            simulate=body.simulate or False,
+        )
+
+    if active_provider == "exotel":
         from server.services.voice.exotel_service import ExotelService
         return await ExotelService.initiate_outbound_call(
             db=db,
@@ -88,6 +98,25 @@ async def make_outbound_call(
         to_number=body.to,
         lead_id=body.lead_id,
         from_number=body.from_number,
+    )
+
+
+@router.post("/plivo", status_code=201)
+async def make_plivo_call(
+    body: CallCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Explicitly trigger an outbound call via Plivo Voice."""
+    from server.services.voice.plivo_service import PlivoService
+    return await PlivoService.initiate_outbound_call(
+        db=db,
+        user=user,
+        employee_id=body.employee_id,
+        to_number=body.to,
+        lead_id=body.lead_id,
+        from_number=body.from_number,
+        simulate=body.simulate or False,
     )
 
 
@@ -184,7 +213,10 @@ async def hangup_call(
 
     # Hangup provider call if active
     if c.twilio_call_sid:
-        if c.twilio_call_sid.startswith("exo_"):
+        if c.twilio_call_sid.startswith("plv_"):
+            from server.services.voice.plivo_client import plivo_client
+            plivo_client.hangup_call(c.twilio_call_sid)
+        elif c.twilio_call_sid.startswith("exo_"):
             from server.services.voice.exotel_client import exotel_client
             await exotel_client.hangup_call(c.twilio_call_sid)
         else:

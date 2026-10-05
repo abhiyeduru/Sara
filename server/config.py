@@ -39,6 +39,10 @@ class Settings:
 
     # Deepgram STT
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")
+    DEEPGRAM_REGION: str = os.getenv("DEEPGRAM_REGION", "global")
+    DEEPGRAM_MODEL: str = os.getenv("DEEPGRAM_MODEL", "nova-2")
+    PUBLIC_WS_URL: str = os.getenv("PUBLIC_WS_URL", "")
+    PUBLIC_BASE_URL: str = os.getenv("PUBLIC_BASE_URL", "")
 
     # Ollama Local LLM
     OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
@@ -66,6 +70,13 @@ class Settings:
     TWILIO_API_SECRET: str = os.getenv("TWILIO_API_SECRET", "")
     TWILIO_PHONE_NUMBER: str = os.getenv("TWILIO_PHONE_NUMBER", "")
     TWILIO_WEBHOOK_BASE_URL: str = os.getenv("TWILIO_WEBHOOK_BASE_URL", "http://localhost:8000")
+
+    # Plivo Voice & Telephony Layer
+    PLIVO_AUTH_ID: str = os.getenv("PLIVO_AUTH_ID", "")
+    PLIVO_AUTH_TOKEN: str = os.getenv("PLIVO_AUTH_TOKEN", "")
+    PLIVO_PHONE_NUMBER: str = os.getenv("PLIVO_PHONE_NUMBER", "+918065522007")
+    PLIVO_WEBHOOK_BASE_URL: str = os.getenv("PLIVO_WEBHOOK_BASE_URL", "http://localhost:8000")
+    TELEPHONY_PROVIDER: str = os.getenv("TELEPHONY_PROVIDER", "plivo")
 
     # Google Workspace Hub OAuth
     GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")

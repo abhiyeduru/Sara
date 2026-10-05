@@ -20,6 +20,38 @@ from .voice_events import voice_events_bus
 logger = logging.getLogger("sara.voice.service")
 
 
+def normalize_phone_number(raw_phone: str) -> str:
+    """
+    Standardize raw phone numbers into clean E.164 international format (+91...).
+    Handles typos like '=' instead of '+', spaces, dashes, brackets, and leading zeros.
+    """
+    if not raw_phone:
+        return ""
+    cleaned = (
+        str(raw_phone)
+        .strip()
+        .replace("=", "+")
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(".", "")
+    )
+    if cleaned.startswith("+"):
+        digits = "".join(c for c in cleaned[1:] if c.isdigit())
+        return f"+{digits}"
+    digits = "".join(c for c in cleaned if c.isdigit())
+    if len(digits) == 10:
+        return f"+91{digits}"
+    elif digits.startswith("91") and len(digits) == 12:
+        return f"+{digits}"
+    elif digits.startswith("0") and len(digits) == 11:
+        return f"+91{digits[1:]}"
+    elif digits.startswith("1") and len(digits) == 11:
+        return f"+{digits}"
+    return f"+{digits}"
+
+
 class CallService:
     @staticmethod
     def initiate_outbound_call(
@@ -34,7 +66,7 @@ class CallService:
         Orchestrate an AI outbound call through Twilio.
         Flow:
         1. Validate Employee
-        2. Validate Phone Number
+        2. Validate & Normalize Phone Number
         3. Check Calling Permission
         4. Check Credits Balance
         5. Create DB Call Record
@@ -71,13 +103,13 @@ class CallService:
                 detail="Insufficient workspace calling credits. Please top up your balance."
             )
 
-        # 4. Format Phone Number
-        clean_to = to_number.strip().replace(" ", "").replace("-", "")
-        if not clean_to.startswith("+"):
-            if len(clean_to) == 10:
-                clean_to = f"+91{clean_to}"
-            else:
-                clean_to = f"+{clean_to}"
+        # 4. Format & Normalize Phone Number
+        clean_to = normalize_phone_number(to_number)
+        if not clean_to or len(clean_to) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phone number '{to_number}'. Please provide a valid number with country code."
+            )
 
         # 5. Resolve Caller ID (From number)
         twilio_client = get_twilio_client()
