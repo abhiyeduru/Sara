@@ -286,21 +286,28 @@ RULES:
         logger.info(f"[Call {self.call_id}] Customer (Turn {self.turn_index}): {clean_text}")
 
         # Record customer message - consolidate consecutive user utterances so the LLM sees complete thought
+        is_consolidated = False
         if self.messages and self.messages[-1]["role"] == "user":
             prev_content = self.messages[-1]["content"]
             if clean_text.lower() not in prev_content.lower():
                 self.messages[-1]["content"] = f"{prev_content} {clean_text}".strip()
             clean_text = self.messages[-1]["content"]
+            is_consolidated = True
             logger.info(f"[Call {self.call_id}] Consolidated user utterance into: '{clean_text}'")
         else:
             self.messages.append({"role": "user", "content": clean_text})
 
-        self.transcript_history.append({
-            "speaker": "customer",
-            "role": "user",
-            "text": clean_text,
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        })
+        # Keep transcript history clean: update last entry if consolidated, else append
+        if is_consolidated and self.transcript_history and self.transcript_history[-1].get("role") == "user":
+            self.transcript_history[-1]["text"] = clean_text
+            self.transcript_history[-1]["timestamp"] = datetime.now(timezone.utc).isoformat()
+        else:
+            self.transcript_history.append({
+                "speaker": "customer",
+                "role": "user",
+                "text": clean_text,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
 
         if self.send_event_callback:
             try:
