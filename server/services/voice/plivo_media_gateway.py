@@ -39,6 +39,8 @@ class PlivoMediaGateway:
         self.orchestrator: Optional[ConversationOrchestrator] = None
         self.is_running = True
         self._playback_counter = 0
+        self._pending_utterance_chunks: List[str] = []
+        self._utterance_flush_task: Optional[asyncio.Task] = None
 
     async def handle_stream(self) -> None:
         """Main lifecycle loop for Plivo WebSocket Media Stream."""
@@ -125,6 +127,7 @@ class PlivoMediaGateway:
             language=lang,
             on_transcript=self._on_deepgram_transcript,
             on_speech_started=self._on_deepgram_speech_started,
+            on_utterance_end=self._on_deepgram_utterance_end,
         )
 
         connected = await self.deepgram_service.connect()
@@ -163,34 +166,65 @@ class PlivoMediaGateway:
             await self.deepgram_service.send_audio(raw_audio)
 
     async def _on_deepgram_speech_started(self) -> None:
-        """Deepgram speech activity detected - logged for telemetry."""
-        logger.debug("Deepgram SpeechStarted detected")
+        """Deepgram speech activity detected -> trigger instant barge-in if assistant is speaking."""
+        if self.orchestrator and self.orchestrator.is_speaking:
+            logger.info(f"[Call {self.call_id}] SpeechStarted during assistant speech -> barge-in")
+            await self.orchestrator.handle_barge_in()
 
-    async def _on_deepgram_transcript(self, transcript: str, is_final: bool, lang: str, confidence: float) -> None:
-        """Handle transcript produced by Deepgram."""
+    async def _on_deepgram_utterance_end(self) -> None:
+        """Deepgram detected utterance end silence -> flush pending utterance."""
+        await self._flush_pending_utterance(lang="te", confidence=0.95)
+
+    async def _on_deepgram_transcript(
+        self,
+        transcript: str,
+        is_final: bool,
+        speech_final: bool = False,
+        lang: str = "te",
+        confidence: float = 0.95
+    ) -> None:
+        """Handle transcript produced by Deepgram with smart barge-in and debounced turn assembly."""
         clean = transcript.strip()
         if not clean or not self.orchestrator:
             return
 
-        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks substantive words during playback
+        # 1. Immediate Barge-in: if assistant is speaking, ANY clear caller words immediately interrupt
         if self.orchestrator.is_speaking:
-            words = clean.split()
-            single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
-            is_greeting = len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words)
-            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen"}
-            has_interruption = any(w.lower().strip("!.,? ") in interruption_words for w in words)
+            logger.info(f"[Call {self.call_id}] Caller spoke ('{clean}') during assistant speech -> barge-in confirmed")
+            await self.orchestrator.handle_barge_in()
 
-            if not is_greeting and (len(words) >= 3 or has_interruption):
-                logger.info(f"Caller spoken words ('{clean}') -> triggering genuine barge-in")
-                await self.orchestrator.handle_barge_in()
-            else:
-                logger.debug(f"Ignoring non-interruptive backchannel/greeting during assistant speech: '{clean}'")
-
-
-        # 2. Process final customer utterance
+        # 2. Accumulate final transcripts into a coherent customer utterance
         if is_final:
+            self._pending_utterance_chunks.append(clean)
+            if speech_final:
+                # Deepgram confirmed speech endpointing -> dispatch immediately
+                await self._flush_pending_utterance(lang=lang, confidence=confidence)
+            else:
+                # User might still be speaking -> reset 350ms silence debouncer
+                if self._utterance_flush_task and not self._utterance_flush_task.done():
+                    self._utterance_flush_task.cancel()
+                self._utterance_flush_task = asyncio.create_task(
+                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.350)
+                )
+
+    async def _debounced_flush(self, lang: str, confidence: float, delay: float = 0.350) -> None:
+        try:
+            await asyncio.sleep(delay)
+            await self._flush_pending_utterance(lang=lang, confidence=confidence)
+        except asyncio.CancelledError:
+            pass
+
+    async def _flush_pending_utterance(self, lang: str, confidence: float) -> None:
+        if self._utterance_flush_task and not self._utterance_flush_task.done():
+            self._utterance_flush_task.cancel()
+        if not self._pending_utterance_chunks or not self.orchestrator:
+            return
+        combined_text = " ".join(self._pending_utterance_chunks).strip()
+        self._pending_utterance_chunks = []
+        if combined_text:
+            logger.info(f"[Call {self.call_id}] Dispatching full customer utterance: '{combined_text}'")
             await self.orchestrator.handle_user_utterance(
-                text=clean,
+                text=combined_text,
                 confidence=confidence,
                 detected_lang=lang
             )
@@ -198,13 +232,14 @@ class PlivoMediaGateway:
     async def _send_audio_to_plivo(self, mulaw_audio: bytes, text: str) -> None:
         """
         Chunk and stream synthesized μ-law audio packets to Plivo WebSocket via playAudio.
+        Uses 160ms chunks (1280 bytes) for smooth, low-latency, jitter-free playback.
         """
         if not self.ws or not mulaw_audio:
             return
 
         playback_id = self._playback_counter
-        # 320 bytes = 40ms of 8kHz μ-law audio
-        chunks = AudioCodecService.chunk_mulaw(mulaw_audio, chunk_size=320)
+        # 1280 bytes = 160ms of 8kHz μ-law audio
+        chunks = AudioCodecService.chunk_mulaw(mulaw_audio, chunk_size=1280)
         logger.info(f"Streaming {len(chunks)} audio frames to Plivo for: '{text[:40]}...'")
         for chunk in chunks:
             if not self.is_running or self._playback_counter != playback_id:
@@ -221,7 +256,7 @@ class PlivoMediaGateway:
             }
             try:
                 await self.ws.send_text(json.dumps(play_msg))
-                await asyncio.sleep(0.035)  # 35ms sleep for 40ms audio chunk
+                await asyncio.sleep(0.150)  # 150ms sleep for 160ms audio chunk
             except Exception as e:
                 logger.warning(f"Error streaming audio to Plivo: {e}")
                 break

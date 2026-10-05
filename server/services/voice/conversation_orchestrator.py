@@ -197,11 +197,13 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 4. **Tailored to {biz_name}**:
    - Talk strictly about {biz_name}'s specific products, services, offerings, and policies.
    - NEVER assume an unrelated industry or invent facts outside the business context.
-5. **Concise & Turn-Based**:
-   - Keep each turn to 1-3 crisp, pleasant sentences so the customer can converse naturally without long monologues.
+5. **Ultra-Crisp & Concise Spoken Turns (CRITICAL FOR LOW LATENCY)**:
+   - Speak ONLY 1 to 2 short, sweet sentences per turn (maximum 15 to 20 words).
+   - Never speak long paragraphs or multiple bullet points over the phone.
+   - Keep conversation flowing like a natural human on a real call.
 6. **No Repetitive Greetings**:
    - Do NOT repeatedly re-introduce yourself with your full name or company name in subsequent turns if you have already greeted the customer in this call.
-   - If the customer says "Hello?", "Yes", or asks a question, reply directly to what they said with warmth (e.g. "చెప్పండి అండి, మీకు ఎలాంటి ప్రాపర్టీ కావాలి?" or "Yes, please tell me how I can help").
+   - If the customer says "Hello" or "హలో", acknowledge with a sweet, direct 1-line reply: e.g. "హలో అండి! చెప్పండి, మీకు ఏ విధంగా సహాయపడగలను?"
 7. **Actions & Tools**:
    - If customer shares details or requests a callback: use `create_lead`.
    - If customer wants an appointment or demo: use `schedule_appointment`.
@@ -246,17 +248,30 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
     async def handle_user_utterance(self, text: str, confidence: float = 0.95, detected_lang: str = "en") -> None:
         """
         Process completed customer utterance, generate streaming response,
-        synthesize TTS chunks, and stream audio to Twilio or browser.
+        synthesize TTS chunks, and stream audio to Plivo or browser.
         """
         clean_text = text.strip()
         if not clean_text:
             return
 
-        # Deduplication guard: ignore echo or accidental repeat within 2.5s
+        # Deduplication guard: ignore immediate echo within 1.0s
         now = time.time()
-        if (now - self.last_user_time < 2.5) and (clean_text.lower() == self.last_user_text.lower()):
+        if (now - self.last_user_time < 1.0) and (clean_text.lower() == self.last_user_text.lower()):
             logger.debug(f"[Call {self.call_id}] Discarding duplicate utterance: '{clean_text}'")
             return
+
+        # Cancel any previous speaking turn that might still be active
+        if self.active_turn_task and not self.active_turn_task.done():
+            self.active_turn_task.cancel()
+        self.cartesia_service.cancel()
+        if self.flush_audio_callback:
+            try:
+                res = self.flush_audio_callback()
+                if asyncio.iscoroutine(res):
+                    await res
+            except Exception:
+                pass
+        self.is_speaking = False
 
         self.last_user_text = clean_text
         self.last_user_time = now
@@ -289,7 +304,7 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
             except Exception:
                 pass
 
-        # Launch agent turn task
+        # Launch single agent turn task
         self.active_turn_task = asyncio.create_task(
             self._execute_agent_turn(clean_text, turn_start_time)
         )
@@ -297,6 +312,7 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
     async def _execute_agent_turn(self, user_text: str, turn_start_time: float) -> None:
         """Execute LLM streaming, phrase chunking, TTS generation, and audio dispatch."""
         self.set_state(ConversationState.THINKING)
+        self.turn_first_audio_time: Optional[float] = None
         chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
 
         full_reply_tokens: List[str] = []
@@ -313,11 +329,11 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
             )
 
             if use_groq:
-                # Ultra-low latency (~150ms) direct streaming via Groq
+                # Ultra-low latency (~150ms) direct streaming via Groq (80 tokens max for crisp turns)
                 async for gchunk in self.fallback_groq.stream_chat(
                     messages=self.messages,
                     system_prompt=self._system_prompt,
-                    max_tokens=150
+                    max_tokens=80
                 ):
                     if self.state == ConversationState.INTERRUPTED:
                         break
@@ -460,7 +476,8 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
             # Telemetry persistence
             turn_end_time = time.perf_counter()
             total_turn_ms = (turn_end_time - turn_start_time) * 1000
-            ttfa_ms = ((first_audio_time - turn_start_time) * 1000) if first_audio_time else total_turn_ms
+            actual_first_audio = self.turn_first_audio_time or first_audio_time
+            ttfa_ms = ((actual_first_audio - turn_start_time) * 1000) if actual_first_audio else total_turn_ms
 
             logger.info(
                 f"[Call {self.call_id}] Turn {self.turn_index} finished: "
@@ -519,6 +536,8 @@ SWEET & RESPECTFUL CONVERSATIONAL TONE (VERY IMPORTANT):
 
         audio_bytes = synth_res.get("audio_bytes", b"")
         if audio_bytes and self.send_audio_callback and self.state != ConversationState.INTERRUPTED:
+            if getattr(self, "turn_first_audio_time", None) is None:
+                self.turn_first_audio_time = time.perf_counter()
             if asyncio.iscoroutinefunction(self.send_audio_callback):
                 await self.send_audio_callback(audio_bytes, normalized)
             else:

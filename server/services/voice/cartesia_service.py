@@ -39,16 +39,20 @@ class CartesiaTTSService:
         self.default_voice_id = default_voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
         self.endpoint = "https://api.cartesia.ai/tts/bytes"
         self._is_cancelled = False
-        self._client: Optional[httpx.AsyncClient] = None
 
-    async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
+    _shared_client: Optional[httpx.AsyncClient] = None
+
+    @classmethod
+    async def _get_client(cls) -> httpx.AsyncClient:
+        if cls._shared_client is None or cls._shared_client.is_closed:
+            cls._shared_client = httpx.AsyncClient(
                 timeout=15.0,
                 verify=certifi.where(),
-                limits=httpx.Limits(max_keepalive_connections=20, max_connections=40),
+                limits=httpx.Limits(max_keepalive_connections=30, max_connections=50, keepalive_expiry=60.0),
+                http2=True,
             )
-        return self._client
+        return cls._shared_client
+
 
     def cancel(self) -> None:
         """Cancel current synthesis or playback."""

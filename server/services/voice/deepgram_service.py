@@ -89,8 +89,8 @@ class DeepgramSTTService:
             "smart_format=true",
             "interim_results=true",
             "vad_events=true",
-            "endpointing=300",
-            "utterance_end_ms=1000",
+            "endpointing=400",
+            "utterance_end_ms=800",
             f"language={lang_param}",
         ]
         return f"{base}?{'&'.join(params)}"
@@ -168,6 +168,7 @@ class DeepgramSTTService:
                 # 3. Transcription Results
                 elif msg_type == "Results" or "channel" in data:
                     is_final = data.get("is_final", False)
+                    speech_final = data.get("speech_final", False)
                     channel = data.get("channel", {})
                     alternatives = channel.get("alternatives", [])
                     if alternatives:
@@ -178,10 +179,20 @@ class DeepgramSTTService:
 
                         if transcript:
                             if self.on_transcript:
+                                import inspect
+                                sig = inspect.signature(self.on_transcript)
+                                num_params = len(sig.parameters)
                                 if asyncio.iscoroutinefunction(self.on_transcript):
-                                    await self.on_transcript(transcript, is_final, detected_lang, confidence)
+                                    if num_params >= 5:
+                                        await self.on_transcript(transcript, is_final, speech_final, detected_lang, confidence)
+                                    else:
+                                        await self.on_transcript(transcript, is_final, detected_lang, confidence)
                                 else:
-                                    self.on_transcript(transcript, is_final, detected_lang, confidence)
+                                    if num_params >= 5:
+                                        self.on_transcript(transcript, is_final, speech_final, detected_lang, confidence)
+                                    else:
+                                        self.on_transcript(transcript, is_final, detected_lang, confidence)
+
 
         except websockets.exceptions.ConnectionClosed:
             logger.info("Deepgram STT connection closed normally")
