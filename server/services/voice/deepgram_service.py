@@ -73,9 +73,9 @@ class DeepgramSTTService:
             base = "wss://api.in.deepgram.com/v1/listen"
 
         lang_param = self.language
-        if lang_param == "te":
-            lang_param = "te"
-        elif lang_param == "hi":
+        if lang_param in ["te", "telugu"]:
+            lang_param = "en-IN"
+        elif lang_param in ["hi", "hindi"]:
             lang_param = "hi"
         else:
             lang_param = "en"
