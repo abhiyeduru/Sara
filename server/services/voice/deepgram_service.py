@@ -90,7 +90,7 @@ class DeepgramSTTService:
             "interim_results=true",
             "vad_events=true",
             "endpointing=400",
-            "utterance_end_ms=800",
+            "utterance_end_ms=1000",
             f"language={lang_param}",
         ]
         return f"{base}?{'&'.join(params)}"

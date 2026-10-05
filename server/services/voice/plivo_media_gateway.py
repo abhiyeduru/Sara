@@ -119,7 +119,7 @@ class PlivoMediaGateway:
         )
 
         # 2. Initialize Deepgram Streaming STT
-        lang = employee.voice_language if employee and employee.voice_language else "en"
+        lang = (self.orchestrator.language if self.orchestrator else None) or (employee.voice_language if employee else None) or "te"
         self.deepgram_service = DeepgramSTTService(
             sample_rate=8000,
             encoding="mulaw",  # Plivo sends native 8kHz mulaw
@@ -166,10 +166,8 @@ class PlivoMediaGateway:
             await self.deepgram_service.send_audio(raw_audio)
 
     async def _on_deepgram_speech_started(self) -> None:
-        """Deepgram speech activity detected -> trigger instant barge-in if assistant is speaking."""
-        if self.orchestrator and self.orchestrator.is_speaking:
-            logger.info(f"[Call {self.call_id}] SpeechStarted during assistant speech -> barge-in")
-            await self.orchestrator.handle_barge_in()
+        """Deepgram speech activity detected - logged for telemetry."""
+        logger.debug(f"[Call {self.call_id}] Deepgram SpeechStarted detected")
 
     async def _on_deepgram_utterance_end(self) -> None:
         """Deepgram detected utterance end silence -> flush pending utterance."""
@@ -188,13 +186,30 @@ class PlivoMediaGateway:
         if not clean or not self.orchestrator:
             return
 
-        # 1. Immediate Barge-in: if assistant is speaking, ANY clear caller words immediately interrupt
+        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks substantive words during playback
         if self.orchestrator.is_speaking:
-            logger.info(f"[Call {self.call_id}] Caller spoke ('{clean}') during assistant speech -> barge-in confirmed")
-            await self.orchestrator.handle_barge_in()
+            words = clean.split()
+            single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
+            is_greeting = len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words)
+            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen"}
+            has_interruption = any(w.lower().strip("!.,? ") in interruption_words for w in words)
+
+            if not is_greeting or has_interruption or len(words) >= 3:
+                logger.info(f"[Call {self.call_id}] Caller spoke substantive words ('{clean}') -> barge-in confirmed")
+                await self.orchestrator.handle_barge_in()
+            else:
+                logger.debug(f"[Call {self.call_id}] Ignoring greeting/backchannel during assistant speech: '{clean}'")
 
         # 2. Accumulate final transcripts into a coherent customer utterance
         if is_final:
+            # If assistant is currently speaking and this is just an overlapping greeting, drop it to prevent double-speaking
+            if self.orchestrator.is_speaking:
+                words = clean.split()
+                single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
+                if len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words):
+                    logger.debug(f"[Call {self.call_id}] Dropping overlapping greeting during assistant speech: '{clean}'")
+                    return
+
             self._pending_utterance_chunks.append(clean)
             if speech_final:
                 # Deepgram confirmed speech endpointing -> dispatch immediately

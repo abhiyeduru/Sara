@@ -86,7 +86,12 @@ class ConversationOrchestrator:
             self.voice_id = raw_vid
         else:
             self.voice_id = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
-        self.language = employee.voice_language if employee and employee.voice_language else "en"
+        if employee and employee.voice_language and employee.voice_language != "en":
+            self.language = employee.voice_language
+        elif employee and employee.languages and "te" in employee.languages:
+            self.language = "te"
+        else:
+            self.language = (employee.voice_language if employee else None) or "te"
         self.speed = employee.voice_speed if employee and employee.voice_speed else 1.0
 
         self.cartesia_service = CartesiaTTSService(default_voice_id=self.voice_id)

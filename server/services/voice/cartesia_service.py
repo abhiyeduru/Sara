@@ -49,7 +49,6 @@ class CartesiaTTSService:
                 timeout=15.0,
                 verify=certifi.where(),
                 limits=httpx.Limits(max_keepalive_connections=30, max_connections=50, keepalive_expiry=60.0),
-                http2=True,
             )
         return cls._shared_client
 
@@ -175,10 +174,8 @@ class CartesiaTTSService:
             }
 
     async def close(self) -> None:
-        """Close HTTP client connections."""
-        if self._client and not self._client.is_closed:
-            await self._client.aclose()
-            self._client = None
+        """Keep shared HTTP client pool warm for subsequent calls."""
+        pass
 
 
 if __name__ == "__main__":

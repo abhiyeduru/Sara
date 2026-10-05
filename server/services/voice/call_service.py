@@ -143,13 +143,21 @@ class CallService:
         })
 
         # 7. Execute Call via Plivo API or Simulation
+        from dotenv import dotenv_values
+        fresh_env = dotenv_values()
         base_url = (
-            os.getenv("PLIVO_WEBHOOK_BASE_URL")
+            fresh_env.get("PLIVO_WEBHOOK_BASE_URL")
+            or fresh_env.get("PUBLIC_BASE_URL")
+            or os.getenv("PLIVO_WEBHOOK_BASE_URL")
             or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None)
             or os.getenv("PUBLIC_BASE_URL")
             or settings.PUBLIC_BASE_URL
-            or "http://localhost:8000"
+            or "https://difficulties-them-regulations-kenneth.trycloudflare.com"
         ).rstrip("/")
+
+        # Guard against invalid localhost answer_url for cloud telephony
+        if "localhost" in base_url or "127.0.0.1" in base_url:
+            base_url = "https://difficulties-them-regulations-kenneth.trycloudflare.com"
 
         answer_url = f"{base_url}/api/v1/voice/plivo/answer/{call_id}"
         hangup_url = f"{base_url}/api/v1/voice/plivo/hangup/{call_id}"
