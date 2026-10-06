@@ -107,15 +107,15 @@ export class AudioStreamer {
     this.dataArray = null;
     this.agentState = 'idle';
 
-    // Ultra-Fast Responsive VAD (240ms pause for instant response) and Speaker-Echo-Protected Barge-In
+    // Natural Conversational VAD (550ms pause) and Instant Responsive Barge-In
     this.speechDetected = false;
     this.speechStartTime = null;
     this.silenceStartTime = null;
-    this.silenceThresholdMs = 240; // 240ms pause triggers ultra-low latency response
+    this.silenceThresholdMs = 550; // 550ms pause allows natural human breathing & commas without cut-off
     this.noiseFloor = 0.003; // Dynamic adaptive noise floor baseline
-    this.bargeInRmsThreshold = 0.075; // Elevated threshold during speaker playback to eliminate self-interruption echo
+    this.bargeInRmsThreshold = 0.022; // Responsive barge-in threshold capturing normal conversational voice
     this.bargeInHits = 0;
-    this.minBargeInHits = 3; // Require 3 consecutive frames (~270ms) of sustained speech to barge in
+    this.minBargeInHits = 1; // Instant 1-frame response to interrupt assistant the moment user speaks
     this.lastSpeechTime = 0;
     this.lastPlaybackEndTime = 0;
     this.lastTextSentTime = 0;
@@ -435,9 +435,9 @@ export class AudioStreamer {
           }
         }
 
-        // Safety Cutoff: If user has been speaking continuously for > 4.5s, force send to prevent unbounded audio
-        if (this.speechDetected && this.speechStartTime && (Date.now() - this.speechStartTime > 4500) && this.recordedSamples.length > 4000) {
-          console.log('[VAD] Utterance reached maximum chunk duration (4.5s), finalizing speech turn.');
+        // Safety Cutoff: If user has been speaking continuously for > 12s, finalize chunk
+        if (this.speechDetected && this.speechStartTime && (Date.now() - this.speechStartTime > 12000) && this.recordedSamples.length > 4000) {
+          console.log('[VAD] Utterance reached maximum continuous duration (12s), finalizing speech turn.');
           this.finalizeAndSendAudio();
         }
       };

@@ -228,11 +228,13 @@ class PlivoMediaGateway:
             await self.deepgram_service.send_audio(raw_audio)
 
     async def _on_deepgram_speech_started(self) -> None:
-        """Deepgram speech activity detected - logged for telemetry."""
-        logger.debug(f"[Call {self.call_id}] Deepgram SpeechStarted detected")
+        """Caller started speaking -> trigger instant barge-in to stop AI speaking."""
+        if self.orchestrator and self.orchestrator.is_speaking:
+            logger.info(f"[Call {self.call_id}] 🛑 SpeechStarted detected while assistant speaking -> stopping assistant speech immediately!")
+            await self.orchestrator.handle_barge_in()
 
     async def _on_deepgram_utterance_end(self) -> None:
-        """Deepgram detected utterance end silence -> flush pending utterance."""
+        """Speech silence detected -> flush pending utterance after natural pause."""
         await self._flush_pending_utterance(lang="te", confidence=0.95)
 
     async def _on_deepgram_transcript(
@@ -241,64 +243,32 @@ class PlivoMediaGateway:
         is_final: bool,
         speech_final: bool = False,
         lang: str = "te",
-        confidence: float = 0.95
+        confidence: float = 0.95,
+        *args,
+        **kwargs
     ) -> None:
-        """Handle transcript produced by Deepgram with smart barge-in, echo suppression, and debounced turn assembly."""
+        """Handle incoming transcript with instant barge-in and natural turn assembly."""
         clean = transcript.strip()
         if not clean or not self.orchestrator:
             return
 
-        # 1. Genuine Barge-in: interrupt ONLY when the caller speaks substantive words during playback
+        # 1. Instant Barge-In: If assistant is speaking and caller speaks, stop assistant immediately!
         if self.orchestrator.is_speaking:
-            now = time.time()
-            time_speaking = now - getattr(self.orchestrator, "speaking_start_time", 0.0)
+            logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{clean}' during assistant speech -> halting assistant immediately!")
+            await self.orchestrator.handle_barge_in()
 
-            # Suppress self-interruption from acoustic echo during the first 1.2s of assistant playback
-            if time_speaking < 1.2:
-                logger.debug(f"[Call {self.call_id}] Suppressing echo during initial speech playback ({time_speaking:.2f}s)")
-                return
+        # 2. Accumulate caller utterances
+        self._pending_utterance_chunks.append(clean)
 
-            words = clean.split()
-            single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
-            is_greeting = len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words)
-            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen", "hold on"}
-            has_interruption = any(w.lower().strip("!.,? ") in interruption_words for w in words)
+        # 3. Debounce turn completion: allow user to speak naturally without being cut off mid-thought
+        if self._utterance_flush_task and not self._utterance_flush_task.done():
+            self._utterance_flush_task.cancel()
 
-            # Require confirmed final transcript OR explicit stop words to interrupt
-            should_interrupt = has_interruption or (is_final and not is_greeting and len(words) >= 3 and confidence > 0.60)
-
-            if should_interrupt:
-                logger.info(f"[Call {self.call_id}] Caller spoke substantive words ('{clean}') -> barge-in confirmed")
-                await self.orchestrator.handle_barge_in()
-            else:
-                logger.debug(f"[Call {self.call_id}] Ignoring non-interrupting speech during assistant speech: '{clean}'")
-                return
-
-        # 2. Accumulate final transcripts into a coherent customer utterance
-        if is_final:
-            # If assistant is currently speaking and this is just an overlapping greeting, drop it to prevent double-speaking
-            if self.orchestrator.is_speaking:
-                words = clean.split()
-                single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
-                if len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words):
-                    logger.debug(f"[Call {self.call_id}] Dropping overlapping greeting during assistant speech: '{clean}'")
-                    return
-
-            self._pending_utterance_chunks.append(clean)
-            if speech_final:
-                # Deepgram confirmed speech endpointing -> flush immediately (30ms) for ultra-low latency!
-                if self._utterance_flush_task and not self._utterance_flush_task.done():
-                    self._utterance_flush_task.cancel()
-                self._utterance_flush_task = asyncio.create_task(
-                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.030)
-                )
-            else:
-                # User might still be speaking -> short 250ms silence debouncer
-                if self._utterance_flush_task and not self._utterance_flush_task.done():
-                    self._utterance_flush_task.cancel()
-                self._utterance_flush_task = asyncio.create_task(
-                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.250)
-                )
+        # Wait 500ms after final segment (or 750ms if partial) to let caller finish speaking naturally
+        delay = 0.500 if (is_final or speech_final) else 0.750
+        self._utterance_flush_task = asyncio.create_task(
+            self._debounced_flush(lang=lang, confidence=confidence, delay=delay)
+        )
 
     async def _debounced_flush(self, lang: str, confidence: float, delay: float = 0.250) -> None:
         try:
