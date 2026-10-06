@@ -1,8 +1,10 @@
 """
-SARA AI — Twilio Call Service
+SARA AI — Voice Telephony Call Service (Plivo / Exotel)
 Orchestrates outbound call initiation, permission checks, credit balance verification,
-and Twilio Call creation.
+and Plivo/Exotel Call creation. Completely decoupled from Twilio.
 """
+import os
+import uuid
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -14,10 +16,42 @@ from server.models import (
     PhoneNumber, User
 )
 from server.config import settings
-from .twilio_client import get_twilio_client, get_default_from_number
+from .plivo_client import plivo_client, normalize_plivo_phone_number
 from .voice_events import voice_events_bus
 
-logger = logging.getLogger("sara.voice.service")
+logger = logging.getLogger("sara.voice.call_service")
+
+
+def normalize_phone_number(raw_phone: str) -> str:
+    """
+    Standardize raw phone numbers into clean E.164 international format (+91...).
+    Handles typos like '=' instead of '+', spaces, dashes, brackets, and leading zeros.
+    """
+    if not raw_phone:
+        return ""
+    cleaned = (
+        str(raw_phone)
+        .strip()
+        .replace("=", "+")
+        .replace(" ", "")
+        .replace("-", "")
+        .replace("(", "")
+        .replace(")", "")
+        .replace(".", "")
+    )
+    if cleaned.startswith("+"):
+        digits = "".join(c for c in cleaned[1:] if c.isdigit())
+        return f"+{digits}"
+    digits = "".join(c for c in cleaned if c.isdigit())
+    if len(digits) == 10:
+        return f"+91{digits}"
+    elif digits.startswith("91") and len(digits) == 12:
+        return f"+{digits}"
+    elif digits.startswith("0") and len(digits) == 11:
+        return f"+91{digits[1:]}"
+    elif digits.startswith("1") and len(digits) == 11:
+        return f"+{digits}"
+    return f"+{digits}"
 
 
 class CallService:
@@ -29,16 +63,17 @@ class CallService:
         to_number: str,
         lead_id: Optional[str] = None,
         from_number: Optional[str] = None,
+        simulate: bool = False,
     ) -> Dict[str, Any]:
         """
-        Orchestrate an AI outbound call through Twilio.
+        Orchestrate an AI outbound call through Plivo Voice API.
         Flow:
         1. Validate Employee
-        2. Validate Phone Number
+        2. Validate & Normalize Phone Number
         3. Check Calling Permission
         4. Check Credits Balance
         5. Create DB Call Record
-        6. Initiate Twilio Call
+        6. Initiate Plivo Call (or Simulation)
         7. Broadcast call.initiated event
         """
         # 1. Validate Employee
@@ -47,7 +82,6 @@ class CallService:
             AIEmployee.workspace_id == user.id
         ).first()
         if not emp:
-            # Check if employee exists by role or fallback
             emp = db.query(AIEmployee).filter(AIEmployee.id == employee_id).first()
             if not emp:
                 raise HTTPException(status_code=404, detail="AI Employee not found.")
@@ -63,28 +97,30 @@ class CallService:
                 detail=f"AI Employee '{emp.name}' does not have permission to make outbound phone calls."
             )
 
-        # 3. Check Credits
-        account = db.query(CreditAccount).filter(CreditAccount.workspace_id == user.id).first()
-        if account and account.balance <= 0.0:
+        # 3. Check Credits & Call Eligibility (₹6/min minimum)
+        from .call_billing_service import CallBillingService
+        eligibility = CallBillingService.verify_call_eligibility(db, user.id)
+        if not eligibility.get("allowed"):
             raise HTTPException(
                 status_code=402,
-                detail="Insufficient workspace calling credits. Please top up your balance."
+                detail=eligibility.get("detail", "Insufficient calling credits. Please top up your wallet.")
             )
 
-        # 4. Format Phone Number
-        clean_to = to_number.strip().replace(" ", "").replace("-", "")
-        if not clean_to.startswith("+"):
-            if len(clean_to) == 10:
-                clean_to = f"+91{clean_to}"
-            else:
-                clean_to = f"+{clean_to}"
+        # 4. Format & Normalize Phone Number
+        clean_to = normalize_phone_number(to_number)
+        if not clean_to or len(clean_to) < 8:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid phone number '{to_number}'. Please provide a valid number with country code."
+            )
 
         # 5. Resolve Caller ID (From number)
-        twilio_client = get_twilio_client()
-        resolved_from = from_number or get_default_from_number(twilio_client)
+        resolved_from = from_number or plivo_client.caller_id or "+918065522007"
 
         # 6. Create Call Record in Database
+        call_id = f"call_{uuid.uuid4().hex[:12]}"
         call_record = Call(
+            id=call_id,
             workspace_id=user.id,
             ai_employee_id=emp.id,
             employee_id=emp.id,
@@ -101,71 +137,80 @@ class CallService:
         db.commit()
         db.refresh(call_record)
 
-        call_id = call_record.id
         voice_events_bus.publish(call_id, "call.created", {
             "employee": emp.name,
             "to": clean_to,
             "from": resolved_from,
         })
 
-        # 7. Execute Call via Twilio API
-        base_url = settings.TWILIO_WEBHOOK_BASE_URL.rstrip("/")
-        twiml_url = f"{base_url}/api/v1/voice/twiml/{call_id}"
-        status_callback_url = f"{base_url}/api/v1/voice/status/{call_id}"
+        # 7. Execute Call via Plivo API or Simulation
+        from dotenv import dotenv_values
+        fresh_env = dotenv_values()
+        base_url = (
+            fresh_env.get("PLIVO_WEBHOOK_BASE_URL")
+            or fresh_env.get("PUBLIC_BASE_URL")
+            or os.getenv("PLIVO_WEBHOOK_BASE_URL")
+            or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None)
+            or os.getenv("PUBLIC_BASE_URL")
+            or settings.PUBLIC_BASE_URL
+            or "https://difficulties-them-regulations-kenneth.trycloudflare.com"
+        ).rstrip("/")
 
-        twilio_sid = None
+        # Guard against invalid localhost answer_url for cloud telephony
+        if "localhost" in base_url or "127.0.0.1" in base_url:
+            base_url = "https://difficulties-them-regulations-kenneth.trycloudflare.com"
+
+        answer_url = f"{base_url}/api/v1/voice/plivo/answer/{call_id}"
+        hangup_url = f"{base_url}/api/v1/voice/plivo/hangup/{call_id}"
+
+        call_sid = None
         error_msg = None
-        is_simulated = False
+        is_sim = simulate or not settings.ALLOW_REAL_CALLS or not plivo_client.is_configured
 
-        # Attempt 1: Standard Twilio Outbound Call
-        try:
-            tw_call = twilio_client.calls.create(
-                to=clean_to,
-                from_=resolved_from,
-                url=twiml_url,
-                status_callback=status_callback_url,
-                status_callback_event=["initiated", "ringing", "answered", "completed"],
-                record=True,
-            )
-            twilio_sid = tw_call.sid
-            call_record.twilio_call_sid = twilio_sid
-            call_record.status = "initiated"
-            db.commit()
-            logger.info(f"✅ Twilio Call created successfully: SID={twilio_sid}, CallID={call_id}")
-        except Exception as e1:
-            logger.warning(f"Standard Twilio call parameters failed ({e1}). Retrying with minimal parameters...")
-            # Attempt 2: Minimal parameters (fixes trial account parameter restrictions)
+        if not is_sim:
             try:
-                tw_call = twilio_client.calls.create(
-                    to=clean_to,
-                    from_=resolved_from,
-                    url=twiml_url,
+                clean_dest = clean_to.replace("+", "").strip()
+                clean_src = resolved_from.replace("+", "").strip()
+                call_resp = plivo_client.initiate_call(
+                    to_number=clean_dest,
+                    from_number=clean_src,
+                    answer_url=answer_url,
+                    hangup_url=hangup_url,
                 )
-                twilio_sid = tw_call.sid
-                call_record.twilio_call_sid = twilio_sid
-                call_record.status = "initiated"
+                req_uuid = call_resp.get("request_uuid") or call_resp.get("call_uuid") or call_id
+                call_sid = f"plv_{req_uuid}"
+                call_record.twilio_call_sid = call_sid
+                call_record.status = "ringing"
                 db.commit()
-                logger.info(f"✅ Twilio Call created with minimal parameters: SID={twilio_sid}, CallID={call_id}")
-            except Exception as e2:
-                error_msg = str(e2)
-                is_simulated = True
-                logger.error(f"Twilio call failed: {error_msg}")
-                call_record.status = "simulated"
-                call_record.twilio_call_sid = f"CA_sim_{call_id[:16]}"
-                db.commit()
+                logger.info(f"✅ Plivo Call created successfully: SID={call_sid}, CallID={call_id}")
+            except Exception as e:
+                logger.warning(f"Plivo live call failed ({e}). Falling back to simulation mode.")
+                error_msg = str(e)
+                is_sim = True
+
+        if is_sim:
+            call_sid = f"plv_sim_{call_id[:12]}"
+            call_record.twilio_call_sid = call_sid
+            call_record.status = "in-progress" if not error_msg else "simulated"
+            db.commit()
 
         voice_events_bus.publish(call_id, "call.initiated", {
-            "twilio_sid": call_record.twilio_call_sid,
-            "is_simulated": is_simulated,
+            "call_sid": call_sid,
+            "twilio_sid": call_sid,
+            "is_simulated": is_sim,
+            "provider": "plivo",
             "error": error_msg,
         })
 
         return {
+            "success": True,
             "call_id": call_record.id,
-            "twilio_call_sid": call_record.twilio_call_sid,
+            "call_sid": call_sid,
+            "twilio_call_sid": call_sid,
             "status": call_record.status,
-            "is_simulated": is_simulated,
+            "is_simulated": is_sim,
             "error_detail": error_msg,
+            "provider": "plivo",
             "employee": {
                 "id": emp.id,
                 "name": emp.name,

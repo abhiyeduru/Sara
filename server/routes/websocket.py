@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.database import SessionLocal
 from server.models import (
-    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User
+    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User,
+    Workspace, BusinessProfile
 )
 from server.engine.conversation_manager import ConversationManager
 from server.engine.chunker import SentenceChunker
@@ -25,8 +26,35 @@ from server.providers.sarvam_tts import SarvamTTS
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
-stt_provider = SarvamSTT()
-llm_provider = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
+from server.providers.deepgram_stt import DeepgramSTT
+
+class UnifiedSTT:
+    def __init__(self, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+        self.deepgram = deepgram
+        self.sarvam = sarvam
+
+    async def transcribe(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> Dict[str, Any]:
+        # Deepgram is the Primary STT Provider
+        if self.deepgram.api_key:
+            try:
+                res = await self.deepgram.transcribe(audio_bytes, language_hint=language_hint)
+                if res.get("transcript"):
+                    return res
+            except Exception as e:
+                logger.warning(f"Deepgram STT notice: {e}")
+
+        # Fallback if Deepgram encounters network issue
+        try:
+            res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
+            if res.get("transcript") and not res.get("error"):
+                return res
+        except Exception as e:
+            logger.warning(f"Secondary STT notice: {e}")
+
+        return await self.sarvam._fallback_groq(audio_bytes, time.perf_counter(), language_hint=language_hint)
+
+stt_provider = UnifiedSTT(DeepgramSTT(), SarvamSTT())
+llm_provider = OpenAILLM() if settings.PRIMARY_LLM == "openai" else GroqLLM()
 from server.providers.edge_tts_provider import EdgeTTSProvider
 
 sarvam_tts = SarvamTTS()
@@ -86,13 +114,6 @@ async def voice_websocket_endpoint(
         if not agent:
             agent = db.query(VoiceAgent).first()
 
-        if not agent:
-            try:
-                from server.database import seed_default_agents
-                seed_default_agents(db, "user_business_owner_1")
-                agent = db.query(VoiceAgent).first()
-            except Exception as seed_err:
-                logger.warning(f"Could not auto-seed agents: {seed_err}")
 
         if not agent:
             # Fallback in-memory SARA agent
@@ -109,13 +130,27 @@ async def voice_websocket_endpoint(
                 faqs = []
             agent = FallbackAgent()
 
+        # Fetch business context dynamically
+        biz_name = "మా సంస్థ"
+        try:
+            ws = db.query(Workspace).first()
+            if ws and ws.name:
+                biz_name = ws.name
+            bp = db.query(BusinessProfile).first()
+            if bp and bp.business_name:
+                biz_name = bp.business_name
+        except Exception:
+            pass
+
         # 2. Get or generate prompt
         system_prompt = agent.generated_prompt.full_prompt if getattr(agent, 'generated_prompt', None) else (
-            "You are SARA, an ultra-intelligent, respectful, and warm AI property advisor for Mentneo Properties in Hyderabad. "
-            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally (e.g. 2 BHK, Gachibowli, Kokapet, ₹85 Lakhs). "
-            "Always be sweet, polite, and helpful, addressing the customer as అండీ (andi)."
+            f"You are SARA, an ultra-intelligent, remarkably sweet, polite, and respectful AI representative for {biz_name}. "
+            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally. "
+            "Always maintain a sweet, pleasant, and helpful demeanor. Always address the customer with high respect as అండీ (andi), "
+            "using polite phrases like 'నమస్కారం అండి', 'చెప్పండి అండి', 'ఖచ్చితంగా అండి', 'తప్పకుండా చేస్తాను అండి'. "
+            f"Speak accurately based on {biz_name}'s offerings and answer their questions gracefully."
         )
-        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else "నమస్కారం అండీ! నేను సారా. మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else f"నమస్కారం అండీ! నేను సారా. {biz_name} కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
         faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])]
 
         # 3. Create persistent ConversationSession in DB (safe fallback)

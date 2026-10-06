@@ -6,7 +6,7 @@ const SUGGESTIONS = [
   "Why did leads decrease this week?",
   "Create a follow-up workflow for cold leads",
   "Show pending approval tasks",
-  "How is Lakshmi performing?",
+  "How are my AI employees performing?",
   "Generate a weekly marketing report",
 ];
 

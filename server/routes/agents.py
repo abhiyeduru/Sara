@@ -227,12 +227,6 @@ def list_agents(
         all_agents = db.query(VoiceAgent).order_by(VoiceAgent.created_at.desc()).all()
         if all_agents:
             return all_agents
-        try:
-            from server.database import seed_default_agents
-            seed_default_agents(db, current_user.id)
-            agents = db.query(VoiceAgent).filter(VoiceAgent.user_id == current_user.id).order_by(VoiceAgent.created_at.desc()).all()
-        except Exception:
-            pass
     return agents
 
 @router.get("/{agent_id}", response_model=VoiceAgentDetailResponse)
@@ -246,13 +240,6 @@ def get_agent(
         agent = db.query(VoiceAgent).filter(VoiceAgent.user_id == current_user.id).first()
         if not agent:
             agent = db.query(VoiceAgent).first()
-        if not agent:
-            try:
-                from server.database import seed_default_agents
-                seed_default_agents(db, current_user.id)
-                agent = db.query(VoiceAgent).filter(VoiceAgent.user_id == current_user.id).first()
-            except Exception:
-                pass
         if agent:
             return agent
 
@@ -278,14 +265,6 @@ def update_agent(
 
     if not agent:
         agent = db.query(VoiceAgent).first()
-
-    if not agent:
-        try:
-            from server.database import seed_default_agents
-            seed_default_agents(db, current_user.id)
-            agent = db.query(VoiceAgent).first()
-        except Exception:
-            pass
 
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")

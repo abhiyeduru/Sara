@@ -11,10 +11,7 @@ const SETTINGS_NAV = [
 ];
 
 const MEMBERS = [
-  { name:'Abhiram Yeduru', email:'abhi@saraai.com', role:'Owner', status:'active', joined:'Jan 2025' },
-  { name:'Priya Kapoor', email:'priya@saraai.com', role:'Admin', status:'active', joined:'Feb 2025' },
-  { name:'Rohan Mehta', email:'rohan@saraai.com', role:'Manager', status:'active', joined:'Mar 2025' },
-  { name:'Sneha Raj', email:'sneha@saraai.com', role:'Member', status:'inactive', joined:'Apr 2025' },
+  { name:'Abhiram Yeduru', email:'owner@sara.ai', role:'Owner', status:'active', joined:'Jan 2025' },
 ];
 
 export default function SettingsPage({ onNavigate }) {

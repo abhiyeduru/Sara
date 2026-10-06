@@ -285,9 +285,8 @@ def init_db():
             db.commit()
             db.refresh(user)
 
-        existing_count = db.query(models.VoiceAgent).filter(models.VoiceAgent.user_id == user.id).count()
-        if existing_count == 0:
-            seed_default_agents(db, user.id)
+        # Clean init without seeding dummy data
+        pass
     except Exception as e:
         logger.error(f"Error during init_db: {e}")
         db.rollback()

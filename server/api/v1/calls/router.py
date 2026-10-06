@@ -18,6 +18,8 @@ class CallCreate(BaseModel):
     to: str
     lead_id: Optional[str] = None
     from_number: Optional[str] = None
+    provider: Optional[str] = "plivo"  # "plivo", "twilio", "simulator", "exotel"
+    simulate: Optional[bool] = False
 
 
 def _call_dict(c: Call) -> dict:
@@ -60,8 +62,34 @@ async def make_outbound_call(
     user: User = Depends(get_current_user),
 ):
     """
-    Trigger an outbound AI call through Twilio to customer.
+    Trigger an outbound AI call via configured telephony provider (default: Plivo).
     """
+    active_provider = body.provider or getattr(settings, "TELEPHONY_PROVIDER", "plivo")
+
+    if active_provider == "plivo":
+        from server.services.voice.plivo_service import PlivoService
+        return await PlivoService.initiate_outbound_call(
+            db=db,
+            user=user,
+            employee_id=body.employee_id,
+            to_number=body.to,
+            lead_id=body.lead_id,
+            from_number=body.from_number,
+            simulate=body.simulate or False,
+        )
+
+    if active_provider == "exotel":
+        from server.services.voice.exotel_service import ExotelService
+        return await ExotelService.initiate_outbound_call(
+            db=db,
+            user=user,
+            employee_id=body.employee_id,
+            to_number=body.to,
+            lead_id=body.lead_id,
+            from_number=body.from_number,
+            simulate=body.simulate,
+        )
+
     from server.services.voice.call_service import CallService
     return CallService.initiate_outbound_call(
         db=db,
@@ -70,6 +98,44 @@ async def make_outbound_call(
         to_number=body.to,
         lead_id=body.lead_id,
         from_number=body.from_number,
+    )
+
+
+@router.post("/plivo", status_code=201)
+async def make_plivo_call(
+    body: CallCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Explicitly trigger an outbound call via Plivo Voice."""
+    from server.services.voice.plivo_service import PlivoService
+    return await PlivoService.initiate_outbound_call(
+        db=db,
+        user=user,
+        employee_id=body.employee_id,
+        to_number=body.to,
+        lead_id=body.lead_id,
+        from_number=body.from_number,
+        simulate=body.simulate or False,
+    )
+
+
+@router.post("/exotel", status_code=201)
+async def make_exotel_call(
+    body: CallCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Explicitly trigger an outbound call via Exotel."""
+    from server.services.voice.exotel_service import ExotelService
+    return await ExotelService.initiate_outbound_call(
+        db=db,
+        user=user,
+        employee_id=body.employee_id,
+        to_number=body.to,
+        lead_id=body.lead_id,
+        from_number=body.from_number,
+        simulate=body.simulate,
     )
 
 
@@ -131,3 +197,37 @@ async def get_call_transcript(
     if not c:
         raise HTTPException(404, "Call not found")
     return {"call_id": call_id, "transcript": c.transcript or [], "summary": c.summary}
+
+
+@router.post("/{call_id}/hangup")
+async def hangup_call(
+    call_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from datetime import datetime, timezone
+    from server.services.voice.voice_events import voice_events_bus
+    c = db.query(Call).filter(Call.id == call_id, Call.workspace_id == user.id).first()
+    if not c:
+        raise HTTPException(404, "Call not found")
+
+    # Hangup provider call if active
+    if c.twilio_call_sid:
+        if c.twilio_call_sid.startswith("plv_"):
+            from server.services.voice.plivo_client import plivo_client
+            plivo_client.hangup_call(c.twilio_call_sid)
+        elif c.twilio_call_sid.startswith("exo_"):
+            from server.services.voice.exotel_client import exotel_client
+            await exotel_client.hangup_call(c.twilio_call_sid)
+
+    c.status = "completed"
+    c.ended_at = datetime.now(timezone.utc)
+    db.commit()
+
+    await voice_events_bus.broadcast({
+        "type": "call.completed",
+        "call_id": c.id,
+        "call_sid": c.twilio_call_sid,
+        "status": "completed"
+    })
+    return {"success": True, "message": "Call terminated successfully", "call_id": call_id}

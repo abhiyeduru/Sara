@@ -8,25 +8,20 @@ import {
   onAuthStateChanged 
 } from "firebase/auth";
 
-// User provided Firebase Web API Key
+// Firebase Web App Configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU",
-  authDomain: "meet-sara.firebaseapp.com",
-  projectId: "meet-sara",
-  storageBucket: "meet-sara.appspot.com",
-  messagingSenderId: "1234567890",
-  appId: "1:1234567890:web:abcdef123456"
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || "AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU",
+  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || "meet-sara.firebaseapp.com",
+  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || "meet-sara",
+  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || "meet-sara.appspot.com",
+  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "1234567890",
+  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || "1:1234567890:web:abcdef123456"
 };
 
 let app = null;
 let auth = null;
 
-// Only initialize Firebase Auth if a valid custom Firebase project API key is provided
-const isRealFirebaseKey = firebaseConfig.apiKey && 
-  !firebaseConfig.apiKey.startsWith("AIzaSyDhycimimNk") && 
-  firebaseConfig.apiKey.length > 20;
-
-if (isRealFirebaseKey) {
+if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 15) {
   try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);

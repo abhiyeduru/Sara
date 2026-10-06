@@ -48,26 +48,22 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
   // Test Call Popover State
   const [showTestCallModal, setShowTestCallModal] = useState(false);
-  const [testPhoneNumber, setTestPhoneNumber] = useState('+91 98765 43210');
+  const [testPhoneNumber, setTestPhoneNumber] = useState('');
   const [callingState, setCallingState] = useState(null); // 'calling', 'connected', 'error'
   const [callSid, setCallSid] = useState(null);
 
   // Automated Customer Calling & Instant Leads State
-  const [instantPhone, setInstantPhone] = useState('+91 6281363741');
-  const [instantName, setInstantName] = useState('Abhiram');
-  const [instantPropType, setInstantPropType] = useState('3BHK Luxury Villa');
-  const [instantLocation, setInstantLocation] = useState('Gachibowli, Hyderabad');
-  const [instantBudget, setInstantBudget] = useState('85L – 1.2 Cr');
+  const [instantPhone, setInstantPhone] = useState('');
+  const [instantName, setInstantName] = useState('');
+  const [instantPropType, setInstantPropType] = useState('');
+  const [instantLocation, setInstantLocation] = useState('');
+  const [instantBudget, setInstantBudget] = useState('');
   const [instantCalling, setInstantCalling] = useState(false);
   const [instantCallData, setInstantCallData] = useState(null);
   const [instantCallTranscript, setInstantCallTranscript] = useState([]);
   const [autoCampaignRunning, setAutoCampaignRunning] = useState(false);
   const [autoCallWebhookEnabled, setAutoCallWebhookEnabled] = useState(true);
-  const [customerLeads, setCustomerLeads] = useState([
-    { id: 1, name: 'Abhiram', phone: '+91 6281363741', requirement: '3BHK Villa, Gachibowli', budget: '1.2 Cr', status: 'ready' },
-    { id: 2, name: 'Srinivas Rao', phone: '+91 98490 12345', requirement: 'Open Plot, Kokapet', budget: '1.5 Cr', status: 'ready' },
-    { id: 3, name: 'Lakshmi Narayana', phone: '+91 98850 67890', requirement: '2BHK Apartment, Miyapur', budget: '65 Lakhs', status: 'ready' },
-  ]);
+  const [customerLeads, setCustomerLeads] = useState([]);
 
   // Live In-Browser Talk Modal
   const [showTalkModal, setShowTalkModal] = useState(false);
@@ -287,12 +283,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
       if (res.ok) {
         const data = await res.json();
-        setCallSid(data.twilio_call_sid || data.call_id);
+        setCallSid(data.call_sid || data.twilio_call_sid || data.call_id);
         setCallingState('connected');
         if (data.is_simulated) {
-          setSwaraFeedback(`Test call active (Simulated: ${data.twilio_call_sid})`);
+          setSwaraFeedback(`Test call active (Simulated: ${data.call_sid || data.twilio_call_sid})`);
         } else {
-          setSwaraFeedback(`Twilio dialing ${testPhoneNumber}...`);
+          setSwaraFeedback(`Plivo dialing ${testPhoneNumber}...`);
         }
       } else {
         const errData = await res.json();
@@ -341,21 +337,18 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         if (data.is_simulated) {
           setInstantCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.twilio_call_sid}` },
-            { speaker: 'Twilio Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Destination number unverified or trial restrictions'}. Running simulated live caller session.` },
-            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
-            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, మెంట్‌నియో ప్రాపర్టీస్ (Mentneo Properties) నుండి. మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు కదా అండీ? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?` },
-            { speaker: name, text: `హాయ్ అండి, అవును. గచ్చిబౌలి దగ్గర 2BHK లేదా 3BHK కోసం చూస్తున్నాను.` },
-            { speaker: empName, text: `చాలా మంచి ఆప్షన్స్ ఉన్నాయి అండి! మెంట్‌నియో గేటెడ్ కమ్యూనిటీ లో ₹85 లక్షల నుండి ప్రారంభమవుతున్నాయి. మీరు లివింగ్ పర్పస్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కోసమా అండి?` },
-            { speaker: name, text: `లివింగ్ కోసమేనండి, బడ్జెట్ ఒక 80-90 లక్షలు.` },
-            { speaker: empName, text: `సరిగ్గా మీ బడ్జెట్ లోనే 100% HMDA & RERA అప్రూవ్డ్ క్లబ్‌హౌస్ ఫ్లాట్స్ అందుబాటులో ఉన్నాయి అండి. ఈ శనివారం సైట్ విజిట్ కి రండి, వివరాలన్నీ వాట్సాప్ చేస్తాను!` }
-
+            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.call_sid || data.twilio_call_sid}` },
+            { speaker: 'Telephony Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Carrier session initiated'}. Running simulated live caller session.` },
+            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
+            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, ${employee?.role || 'కస్టమర్ అడ్వైజర్'}. మీరు మా సర్వీసెస్ గురించి ఎంక్వైరీ చేశారు కదా అండీ? మీకు ఏ విధంగా సహాయపడగలనో చెప్పండి అండీ.` },
+            { speaker: name, text: `హాయ్ అండి, అవునండి. నాకు పూర్తి వివరాలు మరియు కొటేషన్ కావాలి.` },
+            { speaker: empName, text: `ఖచ్చితంగా అండి! మీ రిక్వైర్మెంట్‌కి సరిపోయే బెస్ట్ ఆప్షన్స్ మా వద్ద సిద్ధంగా ఉన్నాయి. మీకు అనుకూలమైన సమయం చెబితే వెంటనే అన్ని వివరాలు వాట్సాప్ చేసి, నెక్స్ట్ స్టెప్స్ ప్లాన్ చేస్తాను అండి!` }
           ]);
         } else {
           setInstantCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.twilio_call_sid}` },
-            { speaker: empName, text: `హలో అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
+            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.call_sid || data.twilio_call_sid || data.call_id}` },
+            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
           ]);
         }
       } else {
@@ -868,7 +861,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     }}
                   >
                     <Phone size={14} />
-                    {callingState === 'calling' ? 'Dialing Twilio...' :
+                    {callingState === 'calling' ? 'Dialing Phone...' :
                      callingState === 'connected' ? 'Call connected!' : 'Test call'}
                   </button>
                 </div>
@@ -1954,11 +1947,11 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                       key={idx}
                       style={{
                         padding: '8px 12px', borderRadius: 8,
-                        background: t.speaker === empName ? 'rgba(124,58,237,0.06)' : (t.speaker === 'System' ? '#f8fafc' : (t.speaker === 'Twilio Notice' ? '#fffbeb' : '#f1f5f9')),
-                        border: t.speaker === empName ? '1px solid rgba(124,58,237,0.2)' : (t.speaker === 'Twilio Notice' ? '1px solid #fde68a' : '1px solid #e2e8f0')
+                        background: t.speaker === empName ? 'rgba(124,58,237,0.06)' : (t.speaker === 'System' ? '#f8fafc' : (t.speaker === 'Telephony Notice' ? '#fffbeb' : '#f1f5f9')),
+                        border: t.speaker === empName ? '1px solid rgba(124,58,237,0.2)' : (t.speaker === 'Telephony Notice' ? '1px solid #fde68a' : '1px solid #e2e8f0')
                       }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: t.speaker === empName ? '#7c3aed' : (t.speaker === 'Twilio Notice' ? '#b45309' : '#64748b'), marginBottom: 2 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: t.speaker === empName ? '#7c3aed' : (t.speaker === 'Telephony Notice' ? '#b45309' : '#64748b'), marginBottom: 2 }}>
                         {t.speaker}
                       </div>
                       <div style={{ color: '#0f172a', lineHeight: 1.4 }}>

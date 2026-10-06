@@ -25,20 +25,22 @@ import MCPConnections from './components/pages/MCPConnections';
 import PhoneNumbers from './components/pages/PhoneNumbers';
 import TalkWithSara from './components/pages/TalkWithSara';
 import CampaignsStudio from './components/pages/CampaignsStudio';
+import AdminPanel from './components/pages/AdminPanel';
 import ComingSoon from './components/pages/ComingSoon';
 import LoginModal from './components/auth/LoginModal';
 import BusinessOnboardingModal from './components/auth/BusinessOnboardingModal';
 
 import { UsersRound, GraduationCap, Zap, Megaphone, PhoneIncoming, MessageCircle,
-  Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic } from 'lucide-react';
+  Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic, ShieldCheck } from 'lucide-react';
 
 const PAGE_META = {
+  admin:             { title: 'Admin & Platform Control Center', subtitle: 'Manage all users, call minutes, payments, and multi-tenant telephony' },
   dashboard:         { title: 'Dashboard', subtitle: 'Good morning — your AI workforce at a glance' },
   'talk-sara':       { title: 'Talk with Sara', subtitle: 'Live human-like conversational voice agent' },
   ask:               { title: 'Ask Sara', subtitle: 'Your AI workplace assistant' },
   employees:         { title: 'My AI Employees', subtitle: 'Manage your AI workforce' },
   'employees/new':   { title: 'Create AI Employee', subtitle: 'Build a new AI employee with Sara' },
-  'employee-detail': { title: 'Farhan — Real Estate Lead Caller', subtitle: 'AI Employee Profile & Call Script Studio' },
+  'employee-detail': { title: 'AI Employee Profile', subtitle: 'AI Employee Profile & Call Script Studio' },
   teams:             { title: 'AI Teams', subtitle: 'Organize AI employees into teams' },
   tasks:             { title: 'Task Center', subtitle: 'All AI and human tasks' },
   workflows:         { title: 'Workflows', subtitle: 'Automated business workflows' },
@@ -66,6 +68,7 @@ const PAGE_META = {
 
 function renderPage(page, onNavigate, pageParams = {}) {
   switch (page) {
+    case 'admin':           return <AdminPanel onNavigate={onNavigate} />;
     case 'dashboard':       return <Dashboard onNavigate={onNavigate} />;
     case 'talk-sara':       return <TalkWithSara onNavigate={onNavigate} />;
     case 'ask':             return <AskSara onNavigate={onNavigate} />;
@@ -181,7 +184,7 @@ export default function App() {
               .split('')
               .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
               .join('')
-          );
+            );
           return JSON.parse(jsonPayload);
         } catch (e) {
           return null;

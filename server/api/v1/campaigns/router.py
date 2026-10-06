@@ -25,7 +25,7 @@ from server.models import (
     Lead, Call, AIEmployee, CreditAccount
 )
 from server.engine.agent_compiler import AgentCompiler
-from server.services.voice.call_service import CallService
+from server.services.voice.call_service import CallService, normalize_phone_number
 from server.services.voice.transcript_service import TranscriptService
 from server.providers.groq_llm import GroqLLM
 from server.providers.openai_llm import OpenAILLM
@@ -41,7 +41,7 @@ class QuickCallRequest(BaseModel):
     instruction: str
     lead_name: Optional[str] = "Valued Customer"
     business_name: Optional[str] = None
-    voice_id: Optional[str] = "te-IN-Standard-A"
+    voice_id: Optional[str] = "330c4fa0-1da3-4c55-8e97-951bfd724e20"
     language: Optional[str] = "te"
 
 
@@ -111,14 +111,7 @@ def check_trai_compliance(phone_number: str) -> Dict[str, Any]:
     2. Phone number format validation.
     3. National Do Not Call (DND/NDNC) simulated registry check.
     """
-    clean = re.sub(r"[^\d+]", "", phone_number)
-    if clean.startswith("0"):
-        clean = "+91" + clean[1:]
-    elif not clean.startswith("+"):
-        if len(clean) == 10:
-            clean = "+91" + clean
-        else:
-            clean = "+" + clean
+    clean = normalize_phone_number(phone_number)
 
     # IST Time check
     ist = ZoneInfo("Asia/Kolkata")
@@ -257,11 +250,7 @@ async def trigger_quick_call(
     and initiates the outbound voice call.
     """
     ws = get_user_workspace(db, user)
-    clean_to = body.phone_number.strip().replace(" ", "").replace("-", "")
-    if clean_to.startswith("0"):
-        clean_to = "+91" + clean_to[1:]
-    elif not clean_to.startswith("+"):
-        clean_to = f"+91{clean_to}" if len(clean_to) == 10 else f"+{clean_to}"
+    clean_to = normalize_phone_number(body.phone_number)
 
     # Compliance check
     comp = check_trai_compliance(clean_to)
@@ -285,6 +274,13 @@ async def trigger_quick_call(
         f"4. State all numbers, timings, and prices clearly in English.\n"
     )
 
+    valid_uuid = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+    clean_voice = str(body.voice_id or "").strip().lower()
+    if not re.match(valid_uuid, clean_voice):
+        clean_voice = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+
+    target_lang = body.language or "te"
+
     if not emp:
         # Create an on-the-fly representative
         emp = AIEmployee(
@@ -293,18 +289,18 @@ async def trigger_quick_call(
             role=f"{biz_name} Voice Representative",
             department="Sales",
             system_prompt=system_prompt,
-            voice_id=body.voice_id,
-            voice_provider="sarvam" if "te" in body.voice_id else "cartesia",
-            language=body.language or "te",
+            voice_id=clean_voice,
+            voice_language=target_lang,
             status="active"
         )
         db.add(emp)
         db.commit()
         db.refresh(emp)
     else:
-        # Update system prompt with fresh call context
+        # Update system prompt and validated voice ID
         emp.system_prompt = system_prompt
-        emp.voice_id = body.voice_id
+        emp.voice_id = clean_voice
+        emp.voice_language = target_lang
         db.commit()
 
     # Create Lead record if not existing

@@ -4,8 +4,7 @@ import {
   CheckSquare, GitBranch, GraduationCap, Phone, Zap, Megaphone,
   PhoneIncoming, MessageCircle, Inbox, Building2, UserCheck,
   BarChart3, LineChart, Grid2x2, Link, Cpu, Hash, Code2,
-  CreditCard, Settings, ChevronDown, Bot, Sparkles,
-  Bell, ShieldCheck, Activity, Mic
+  Bell, Shield, ShieldCheck, Activity, Mic
 } from 'lucide-react';
 
 const NAV = [
@@ -59,9 +58,10 @@ const NAV = [
     ]
   },
   {
-    section: 'System',
+    section: 'Administration',
     items: [
-      { id: 'approvals', label: 'Approvals',   icon: ShieldCheck },
+      { id: 'admin',     label: 'Admin Panel',  icon: ShieldCheck },
+      { id: 'approvals', label: 'Approvals',   icon: Shield },
       { id: 'activity',  label: 'Activity Log', icon: Activity },
       { id: 'billing',   label: 'Billing',      icon: CreditCard },
       { id: 'settings',  label: 'Settings',     icon: Settings },

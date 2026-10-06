@@ -4,13 +4,12 @@ import VoiceScreen from '../voice/VoiceScreen';
 export default function TalkWithSara({ onNavigate }) {
   return (
     <div style={{
-      background: '#060608',
-      minHeight: '100vh',
-      color: '#f1f1f5',
+      background: 'var(--surface-soft)',
+      minHeight: 'calc(100vh - var(--topbar-height))',
+      color: 'var(--text-primary)',
       display: 'flex',
       flexDirection: 'column',
-      position: 'relative',
-      overflowX: 'hidden'
+      position: 'relative'
     }} className="animate-fade-in">
       <VoiceScreen
         onNavigate={onNavigate}

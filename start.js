@@ -167,8 +167,8 @@ function checkHealth() {
 setTimeout(checkHealth, 1500);
 
 // Cleanup on exit
-function cleanup() {
-  console.log(`\n${YELLOW}[SHUTDOWN] Stopping SARA processes cleanly...${RESET}`);
+function cleanup(signal = 'SIGINT') {
+  console.log(`\n${YELLOW}[SHUTDOWN] Received ${signal} — Stopping SARA processes cleanly...${RESET}`);
   try {
     oauthProxy.close();
   } catch {}
@@ -194,8 +194,12 @@ function cleanup() {
   }, 500);
 }
 
-process.on('SIGINT', cleanup);
-process.on('SIGTERM', cleanup);
+process.on('SIGINT', () => cleanup('SIGINT'));
+process.on('SIGTERM', () => cleanup('SIGTERM'));
+process.on('SIGHUP', () => {
+  console.log(`${YELLOW}[SETUP] SIGHUP received, ignoring to keep server running in background...${RESET}`);
+});
+
 serverProcess.on('exit', (code) => {
   if (code !== 0 && code !== null) {
     console.log(`${RED}[SERVER] Process exited with code ${code}${RESET}`);
@@ -206,4 +210,3 @@ clientProcess.on('exit', (code) => {
     console.log(`${RED}[CLIENT] Process exited with code ${code}${RESET}`);
   }
 });
-

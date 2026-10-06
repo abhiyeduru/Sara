@@ -9,8 +9,11 @@
     "client": "npm --prefix client run dev",
     "server": "python3 -m server.main",
     "test": "python3 test_e2e.py",
+    "test:admin": "python3 test_admin_and_minutes_sync.py",
+    "test:compiler": "python3 test_saadhyam_compiler.py",
     "test:business": "python3 test_business_agents_and_hallucination.py",
     "test:voice": "python3 test_multilingual_voice.py",
+    "test:plivo": "python3 test_plivo_telephony.py",
     "build": "npm --prefix client run build"
   },
   "keywords": [

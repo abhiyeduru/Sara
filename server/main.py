@@ -109,6 +109,7 @@ from server.api.v1.billing.router    import router as billing_router
 from server.api.v1.activity.router   import router as activity_router
 from server.api.v1.integrations.router import router as integrations_router, mcp_router
 from server.api.v1.knowledge.router import router as knowledge_router
+from server.api.v1.admin.router import router as admin_router
 from server.api.v1.teams.router import router as teams_router
 from server.api.v1.voice.router import router as voice_router
 from server.api.v1.phone_numbers.router import router as phone_numbers_router
@@ -116,6 +117,7 @@ from server.api.v1.campaigns.router import router as campaigns_router
 from server.api.v1.auth.router import router as auth_router, google_oauth_callback
 
 app.include_router(auth_router)
+app.include_router(admin_router)
 
 # Google Workspace / OAuth Redirect Aliases
 @app.get("/api/space/google/callback", tags=["Authentication & Onboarding"], include_in_schema=False)
@@ -128,6 +130,9 @@ async def space_google_oauth_callback(
     db: Session = Depends(get_db),
 ):
     return await google_oauth_callback(code=code, error=error, db=db)
+from server.api.v1.calls.exotel_webhooks import router as exotel_webhooks_router
+
+app.include_router(exotel_webhooks_router)
 app.include_router(workspaces_router)
 app.include_router(employees_router)
 app.include_router(teams_router)

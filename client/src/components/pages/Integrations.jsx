@@ -15,7 +15,7 @@ const INTEGRATIONS = [
   ]},
   { cat:'Communication', items:[
     { name:'WhatsApp Business', logo:'🟢', status:'disconnected', desc:'Send WhatsApp messages', badge:'Setup Required' },
-    { name:'Twilio', logo:'📞', status:'connected', desc:'Voice calls infrastructure' },
+    { name:'Plivo', logo:'📞', status:'connected', desc:'Voice calls infrastructure (+91 India)' },
     { name:'Slack', logo:'💻', status:'connected', desc:'Team notifications' },
     { name:'Telegram', logo:'✈️', status:'disconnected', desc:'Telegram bot integration' },
   ]},

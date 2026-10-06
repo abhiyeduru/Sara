@@ -20,6 +20,8 @@ export default function PhoneNumbers({ onNavigate }) {
   const [showCallModal, setShowCallModal] = useState(false);
   const [callTargetNumber, setCallTargetNumber] = useState('');
   const [callSelectedEmp, setCallSelectedEmp] = useState('');
+  const [callProvider, setCallProvider] = useState('plivo');
+  const [callSimulate, setCallSimulate] = useState(false);
   const [calling, setCalling] = useState(false);
   const [callSuccessMessage, setCallSuccessMessage] = useState('');
 
@@ -119,11 +121,13 @@ export default function PhoneNumbers({ onNavigate }) {
         body: JSON.stringify({
           employee_id: callSelectedEmp,
           to: callTargetNumber,
+          provider: callProvider,
+          simulate: callSimulate,
         }),
       });
       const data = await res.json();
       if (res.ok) {
-        setCallSuccessMessage(`Outbound AI Call Initiated! Call SID: ${data.twilio_call_sid || data.call_id}`);
+        setCallSuccessMessage(data.message || `Outbound AI Call Initiated via ${callProvider.toUpperCase()}! Call SID: ${data.call_sid || data.call_id}`);
         setTimeout(() => {
           setShowCallModal(false);
           setCallSuccessMessage('');
@@ -131,7 +135,7 @@ export default function PhoneNumbers({ onNavigate }) {
           onNavigate('calls');
         }, 2000);
       } else {
-        alert(data.detail || 'Could not initiate call');
+        alert(data.detail || data.message || 'Could not initiate call');
       }
     } catch (err) {
       console.error('Call error:', err);
@@ -147,10 +151,10 @@ export default function PhoneNumbers({ onNavigate }) {
         <div>
           <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
             <Hash size={26} color="var(--primary)" />
-            Twilio Virtual Phone Lines
+            Telephony & Virtual Phone Lines
           </h1>
           <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            Manage telephony lines powered by Twilio Voice API. Route inbound inquiries and place autonomous outbound AI calls.
+            Manage active phone lines powered by Plivo (+91 India carrier) and SARA Voice Runtime. Route inbound inquiries and place autonomous outbound AI calls.
           </p>
         </div>
         <div style={{ display: 'flex', gap: 12 }}>
@@ -179,13 +183,13 @@ export default function PhoneNumbers({ onNavigate }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
         <div className="card" style={{ padding: 20 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Radio size={16} color="#10b981" /> Telephony Carrier Status
+            <Radio size={16} color="#10b981" /> Primary Carrier Status
           </div>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#10b981', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: '#10b981', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-            Twilio Voice Active
+            Plivo Voice Active
           </div>
-          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Account SID: ACd0a3...1d1e</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Line: +91 80 6552 2007 (Auth: MAYMJLZ...1YY)</div>
         </div>
         <div className="card" style={{ padding: 20 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -209,14 +213,14 @@ export default function PhoneNumbers({ onNavigate }) {
       <div className="card" style={{ padding: '16px 20px', marginBottom: 24, background: 'linear-gradient(180deg, rgba(124,58,237,0.03), transparent)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--primary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Production Inbound Webhook URL
+            Production Plivo Inbound Webhook URL
           </div>
           <div style={{ fontSize: 14, fontFamily: 'monospace', color: 'var(--text-primary)', marginTop: 4 }}>
-            https://sara.saadhyam.com/api/v1/voice/inbound
+            https://sara.saadhyam.com/api/v1/voice/plivo/inbound
           </div>
         </div>
         <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
-          <Shield size={14} color="#10b981" /> TwiML Protocol v2.0
+          <Shield size={14} color="#10b981" /> Plivo Audio Stream XML v2.0
         </span>
       </div>
 
@@ -232,7 +236,7 @@ export default function PhoneNumbers({ onNavigate }) {
             <Hash size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />
             <h3 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>No Phone Numbers Configured</h3>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', maxWidth: 440, margin: '0 auto 16px' }}>
-              Add a Twilio phone number so your AI employees can receive inbound calls and place outbound phone campaigns.
+              Add a carrier phone number so your AI employees can receive inbound calls and place outbound phone campaigns.
             </p>
             <button
               onClick={() => { setShowBuyModal(true); handleSearchAvailable(); }}
@@ -268,8 +272,18 @@ export default function PhoneNumbers({ onNavigate }) {
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '14px 16px', color: 'var(--text-muted)' }}>
-                    <span style={{ textTransform: 'uppercase', fontSize: 12, fontWeight: 600 }}>Twilio Voice</span>
+                  <td style={{ padding: '14px 16px', color: 'var(--text-primary)' }}>
+                    <span style={{ textTransform: 'uppercase', fontSize: 12, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {n.provider === 'plivo' ? (
+                        <span style={{ padding: '2px 8px', borderRadius: 4, background: '#dbeafe', color: '#1d4ed8' }}>
+                          Plivo Voice (+91)
+                        </span>
+                      ) : (
+                        <span style={{ padding: '2px 8px', borderRadius: 4, background: '#f3f4f6', color: '#374151' }}>
+                          {n.provider ? `${n.provider.toUpperCase()} Voice` : 'Voice Carrier'}
+                        </span>
+                      )}
+                    </span>
                   </td>
                   <td style={{ padding: '14px 16px' }}>
                     <div style={{ display: 'flex', gap: 4 }}>
@@ -338,7 +352,7 @@ export default function PhoneNumbers({ onNavigate }) {
         }}>
           <div className="card" style={{ width: '100%', maxWidth: 580, padding: 24, borderRadius: 12 }}>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-              Provision Twilio Virtual Phone Line
+              Provision Plivo Virtual Phone Line
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
               Select a phone number for your AI employees. Webhooks and Speech TwiML will be configured automatically.
@@ -368,7 +382,7 @@ export default function PhoneNumbers({ onNavigate }) {
             <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, marginBottom: 16 }}>
               {availableNumbers.length === 0 ? (
                 <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>
-                  Click "Search Available" to fetch live phone numbers from Twilio.
+                  Click "Search Available" to fetch live phone numbers from Plivo.
                 </div>
               ) : (
                 availableNumbers.map((num) => (
@@ -424,7 +438,7 @@ export default function PhoneNumbers({ onNavigate }) {
               Initiate Outbound AI Call
             </h2>
             <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              Trigger Twilio to dial the destination phone. The customer will converse directly with your selected AI Employee.
+              Trigger carrier to dial the destination phone. The customer will converse directly with your selected AI Employee.
             </p>
 
             {callSuccessMessage ? (
@@ -451,7 +465,21 @@ export default function PhoneNumbers({ onNavigate }) {
                   </select>
                 </div>
 
-                <div style={{ marginBottom: 18 }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
+                    Telephony Gateway Provider
+                  </label>
+                  <select
+                    value={callProvider}
+                    onChange={(e) => setCallProvider(e.target.value)}
+                    style={{ width: '100%', padding: '9px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14 }}
+                  >
+                    <option value="plivo">Plivo (India +91 Calling — Direct Carrier Line: +91 80 6552 2007)</option>
+                    <option value="exotel">Exotel (India +91 Calling — Sarvam Telugu / Qwen)</option>
+                  </select>
+                </div>
+
+                <div style={{ marginBottom: 16 }}>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6 }}>
                     Destination Phone Number (with Country Code)
                   </label>
@@ -464,8 +492,23 @@ export default function PhoneNumbers({ onNavigate }) {
                     style={{ width: '100%', padding: '9px 12px', borderRadius: 6, border: '1px solid var(--border)', fontSize: 14, fontFamily: 'monospace' }}
                   />
                   <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                    Enter in E.164 international format (e.g. +91... or +1...)
+                    {callProvider === 'plivo' || callProvider === 'exotel'
+                      ? 'Indian mobile number (+91 or 10 digits starting with 6, 7, 8, 9, e.g. +91 98490 12345)'
+                      : 'Enter in E.164 international format (e.g. +1... or +44...)'}
                   </div>
+                </div>
+
+                <div style={{ marginBottom: 18, display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'var(--bg-secondary, #fafafa)', borderRadius: 6, border: '1px solid var(--border)' }}>
+                  <input
+                    type="checkbox"
+                    id="callSimulate"
+                    checked={callSimulate}
+                    onChange={(e) => setCallSimulate(e.target.checked)}
+                    style={{ cursor: 'pointer' }}
+                  />
+                  <label htmlFor="callSimulate" style={{ fontSize: 12, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                    Safe Simulation Mode (test voice workflow without cellular network charge)
+                  </label>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
@@ -483,7 +526,7 @@ export default function PhoneNumbers({ onNavigate }) {
                     style={{ padding: '8px 18px', borderRadius: 6, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8 }}
                   >
                     <PhoneCall size={15} />
-                    {calling ? 'Dialing via Twilio...' : 'Dial Now'}
+                    {calling ? `Dialing via ${callProvider.toUpperCase()}...` : 'Dial Now'}
                   </button>
                 </div>
               </form>

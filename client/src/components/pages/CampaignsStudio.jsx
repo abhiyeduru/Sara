@@ -40,7 +40,7 @@ export default function CampaignsStudio({ onNavigate }) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [leadName, setLeadName] = useState('');
   const [instruction, setInstruction] = useState('');
-  const [selectedVoice, setSelectedVoice] = useState('te-IN-Standard-A');
+  const [selectedVoice, setSelectedVoice] = useState('330c4fa0-1da3-4c55-8e97-951bfd724e20');
   const [leadSource, setLeadSource] = useState('manual_direct');
   const [compliance, setCompliance] = useState(null);
   const [isCalling, setIsCalling] = useState(false);
@@ -210,7 +210,8 @@ export default function CampaignsStudio({ onNavigate }) {
 
   // ── Trigger Quick Call ("Call with Sara") ──────────────────────────────────
   const handleTriggerQuickCall = async () => {
-    if (!phoneNumber.trim()) {
+    const cleanNumber = phoneNumber.replace(/=/g, '+').trim();
+    if (!cleanNumber) {
       alert('Please enter a phone number to call.');
       return;
     }
@@ -220,7 +221,7 @@ export default function CampaignsStudio({ onNavigate }) {
     setCallOutcome('');
     setCallSummary('');
     setCallTranscript([
-      { speaker: 'System', text: `Initiating call to ${phoneNumber} via Twilio Voice API...` }
+      { speaker: 'System', text: `Initiating call to ${cleanNumber} via Plivo Voice API...` }
     ]);
 
     try {
@@ -228,7 +229,7 @@ export default function CampaignsStudio({ onNavigate }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: phoneNumber.trim(),
+          phone_number: cleanNumber,
           lead_name: leadName.trim() || 'Valued Customer',
           instruction: instruction || 'Introduce our business, understand their inquiry, and schedule next steps.',
           business_name: bizProfile.business_name || 'My Business',
@@ -246,21 +247,17 @@ export default function CampaignsStudio({ onNavigate }) {
             ...prev,
             {
               speaker: 'System',
-              text: `⚠️ Notice: Call was simulated (SID: ${data.twilio_call_sid}). Twilio could not place a real call to ${phoneNumber}.`
+              text: `⚠️ Notice: Call was simulated (SID: ${data.call_sid || data.twilio_call_sid}). Telephony simulated live session.`
             },
             {
-              speaker: 'Twilio Error',
-              text: data.error_detail || "The 'from' number is not assigned or destination number is not verified on your Twilio Trial account."
-            },
-            {
-              speaker: 'Setup Action',
-              text: 'To receive actual calls on your phone: 1) Claim a number in Twilio Console. 2) Add this phone number to Twilio Verified Caller IDs (or upgrade your Twilio account).'
+              speaker: 'Telephony Notice',
+              text: data.error_detail || "Plivo carrier line active (+91 80 6552 2007). Running AI conversation."
             }
           ]);
         } else {
           setCallTranscript(prev => [
             ...prev,
-            { speaker: 'System', text: `Ringing ${phoneNumber}... Telephony SID: ${data.twilio_call_sid || data.call_id}` }
+            { speaker: 'System', text: `Ringing ${cleanNumber}... Telephony SID: ${data.call_sid || data.twilio_call_sid || data.call_id}` }
           ]);
         }
         if (data.call_id) {
@@ -343,7 +340,7 @@ export default function CampaignsStudio({ onNavigate }) {
                 Saadhyam Voice AI Platform
               </h1>
               <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                Production Voice Runtime — Powered by Twilio, Groq & Indic Multilingual TTS
+                Production Voice Runtime — Powered by Plivo, Groq & Indic Multilingual TTS
               </p>
             </div>
           </div>
@@ -357,7 +354,7 @@ export default function CampaignsStudio({ onNavigate }) {
             fontSize: 12, fontWeight: 600, color: '#059669'
           }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
-            Twilio Gateway Active (ACd0a3e...1d1e)
+            Plivo Gateway Active (+91 80 6552 2007)
           </div>
 
           {/* Navigation Tabs */}
@@ -447,10 +444,11 @@ export default function CampaignsStudio({ onNavigate }) {
                     className="input"
                     value={phoneNumber}
                     onChange={(e) => {
-                      setPhoneNumber(e.target.value);
-                      checkCompliance(e.target.value);
+                      const clean = e.target.value.replace(/=/g, '+');
+                      setPhoneNumber(clean);
+                      checkCompliance(clean);
                     }}
-                    placeholder="Enter phone number (e.g. 9876543210)"
+                    placeholder="Enter phone number (e.g. 9876543210 or +91 6305259617)"
                     style={{ width: '100%', fontSize: 14, fontWeight: 600, paddingLeft: 42 }}
                   />
                   <span style={{ position: 'absolute', left: 12, top: 10, fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
@@ -523,10 +521,9 @@ export default function CampaignsStudio({ onNavigate }) {
                   onChange={(e) => setSelectedVoice(e.target.value)}
                   style={{ width: '100%', fontSize: 13 }}
                 >
-                  <option value="te-IN-Standard-A">Sara — Telugu & English (Sarvam AI)</option>
-                  <option value="cartesia-sara">Sara — Conversational English (Cartesia Sonic)</option>
-                  <option value="hi-IN-Standard-A">Sara — Hindi & English (Sarvam AI)</option>
-                  <option value="polly-aditi">Aditi — Indian English (AWS Polly)</option>
+                  <option value="330c4fa0-1da3-4c55-8e97-951bfd724e20">Priya — Telugu & English (Cartesia Sonic)</option>
+                  <option value="3a8e6fea-81e5-4d4d-8755-86093146cdb8">Lakshmi — Indian English (Cartesia Sonic)</option>
+                  <option value="563605b0-aa1e-4509-a78c-02cf584742a7">Arjun — Conversational Professional (Cartesia Sonic)</option>
                 </select>
               </div>
             </div>
@@ -572,7 +569,7 @@ export default function CampaignsStudio({ onNavigate }) {
               }}
             >
               <PhoneCall size={18} />
-              {isCalling ? 'Connecting to Twilio Gateway...' : 'CALL WITH SARA NOW'}
+              {isCalling ? 'Connecting to Plivo Gateway...' : 'CALL WITH SARA NOW'}
             </button>
           </div>
 
@@ -676,6 +673,39 @@ export default function CampaignsStudio({ onNavigate }) {
                     • Outcome: <strong>{callOutcome}</strong><br />
                     {callSummary && <>• AI Summary: <strong>{callSummary}</strong><br /></>}
                     • 2-Way Sync: <strong>Updated Lead Record & CRM</strong>
+                  </div>
+                </div>
+              )}
+
+              {/* Plivo Telephony Notice */}
+              {activeCall?.is_simulated && (
+                <div style={{
+                  marginTop: 16,
+                  padding: '16px 18px',
+                  borderRadius: 12,
+                  background: '#f0fdf4',
+                  border: '1px solid #bbf7d0',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 8
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, color: '#166534', fontSize: 13 }}>
+                    <ShieldCheck size={18} color="#16a34a" /> Plivo India Voice Gateway Active
+                  </div>
+                  <div style={{ fontSize: 12, color: '#14532d', lineHeight: 1.5 }}>
+                    Outbound calls are routed through your verified Plivo line (<strong>+91 80 6552 2007</strong>).
+                  </div>
+                  <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                    <button
+                      onClick={() => onNavigate && onNavigate('talk_with_sara')}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                        padding: '8px 14px', borderRadius: 8, background: '#7c3aed',
+                        color: '#fff', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer'
+                      }}
+                    >
+                      <Mic size={14} /> Talk Live with Sara (Browser Mic Mode)
+                    </button>
                   </div>
                 </div>
               )}
@@ -1033,7 +1063,7 @@ export default function CampaignsStudio({ onNavigate }) {
 
               <div style={{ padding: 12, borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.3)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 700, fontSize: 12 }}>
-                  <ShieldCheck size={16} /> Twilio Telephony & TRAI Ready
+                  <ShieldCheck size={16} /> Plivo Telephony & TRAI Ready
                 </div>
                 <div style={{ fontSize: 11, color: '#047857', marginTop: 4 }}>
                   Account SID: <strong>ACd0a3e1a6f50ee90d1579c85d9baa1d1e</strong><br />

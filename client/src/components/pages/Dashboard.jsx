@@ -9,13 +9,18 @@ export default function Dashboard({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [dashData, setDashData] = useState(null);
   const [balance, setBalance] = useState('1,000');
+  const [rawBalance, setRawBalance] = useState(1000);
   const [chartData, setChartData] = useState([]);
+  const [callLimits, setCallLimits] = useState({ call_limit_minutes: 10, rate_per_minute: 6.0, min_limit_minutes: 5, max_limit_minutes: 10 });
+  const [updatingLimit, setUpdatingLimit] = useState(false);
+  const [limitNotice, setLimitNotice] = useState('');
 
   const fetchDashboardData = async () => {
     try {
-      const [analyticsRes, billingRes] = await Promise.all([
+      const [analyticsRes, billingRes, limitsRes] = await Promise.all([
         fetch('/api/v1/analytics/dashboard'),
         fetch('/api/v1/billing/balance'),
+        fetch('/api/v1/billing/limits'),
       ]);
 
       if (analyticsRes.ok) {
@@ -42,12 +47,40 @@ export default function Dashboard({ onNavigate }) {
 
       if (billingRes.ok) {
         const b = await billingRes.json();
-        setBalance(Number(b.balance || 0).toLocaleString());
+        const balNum = Number(b.balance || 0);
+        setRawBalance(balNum);
+        setBalance(balNum.toLocaleString('en-IN'));
+      }
+
+      if (limitsRes.ok) {
+        const lim = await limitsRes.json();
+        setCallLimits(lim);
       }
     } catch (err) {
       console.error('Failed to load dashboard data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateLimit = async (newMins) => {
+    setUpdatingLimit(true);
+    try {
+      const res = await fetch('/api/v1/billing/limits', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes: Number(newMins) }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCallLimits(prev => ({ ...prev, call_limit_minutes: data.call_limit_minutes }));
+        setLimitNotice(`Call limit set to ${data.call_limit_minutes} minutes!`);
+        setTimeout(() => setLimitNotice(''), 3500);
+      }
+    } catch (err) {
+      console.error('Failed to update call limit:', err);
+    } finally {
+      setUpdatingLimit(false);
     }
   };
 
@@ -159,6 +192,102 @@ export default function Dashboard({ onNavigate }) {
             <div className="kpi-label">{label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Call Duration Limits & Telephony Billing Card */}
+      <div className="card" style={{ padding: '18px 22px', marginBottom: 24, background: 'linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)', border: '1px solid #e9d5ff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 10, background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(124,58,237,0.3)' }}>
+              <Phone size={18} />
+            </div>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1e1b4b' }}>
+                  Call Duration Limits & Telephony Billing
+                </h3>
+                <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                  ₹{callLimits.rate_per_minute || 6}/min Direct Deduct
+                </span>
+              </div>
+              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>
+                Configurable 5 to 10 minute call cap. Direct wallet deduction of ₹6/min with 30s auto-warning.
+              </p>
+            </div>
+          </div>
+
+          {limitNotice && (
+            <div style={{ padding: '6px 14px', borderRadius: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', fontSize: 12, fontWeight: 700 }}>
+              ✓ {limitNotice}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, alignItems: 'center' }}>
+          {/* Minutes Available from Wallet */}
+          <div style={{ display: 'flex', gap: 14, background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid #ede9fe' }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Available Call Time
+              </div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#7c3aed', marginTop: 2 }}>
+                {Math.floor(rawBalance / (callLimits.rate_per_minute || 6.0))} <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>mins</span>
+              </div>
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+                Balance: ₹{balance} (min ₹6 required to place a call)
+              </div>
+            </div>
+            <button
+              className="btn btn-secondary btn-sm"
+              style={{ alignSelf: 'center', borderColor: '#c4b5fd', color: '#6d28d9' }}
+              onClick={() => onNavigate('billing')}
+            >
+              Top Up
+            </button>
+          </div>
+
+          {/* 5-10 Min Limit Selector */}
+          <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid #ede9fe' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Max Call Duration Limit
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>
+                Current: {callLimits.call_limit_minutes} min {updatingLimit && '(Saving...)'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[5, 6, 7, 8, 9, 10].map((m) => {
+                const isActive = callLimits.call_limit_minutes === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={updatingLimit}
+                    onClick={() => handleUpdateLimit(m)}
+                    style={{
+                      flex: 1,
+                      minWidth: 42,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: isActive ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                      background: isActive ? '#7c3aed' : '#f9fafb',
+                      color: isActive ? '#fff' : '#374151',
+                      boxShadow: isActive ? '0 2px 6px rgba(124,58,237,0.25)' : 'none',
+                    }}
+                  >
+                    {m}m
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 20 }}>

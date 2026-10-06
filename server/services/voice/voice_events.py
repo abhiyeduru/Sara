@@ -64,5 +64,13 @@ class VoiceEventBus:
 
         logger.info(f"📞 [Call {call_id[:8]}] Event: {event_type} | {metadata}")
 
+    async def broadcast(self, payload: Dict[str, Any]):
+        """
+        Async broadcast helper accepting standard event dict.
+        """
+        call_id = payload.get("call_id", "system")
+        event_type = payload.get("type", "call.event")
+        self.publish(call_id=call_id, event_type=event_type, metadata=payload)
+
 
 voice_events_bus = VoiceEventBus()

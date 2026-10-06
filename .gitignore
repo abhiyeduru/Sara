@@ -22,7 +22,8 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.pyo
-*.pyd
+bin/
+client/node_modules/
 
 # Virtual environments
 .venv/
