@@ -20,6 +20,7 @@ from server.services.voice.call_service import CallService, normalize_phone_numb
 from server.services.voice.recording_service import RecordingService
 from server.services.voice.voice_events import voice_events_bus
 from server.services.voice.deepgram_service import DeepgramSTTService
+from server.services.voice.assemblyai_service import AssemblyAISTTService
 from server.services.voice.cartesia_service import CartesiaTTSService
 from server.services.voice.call_billing_service import CallBillingService
 
@@ -359,7 +360,22 @@ async def check_providers_health(db: Session = Depends(get_db)):
         except Exception as e:
             results["plivo"] = {"status": "Error", "ready": False, "error": str(e)}
 
-    # 2. Deepgram STT
+    # 2. AssemblyAI STT (Primary)
+    if not settings.ASSEMBLYAI_API_KEY:
+        results["assemblyai"] = {"status": "Not configured", "ready": False}
+    else:
+        try:
+            aai = AssemblyAISTTService()
+            conn = await aai.connect()
+            if conn:
+                await aai.close()
+                results["assemblyai"] = {"status": "Healthy", "ready": True, "model": "universal-3-6-pro"}
+            else:
+                results["assemblyai"] = {"status": "Error", "ready": False, "error": "Handshake failed"}
+        except Exception as e:
+            results["assemblyai"] = {"status": "Error", "ready": False, "error": str(e)}
+
+    # 3. Deepgram STT (Fallback)
     if not settings.DEEPGRAM_API_KEY:
         results["deepgram"] = {"status": "Not configured", "ready": False}
     else:

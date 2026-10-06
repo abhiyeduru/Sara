@@ -26,15 +26,26 @@ from server.providers.sarvam_tts import SarvamTTS
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
+from server.providers.assemblyai_stt import AssemblyAISTT
 from server.providers.deepgram_stt import DeepgramSTT
 
 class UnifiedSTT:
-    def __init__(self, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+    def __init__(self, assemblyai: AssemblyAISTT, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+        self.assemblyai = assemblyai
         self.deepgram = deepgram
         self.sarvam = sarvam
 
     async def transcribe(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> Dict[str, Any]:
-        # Deepgram is the Primary STT Provider
+        # 1. AssemblyAI is the Primary STT Provider
+        if getattr(settings, "PRIMARY_STT", "assemblyai") == "assemblyai" and self.assemblyai.api_key:
+            try:
+                res = await self.assemblyai.transcribe(audio_bytes, language_hint=language_hint)
+                if res.get("transcript"):
+                    return res
+            except Exception as e:
+                logger.warning(f"AssemblyAI STT notice: {e}")
+
+        # 2. Deepgram STT Provider
         if self.deepgram.api_key:
             try:
                 res = await self.deepgram.transcribe(audio_bytes, language_hint=language_hint)
@@ -43,7 +54,7 @@ class UnifiedSTT:
             except Exception as e:
                 logger.warning(f"Deepgram STT notice: {e}")
 
-        # Fallback if Deepgram encounters network issue
+        # 3. Fallback to Sarvam / Groq Whisper
         try:
             res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
             if res.get("transcript") and not res.get("error"):
@@ -53,7 +64,7 @@ class UnifiedSTT:
 
         return await self.sarvam._fallback_groq(audio_bytes, time.perf_counter(), language_hint=language_hint)
 
-stt_provider = UnifiedSTT(DeepgramSTT(), SarvamSTT())
+stt_provider = UnifiedSTT(AssemblyAISTT(), DeepgramSTT(), SarvamSTT())
 llm_provider = OpenAILLM() if settings.PRIMARY_LLM == "openai" else GroqLLM()
 from server.providers.edge_tts_provider import EdgeTTSProvider
 

@@ -17,6 +17,8 @@ from sqlalchemy.orm import Session
 from server.database import SessionLocal
 from server.models import Call, AIEmployee
 from server.services.voice.deepgram_service import DeepgramSTTService
+from server.services.voice.assemblyai_service import AssemblyAISTTService
+from server.config import settings
 from server.services.voice.conversation_orchestrator import ConversationOrchestrator, ConversationState
 from server.services.voice.audio_codec_service import AudioCodecService
 from server.services.voice.call_billing_service import CallBillingService
@@ -129,21 +131,41 @@ class PlivoMediaGateway:
             flush_audio_callback=self._send_clear_to_plivo,
         )
 
-        # 2. Initialize Deepgram Streaming STT
+        # 2. Initialize Streaming STT (AssemblyAI Primary with Deepgram Fallback)
         lang = (self.orchestrator.language if self.orchestrator else None) or (employee.voice_language if employee else None) or "te"
-        self.deepgram_service = DeepgramSTTService(
-            sample_rate=8000,
-            encoding="mulaw",  # Plivo sends native 8kHz mulaw
-            channels=1,
-            language=lang,
-            on_transcript=self._on_deepgram_transcript,
-            on_speech_started=self._on_deepgram_speech_started,
-            on_utterance_end=self._on_deepgram_utterance_end,
-        )
+        stt_connected = False
 
-        connected = await self.deepgram_service.connect()
-        if not connected:
-            logger.error("Failed to connect to Deepgram STT stream for Plivo call")
+        if getattr(settings, "PRIMARY_STT", "assemblyai") == "assemblyai" and settings.ASSEMBLYAI_API_KEY:
+            try:
+                self.deepgram_service = AssemblyAISTTService(
+                    sample_rate=8000,
+                    encoding="mulaw",  # Plivo sends native 8kHz mulaw
+                    channels=1,
+                    language=lang,
+                    on_transcript=self._on_deepgram_transcript,
+                    on_speech_started=self._on_deepgram_speech_started,
+                    on_utterance_end=self._on_deepgram_utterance_end,
+                )
+                stt_connected = await self.deepgram_service.connect()
+                if stt_connected:
+                    logger.info(f"🎙️ [Call {self.call_id}] Connected to AssemblyAI Universal-3-6-Pro Streaming STT for Plivo call")
+            except Exception as e:
+                logger.warning(f"AssemblyAI streaming init notice: {e}")
+
+        if not stt_connected:
+            logger.info(f"🎙️ [Call {self.call_id}] Using Deepgram Streaming STT for Plivo call")
+            self.deepgram_service = DeepgramSTTService(
+                sample_rate=8000,
+                encoding="mulaw",  # Plivo sends native 8kHz mulaw
+                channels=1,
+                language=lang,
+                on_transcript=self._on_deepgram_transcript,
+                on_speech_started=self._on_deepgram_speech_started,
+                on_utterance_end=self._on_deepgram_utterance_end,
+            )
+            stt_connected = await self.deepgram_service.connect()
+            if not stt_connected:
+                logger.error(f"Failed to connect to Deepgram STT stream for Plivo call {self.call_id}")
 
         # 3. Setup Call Start Time & Duration Limit Watchdog (5 to 10 min, ₹6/min)
         self.call_start_time = time.time()

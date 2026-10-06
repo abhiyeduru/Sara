@@ -345,8 +345,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.deepgram?.ready ? '#16a34a' : '#ea580c' }} />
-            <strong>STT:</strong> Deepgram Streaming
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: (providersHealth.assemblyai?.ready || providersHealth.deepgram?.ready) ? '#16a34a' : '#ea580c' }} />
+            <strong>STT:</strong> {providersHealth.assemblyai?.ready ? 'AssemblyAI Universal-3.6 Pro' : 'Deepgram Nova-3'}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.cartesia?.ready ? '#16a34a' : '#ea580c' }} />
