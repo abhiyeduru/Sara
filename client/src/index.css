@@ -600,3 +600,8 @@ textarea.input { resize: vertical; min-height: 90px; }
   animation: fadeIn 0.25s ease-out;
 }
 
+/* Editorial Serif Typography for Claude/Saadhyam Auth */
+.font-editorial {
+  font-family: 'Newsreader', 'Instrument Serif', Georgia, Cambria, 'Times New Roman', serif;
+}
+

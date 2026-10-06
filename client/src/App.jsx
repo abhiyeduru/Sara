@@ -277,6 +277,7 @@ export default function App() {
       {showOnboarding && (
         <BusinessOnboardingModal
           user={currentUser}
+          onBack={handleLogout}
           onComplete={(bizData) => {
             setShowOnboarding(false);
             setNeedsOnboarding(false);

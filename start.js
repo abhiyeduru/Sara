@@ -19,17 +19,42 @@ console.log(`${CYAN}${BOLD}═════════════════�
 console.log(`${CYAN}${BOLD}  SARA — Low-Latency Real-Time Multilingual AI Voice Platform  ${RESET}`);
 console.log(`${CYAN}${BOLD}════════════════════════════════════════════════════════════${RESET}\n`);
 
-// Free up ports 8000 and 5174 if already occupied
+// Free up ports 8000, 8001 and 5174 if already occupied
+const isWin = process.platform === 'win32';
+const pythonCmd = isWin ? 'python' : 'python3';
+const npmCmd = isWin ? 'npm.cmd' : 'npm';
+
 function freePort(port) {
   try {
-    const output = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
-    if (output) {
-      const pids = output.split('\n').filter(Boolean);
-      for (const pid of pids) {
-        try {
-          process.kill(parseInt(pid, 10), 'SIGKILL');
-          console.log(`${YELLOW}[SETUP] Freed port ${port} by terminating PID ${pid}${RESET}`);
-        } catch {}
+    if (isWin) {
+      const output = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      if (output) {
+        const lines = output.split('\n');
+        const pids = new Set();
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && !isNaN(pid) && pid !== '0' && parseInt(pid, 10) !== process.pid) {
+            pids.add(pid);
+          }
+        }
+        for (const pid of pids) {
+          try {
+            execSync(`taskkill /F /PID ${pid}`, { stdio: 'ignore' });
+            console.log(`${YELLOW}[SETUP] Freed port ${port} by terminating PID ${pid}${RESET}`);
+          } catch {}
+        }
+      }
+    } else {
+      const output = execSync(`lsof -ti :${port}`, { encoding: 'utf-8' }).trim();
+      if (output) {
+        const pids = output.split('\n').filter(Boolean);
+        for (const pid of pids) {
+          try {
+            process.kill(parseInt(pid, 10), 'SIGKILL');
+            console.log(`${YELLOW}[SETUP] Freed port ${port} by terminating PID ${pid}${RESET}`);
+          } catch {}
+        }
       }
     }
   } catch {}
@@ -42,9 +67,10 @@ freePort(5174);
 
 // 1. Launch Backend Server (FastAPI / Python)
 console.log(`${GREEN}[SERVER] Starting FastAPI Backend on http://localhost:8000...${RESET}`);
-const serverProcess = spawn('python3', ['-m', 'server.main'], {
+const serverProcess = spawn(pythonCmd, ['-m', 'server.main'], {
   cwd: ROOT_DIR,
   stdio: ['pipe', 'pipe', 'pipe'],
+  shell: isWin,
   env: { ...process.env, PYTHONUNBUFFERED: '1' }
 });
 
@@ -66,9 +92,10 @@ serverProcess.stderr.on('data', (data) => {
 
 // 2. Launch Frontend Client (Vite / React)
 console.log(`${GREEN}[CLIENT] Starting Vite React Frontend on http://localhost:5174...${RESET}`);
-const clientProcess = spawn('npm', ['run', 'dev', '--', '--host'], {
+const clientProcess = spawn(npmCmd, ['run', 'dev', '--', '--host'], {
   cwd: CLIENT_DIR,
   stdio: ['pipe', 'pipe', 'pipe'],
+  shell: isWin,
   env: { ...process.env }
 });
 
@@ -146,10 +173,18 @@ function cleanup() {
     oauthProxy.close();
   } catch {}
   try {
-    serverProcess.kill('SIGINT');
+    if (isWin && serverProcess && serverProcess.pid) {
+      execSync(`taskkill /F /T /PID ${serverProcess.pid}`, { stdio: 'ignore' });
+    } else if (serverProcess) {
+      serverProcess.kill('SIGINT');
+    }
   } catch {}
   try {
-    clientProcess.kill('SIGINT');
+    if (isWin && clientProcess && clientProcess.pid) {
+      execSync(`taskkill /F /T /PID ${clientProcess.pid}`, { stdio: 'ignore' });
+    } else if (clientProcess) {
+      clientProcess.kill('SIGINT');
+    }
   } catch {}
   setTimeout(() => {
     freePort(8000);
@@ -171,3 +206,4 @@ clientProcess.on('exit', (code) => {
     console.log(`${RED}[CLIENT] Process exited with code ${code}${RESET}`);
   }
 });
+

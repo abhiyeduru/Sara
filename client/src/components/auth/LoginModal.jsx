@@ -1,13 +1,115 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Volume2, Sparkles, Shield, ArrowRight, CheckCircle2, Building2, User, Key, Zap } from 'lucide-react';
+import {
+  ArrowRight, CheckCircle2, User, Zap, Sun, Moon
+} from 'lucide-react';
+import lottie from 'lottie-web';
+
+// Custom Brand Icon with vibrant Pink-Purple gradient pattern
+function BrandIcon({ size = 28 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      style={{ display: 'inline-block', flexShrink: 0 }}
+    >
+      <defs>
+        <linearGradient id="saraPinkPurpleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#A855F7" />
+          <stop offset="50%" stopColor="#9333EA" />
+          <stop offset="100%" stopColor="#EC4899" />
+        </linearGradient>
+      </defs>
+      <circle cx="12" cy="12" r="2.8" fill="url(#saraPinkPurpleGrad)" />
+      <line x1="12" y1="2" x2="12" y2="6.5" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="12" y1="17.5" x2="12" y2="22" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="2" y1="12" x2="6.5" y2="12" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="17.5" y1="12" x2="22" y2="12" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="4.93" y1="4.93" x2="8.1" y2="8.1" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="15.9" y1="15.9" x2="19.07" y2="19.07" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="4.93" y1="19.07" x2="8.1" y2="15.9" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+      <line x1="15.9" y1="8.1" x2="19.07" y2="4.93" stroke="url(#saraPinkPurpleGrad)" strokeWidth="2.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Right-Side Lottie Animation Component
+function LottieShowcase() {
+  const containerRef = useRef(null);
+  const animRef = useRef(null);
+
+  useEffect(() => {
+    if (containerRef.current) {
+      if (animRef.current) {
+        animRef.current.destroy();
+      }
+
+      animRef.current = lottie.loadAnimation({
+        container: containerRef.current,
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        path: '/login-animation.json',
+      });
+    }
+
+    return () => {
+      if (animRef.current) {
+        animRef.current.destroy();
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        maxWidth: 580,
+        height: 'clamp(360px, 62vh, 600px)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        position: 'relative',
+        background: 'transparent',
+      }}
+    >
+      <div
+        ref={containerRef}
+        style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'transparent',
+        }}
+      />
+    </div>
+  );
+}
 
 export default function LoginModal({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [googleClientId, setGoogleClientId] = useState('');
+  const [emailInput, setEmailInput] = useState('abhiyeduru8@gmail.com');
   const googleBtnRef = useRef(null);
 
-  const DEFAULT_GOOGLE_CLIENT_ID = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '78592580498-jal2ukdmui3tq3rt2csj0u7r80173asn.apps.googleusercontent.com';
+  // Theme: 'light' (pure white) or 'dark' (obsidian purple)
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('sara_login_theme') || 'light';
+  });
+
+  const toggleTheme = () => {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    localStorage.setItem('sara_login_theme', next);
+  };
+
+  const DEFAULT_GOOGLE_CLIENT_ID =
+    (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) ||
+    '78592580498-jal2ukdmui3tq3rt2csj0u7r80173asn.apps.googleusercontent.com';
   const apiBase = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) || '';
 
   const parseJwt = (token) => {
@@ -22,37 +124,34 @@ export default function LoginModal({ onLoginSuccess }) {
           .join('')
       );
       return JSON.parse(jsonPayload);
-    } catch (e) {
+    } catch {
       return null;
     }
   };
 
+  // Initialize Google Sign In
   useEffect(() => {
-    // 1. Initialize immediately with configured / default Google Client ID
     const initialClientId = DEFAULT_GOOGLE_CLIENT_ID;
     setGoogleClientId(initialClientId);
     initGoogleSignIn(initialClientId);
 
-    // 2. Fetch public Google Client ID from backend if available
     const apiEndpoint = apiBase ? `${apiBase}/api/v1/auth/config` : '/api/v1/auth/config';
     fetch(apiEndpoint)
-      .then(res => {
+      .then((res) => {
         if (!res.ok) throw new Error('Not ok');
         return res.json();
       })
-      .then(data => {
+      .then((data) => {
         if (data.google_client_id && data.google_client_id !== initialClientId) {
           setGoogleClientId(data.google_client_id);
           initGoogleSignIn(data.google_client_id);
         }
       })
-      .catch(() => {
-        // Backend offline or static SPA; fallback client ID is already active
-      });
-  }, []);
+      .catch(() => {});
+  }, [theme]);
 
   const initGoogleSignIn = (clientId) => {
-    if (window.google && window.google.accounts && window.google.accounts.id) {
+    if (window.google?.accounts?.id) {
       try {
         window.google.accounts.id.initialize({
           client_id: clientId,
@@ -63,18 +162,17 @@ export default function LoginModal({ onLoginSuccess }) {
 
         if (googleBtnRef.current) {
           window.google.accounts.id.renderButton(googleBtnRef.current, {
-            theme: 'outline',
+            theme: theme === 'dark' ? 'filled_black' : 'outline',
             size: 'large',
-            width: 320,
+            width: 340,
             text: 'continue_with',
-            shape: 'pill'
+            shape: 'rectangular',
           });
         }
       } catch (e) {
         console.error('Google accounts.id init error:', e);
       }
     } else {
-      // Retry in 500ms if script is still downloading
       setTimeout(() => initGoogleSignIn(clientId), 500);
     }
   };
@@ -83,22 +181,23 @@ export default function LoginModal({ onLoginSuccess }) {
     setLoading(true);
     setError('');
 
-    // Pre-decode JWT client-side for instant resilient authentication
     const jwtData = parseJwt(response.credential);
-    const verifiedGoogleUser = jwtData ? {
-      id: `google_${jwtData.sub}`,
-      name: jwtData.name || jwtData.given_name || (jwtData.email ? jwtData.email.split('@')[0] : 'Google User'),
-      email: jwtData.email || '',
-      avatar_url: jwtData.picture || '',
-      auth_provider: 'google'
-    } : null;
+    const verifiedGoogleUser = jwtData
+      ? {
+          id: `google_${jwtData.sub}`,
+          name: jwtData.name || jwtData.given_name || (jwtData.email ? jwtData.email.split('@')[0] : 'Google User'),
+          email: jwtData.email || '',
+          avatar_url: jwtData.picture || '',
+          auth_provider: 'google',
+        }
+      : null;
 
     try {
       const verifyEndpoint = apiBase ? `${apiBase}/api/v1/auth/google/verify` : '/api/v1/auth/google/verify';
       const res = await fetch(verifyEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential: response.credential })
+        body: JSON.stringify({ credential: response.credential }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -114,8 +213,7 @@ export default function LoginModal({ onLoginSuccess }) {
       console.warn('Backend server verification bypassed:', err);
     }
 
-    // Direct authentic Google Sign-in token success
-    if (verifiedGoogleUser && verifiedGoogleUser.email) {
+    if (verifiedGoogleUser?.email) {
       localStorage.setItem('sara_token', response.credential);
       localStorage.setItem('sara_user', JSON.stringify(verifiedGoogleUser));
       onLoginSuccess(verifiedGoogleUser, false);
@@ -124,9 +222,6 @@ export default function LoginModal({ onLoginSuccess }) {
     }
     setLoading(false);
   };
-
-  const [emailInput, setEmailInput] = useState('abhiyeduru8@gmail.com');
-  const [showEmailInput, setShowEmailInput] = useState(false);
 
   const handleCustomEmailLogin = async (emailToUse) => {
     setLoading(true);
@@ -137,20 +232,23 @@ export default function LoginModal({ onLoginSuccess }) {
       setLoading(false);
       return;
     }
-    const cleanName = targetEmail.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+    const cleanName = targetEmail
+      .split('@')[0]
+      .replace(/[._-]/g, ' ')
+      .replace(/\b\w/g, (l) => l.toUpperCase());
     const user = {
       id: `user_${targetEmail.replace(/[^a-zA-Z0-9]/g, '_')}`,
       name: cleanName,
       email: targetEmail,
       display_name: cleanName,
-      auth_provider: 'email'
+      auth_provider: 'email',
     };
 
     try {
       const res = await fetch(`${apiBase}/api/v1/auth/demo-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: targetEmail, name: cleanName })
+        body: JSON.stringify({ email: targetEmail, name: cleanName }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -166,7 +264,6 @@ export default function LoginModal({ onLoginSuccess }) {
       console.warn('Backend login notice, activating local session:', err);
     }
 
-    // Instant local session
     localStorage.setItem('sara_token', `dev-token-${user.id}`);
     localStorage.setItem('sara_user', JSON.stringify(user));
     onLoginSuccess(user, false);
@@ -181,14 +278,14 @@ export default function LoginModal({ onLoginSuccess }) {
       name: 'Business Owner',
       email: 'owner@mentneo.com',
       display_name: 'Business Owner',
-      auth_provider: 'demo'
+      auth_provider: 'demo',
     };
 
     try {
       const res = await fetch(`${apiBase}/api/v1/auth/demo-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: 'owner@mentneo.com', name: 'Business Owner' })
+        body: JSON.stringify({ email: 'owner@mentneo.com', name: 'Business Owner' }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -203,7 +300,6 @@ export default function LoginModal({ onLoginSuccess }) {
       console.warn('Backend connection note, using local session:', err);
     }
 
-    // Instant fail-safe login for Vercel/offline environments
     localStorage.setItem('sara_token', 'dev-token-business-owner');
     localStorage.setItem('sara_user', JSON.stringify(fallbackUser));
     onLoginSuccess(fallbackUser, false);
@@ -211,11 +307,9 @@ export default function LoginModal({ onLoginSuccess }) {
   };
 
   const handleGoogleRedirectLogin = () => {
-    // 1. If Google Identity Services popup prompt is available, open it directly
     if (window.google?.accounts?.id?.prompt) {
       window.google.accounts.id.prompt((notification) => {
         if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          // If native prompt blocked or dismissed, launch OAuth direct URL
           launchDirectOAuth();
         }
       });
@@ -225,13 +319,10 @@ export default function LoginModal({ onLoginSuccess }) {
   };
 
   const launchDirectOAuth = () => {
-    // If backend base is explicitly set or on localhost, route to backend OAuth endpoint
     if (apiBase || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
       window.location.href = `${apiBase}/api/v1/auth/google/login`;
       return;
     }
-
-    // Otherwise, direct Google OAuth 2.0 authorization redirect (implicit flow directly to app domain)
     const clientId = googleClientId || DEFAULT_GOOGLE_CLIENT_ID;
     const redirectUri = window.location.origin;
     const params = new URLSearchParams({
@@ -240,175 +331,467 @@ export default function LoginModal({ onLoginSuccess }) {
       response_type: 'token id_token',
       scope: 'openid email profile',
       nonce: Date.now().toString(),
-      prompt: 'select_account'
+      prompt: 'select_account',
     });
     window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   };
 
+  // Theme tokens
+  const isDark = theme === 'dark';
+  const colors = isDark
+    ? {
+        bg: '#0E0B16',
+        text: '#F5EEFD',
+        textMuted: '#9D93B8',
+        cardBg: '#161224',
+        cardBorder: 'rgba(168, 85, 247, 0.2)',
+        inputBg: '#1E1733',
+        inputBorder: 'rgba(168, 85, 247, 0.26)',
+        inputText: '#FFFFFF',
+        btnSecondaryBg: '#221B38',
+        btnSecondaryBorder: 'rgba(168, 85, 247, 0.22)',
+        btnSecondaryText: '#F5EEFD',
+        btnSecondaryHover: '#2C2347',
+        btnPrimaryBg: '#F5EEFD',
+        btnPrimaryText: '#0E0B16',
+        btnPrimaryHover: '#FFFFFF',
+        brandAccent: '#C084FC',
+        brandPink: '#F472B6',
+        dividerLine: 'rgba(168, 85, 247, 0.2)',
+        chipBg: 'rgba(217, 70, 239, 0.15)',
+        chipText: '#F472B6',
+        chipBorder: 'rgba(217, 70, 239, 0.3)',
+      }
+    : {
+        bg: '#FFFFFF', // Pure, clean white background as requested
+        text: '#17112B',
+        textMuted: '#6D6585',
+        cardBg: '#FFFFFF',
+        cardBorder: 'rgba(124, 58, 237, 0.12)',
+        inputBg: '#FFFFFF',
+        inputBorder: '#E4DCF5',
+        inputText: '#17112B',
+        btnSecondaryBg: '#F8F6FE',
+        btnSecondaryBorder: '#EADBFC',
+        btnSecondaryText: '#1E1238',
+        btnSecondaryHover: '#F2EDFD',
+        btnPrimaryBg: '#17112B',
+        btnPrimaryText: '#FFFFFF',
+        btnPrimaryHover: '#0F091F',
+        brandAccent: '#8B5CF6',
+        brandPink: '#D946EF',
+        dividerLine: '#EFEBF8',
+        chipBg: 'rgba(147, 51, 234, 0.08)',
+        chipText: '#7E22CE',
+        chipBorder: 'rgba(147, 51, 234, 0.2)',
+      };
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      background: 'radial-gradient(circle at 50% 20%, #1e1b4b 0%, #09090b 100%)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
-    }}>
-      <div style={{
-        width: '100%', maxWidth: 440, background: '#ffffff',
-        borderRadius: 24, boxShadow: '0 25px 60px rgba(0,0,0,0.5)',
-        padding: '36px 32px', textAlign: 'center', position: 'relative',
-        border: '1px solid rgba(255,255,255,0.1)'
-      }} className="animate-fade-in">
-
-        {/* Brand Icon */}
-        <div style={{
-          width: 56, height: 56, borderRadius: 16,
-          background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          margin: '0 auto 16px', boxShadow: '0 8px 24px rgba(124,58,237,0.35)'
-        }}>
-          <Volume2 size={30} color="#fff" />
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 1000,
+        backgroundColor: colors.bg,
+        color: colors.text,
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: "'Plus Jakarta Sans', Inter, -apple-system, sans-serif",
+        overflowY: 'auto',
+        transition: 'background-color 0.3s ease, color 0.3s ease',
+      }}
+    >
+      {/* Top Banner & Navigation Header */}
+      <header
+        style={{
+          width: '100%',
+          maxWidth: 1600,
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '28px 48px 12px',
+          boxSizing: 'border-box',
+          zIndex: 10,
+        }}
+      >
+        {/* Brand Logo & Title with Pink/Purple Brand Pattern */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img
+            src="/saadhyam-logo.png"
+            alt="Saadhyam Logo"
+            style={{ height: 32, width: 'auto', objectFit: 'contain', display: 'block' }}
+          />
+          <span
+            className="font-editorial"
+            style={{
+              fontSize: 26,
+              fontWeight: 600,
+              letterSpacing: '-0.02em',
+              color: colors.text,
+              fontFamily: "'Newsreader', 'Instrument Serif', Georgia, serif",
+            }}
+          >
+            Saadhyam
+          </span>
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              padding: '3px 9px',
+              borderRadius: 6,
+              background: colors.chipBg,
+              color: colors.chipText,
+              border: `1px solid ${colors.chipBorder}`,
+            }}
+          >
+            Voice AI
+          </span>
         </div>
 
-        {/* Header */}
-        <h2 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'Plus Jakarta Sans' }}>
-          Saadhyam Voice AI
-        </h2>
-        <p style={{ margin: '0 0 24px', fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-          Autonomous Multilingual Voice Workforce for your Business
-        </p>
-
-        {/* Value Prop Pills */}
-        <div style={{
-          display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left',
-          background: 'var(--bg-secondary, #f8fafc)', padding: '14px 16px', borderRadius: 12,
-          marginBottom: 26, border: '1px solid var(--border)'
-        }}>
-          {[
-            'Single-Number Calling with Sara (Telugu, English, Hindi)',
-            'Google Sheets 2-Way Sync & Automated Call Campaigns',
-            'Business Calling Policy — Rules fixed, conversation dynamic',
-          ].map((item, idx) => (
-            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)' }}>
-              <CheckCircle2 size={14} color="#10b981" style={{ flexShrink: 0 }} />
-              <span>{item}</span>
-            </div>
-          ))}
+        {/* Top Right Controls: Theme Toggle */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to Light mode' : 'Switch to Dark mode'}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '8px 14px',
+              borderRadius: 20,
+              border: `1px solid ${colors.btnSecondaryBorder}`,
+              background: colors.btnSecondaryBg,
+              color: colors.text,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            {isDark ? <Sun size={15} color="#FBBF24" /> : <Moon size={15} color="#A855F7" />}
+            <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+          </button>
         </div>
+      </header>
 
-        {error && (
-          <div style={{
-            padding: '10px 14px', borderRadius: 10, background: '#fef2f2',
-            border: '1px solid #fecaca', color: '#dc2626', fontSize: 12, marginBottom: 18
-          }}>
-            {error}
-          </div>
-        )}
-
-        {/* Google Sign-in Container */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          {/* Render Google Identity Services button */}
-          <div ref={googleBtnRef} style={{ minHeight: 44, display: 'flex', justifyContent: 'center' }} />
-
-          {/* Direct Email / One-Click Login for User */}
-          <button
-            onClick={() => handleCustomEmailLogin('abhiyeduru8@gmail.com')}
-            disabled={loading}
+      {/* Main Split Section: Left Form + Right Lottie Animation */}
+      <main
+        style={{
+          flex: 1,
+          width: '100%',
+          maxWidth: 1600,
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '20px 48px 48px',
+          gap: 48,
+          boxSizing: 'border-box',
+        }}
+        className="login-lottie-split"
+      >
+        {/* LEFT COLUMN: Clean Left-Aligned Form */}
+        <div
+          style={{
+            flex: '1 1 540px',
+            maxWidth: 600,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            textAlign: 'left',
+          }}
+        >
+          {/* Editorial Headline */}
+          <h1
+            className="font-editorial"
             style={{
-              width: '100%', maxWidth: 320, padding: '11px 18px', borderRadius: 24,
-              border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6366f1)',
-              color: '#ffffff', fontSize: 13, fontWeight: 700,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: '0 4px 14px rgba(124,58,237,0.3)', transition: 'transform 0.15s'
+              fontFamily: "'Newsreader', 'Instrument Serif', Georgia, serif",
+              fontSize: 'clamp(38px, 4.2vw, 54px)',
+              fontWeight: 500,
+              lineHeight: 1.08,
+              letterSpacing: '-0.03em',
+              margin: '0 0 14px',
+              color: colors.text,
+              textAlign: 'left',
             }}
           >
-            <User size={15} color="#fff" />
-            Sign in as abhiyeduru8@gmail.com
-          </button>
+            Question what’s next
+          </h1>
 
-          {/* Direct Google OAuth Button */}
-          <button
-            onClick={handleGoogleRedirectLogin}
-            disabled={loading}
+          {/* Subtitle */}
+          <p
             style={{
-              width: '100%', maxWidth: 320, padding: '10px 18px', borderRadius: 24,
-              border: '1px solid #dadce0', background: '#fff', color: '#3c4043',
-              fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              boxShadow: '0 1px 3px rgba(0,0,0,0.08)', transition: 'background 0.2s'
+              fontSize: 16,
+              lineHeight: 1.5,
+              color: colors.textMuted,
+              margin: '0 0 32px',
+              fontWeight: 400,
+              textAlign: 'left',
             }}
           >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            Sign in with Google OAuth
-          </button>
+            Your thinking partner & multilingual voice workforce for big ambitions
+          </p>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', margin: '6px 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-            <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>OR QUICK ACCESS</span>
-            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-          </div>
-
-          {/* Quick Demo Access Button */}
-          <button
-            onClick={handleDemoLogin}
-            disabled={loading}
+          {/* Login Card / Box (Clean, Elegant Container) */}
+          <div
             style={{
-              width: '100%', maxWidth: 320, padding: '10px 18px', borderRadius: 24,
-              border: '1px solid var(--border)', background: 'var(--bg-secondary, #f8fafc)',
-              color: 'var(--text-primary)', fontSize: 13, fontWeight: 600,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+              width: '100%',
+              background: colors.cardBg,
+              borderRadius: 22,
+              border: `1px solid ${colors.cardBorder}`,
+              padding: '32px 28px',
+              boxShadow: isDark
+                ? '0 16px 40px rgba(0,0,0,0.45)'
+                : '0 12px 36px rgba(0, 0, 0, 0.04)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 15,
+              boxSizing: 'border-box',
             }}
           >
-            <Zap size={14} color="#7c3aed" />
-            Continue as Business Owner (Instant Demo)
-          </button>
-
-          {/* Custom Email Expandable Toggle */}
-          <button
-            onClick={() => setShowEmailInput(!showEmailInput)}
-            style={{
-              background: 'none', border: 'none', color: '#6366f1',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', textDecoration: 'underline'
-            }}
-          >
-            {showEmailInput ? 'Hide Custom Email Login' : 'Sign in with another email address'}
-          </button>
-
-          {showEmailInput && (
-            <div style={{ width: '100%', maxWidth: 320, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
-              <input
-                type="email"
-                placeholder="your-name@company.com"
-                value={emailInput}
-                onChange={(e) => setEmailInput(e.target.value)}
+            {error && (
+              <div
                 style={{
-                  padding: '9px 14px', borderRadius: 12, border: '1px solid var(--border, #cbd5e1)',
-                  fontSize: 13, outline: 'none'
-                }}
-              />
-              <button
-                onClick={() => handleCustomEmailLogin(emailInput)}
-                disabled={loading || !emailInput.trim()}
-                style={{
-                  padding: '9px 16px', borderRadius: 12, border: 'none',
-                  background: '#0f172a', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                  padding: '10px 14px',
+                  borderRadius: 10,
+                  background: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEF2F2',
+                  border: isDark ? '1px solid rgba(239, 68, 68, 0.3)' : '1px solid #FECACA',
+                  color: '#EF4444',
+                  fontSize: 13,
+                  lineHeight: 1.4,
                 }}
               >
-                Log In with this Email
-              </button>
+                {error}
+              </div>
+            )}
+
+            {/* 1. Continue with Google Button */}
+            <button
+              onClick={handleGoogleRedirectLogin}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                borderRadius: 12,
+                border: `1px solid ${colors.btnSecondaryBorder}`,
+                background: colors.btnSecondaryBg,
+                color: colors.text,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 12,
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.btnSecondaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = colors.btnSecondaryBg)}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            {/* Google Identity Services Hidden/Mounted Button */}
+            <div ref={googleBtnRef} style={{ display: 'none' }} />
+
+            {/* 2. Continue with Demo / Quick Access Button */}
+            <button
+              onClick={handleDemoLogin}
+              disabled={loading}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                borderRadius: 12,
+                border: `1px solid ${colors.btnSecondaryBorder}`,
+                background: colors.btnSecondaryBg,
+                color: colors.text,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 10,
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.btnSecondaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = colors.btnSecondaryBg)}
+            >
+              <Zap size={16} color={colors.brandAccent} />
+              <span>Continue as Business Owner (Demo)</span>
+            </button>
+
+            {/* OR Divider */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+                margin: '4px 0',
+              }}
+            >
+              <div style={{ flex: 1, height: 1, backgroundColor: colors.dividerLine }} />
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  letterSpacing: '0.06em',
+                  color: colors.textMuted,
+                  textTransform: 'uppercase',
+                }}
+              >
+                or
+              </span>
+              <div style={{ flex: 1, height: 1, backgroundColor: colors.dividerLine }} />
             </div>
-          )}
+
+            {/* 3. Email Input Field */}
+            <div>
+              <input
+                type="email"
+                placeholder="Enter your email"
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCustomEmailLogin(emailInput);
+                }}
+                style={{
+                  width: '100%',
+                  padding: '13px 16px',
+                  borderRadius: 12,
+                  border: `1px solid ${colors.inputBorder}`,
+                  backgroundColor: colors.inputBg,
+                  color: colors.inputText,
+                  fontSize: 14,
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                  transition: 'border-color 0.2s, box-shadow 0.2s',
+                }}
+                onFocus={(e) => (e.currentTarget.style.borderColor = colors.brandAccent)}
+                onBlur={(e) => (e.currentTarget.style.borderColor = colors.inputBorder)}
+              />
+            </div>
+
+            {/* 4. Continue with Email (High-contrast action button) */}
+            <button
+              onClick={() => handleCustomEmailLogin(emailInput)}
+              disabled={loading || !emailInput.trim()}
+              style={{
+                width: '100%',
+                padding: '13px 20px',
+                borderRadius: 12,
+                border: 'none',
+                backgroundColor: colors.btnPrimaryBg,
+                color: colors.btnPrimaryText,
+                fontSize: 14,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                transition: 'background-color 0.15s ease, transform 0.1s ease',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = colors.btnPrimaryHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = colors.btnPrimaryBg)}
+            >
+              {loading ? (
+                <span>Signing in...</span>
+              ) : (
+                <>
+                  <span>Continue with email</span>
+                  <ArrowRight size={15} />
+                </>
+              )}
+            </button>
+
+            {/* One-Click Shortcut for abhiyeduru8@gmail.com */}
+            {emailInput !== 'abhiyeduru8@gmail.com' && (
+              <div style={{ textAlign: 'center', marginTop: 2 }}>
+                <button
+                  onClick={() => handleCustomEmailLogin('abhiyeduru8@gmail.com')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: colors.brandAccent,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  ⚡ One-click sign in as abhiyeduru8@gmail.com
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Footer Legal & Privacy Links */}
+          <div
+            style={{
+              marginTop: 32,
+              fontSize: 12,
+              color: colors.textMuted,
+              display: 'flex',
+              gap: 16,
+              flexWrap: 'wrap',
+              justifyContent: 'flex-start',
+            }}
+          >
+            <span>Terms of Service</span>
+            <span>•</span>
+            <span>Privacy Policy</span>
+            <span>•</span>
+            <span>Enterprise Security</span>
+          </div>
         </div>
 
-        {/* Footer info */}
-        <div style={{ marginTop: 22, fontSize: 11, color: 'var(--text-muted)' }}>
-          Secure Authentication • Data isolated per workspace
+        {/* RIGHT COLUMN: Lottie Animation Showcase */}
+        <div
+          style={{
+            flex: '1 1 480px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: 380,
+          }}
+        >
+          <LottieShowcase />
         </div>
-      </div>
+      </main>
+
+      {/* Responsive Breakpoints */}
+      <style>{`
+        @media (max-width: 1024px) {
+          .login-lottie-split {
+            flex-direction: column !important;
+            padding: 16px 20px 40px !important;
+            gap: 32px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
