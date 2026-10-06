@@ -48,6 +48,10 @@ class PlivoMediaGateway:
         self._watchdog_task: Optional[asyncio.Task] = None
         self._warning_sent: bool = False
         self.workspace_id: Optional[str] = None
+        self._recorded_pcm_chunks: List[bytes] = []
+        self.target_phone_number: Optional[str] = None
+        self.direction: str = "outbound"
+        self.ai_employee_id: Optional[str] = None
 
     async def handle_stream(self) -> None:
         """Main lifecycle loop for Plivo WebSocket Media Stream."""
@@ -154,6 +158,17 @@ class PlivoMediaGateway:
         )
         self._watchdog_task = asyncio.create_task(self._duration_watchdog())
 
+        self.target_phone_number = (call.to_number or call.phone_number) if call else None
+        self.direction = getattr(call, "direction", "outbound") if call else "outbound"
+        self.ai_employee_id = (call.ai_employee_id or call.employee_id) if call else (employee.id if employee else None)
+
+        # Trigger carrier-level Plivo call recording
+        if self.call_uuid:
+            try:
+                plivo_client.record_call(self.call_uuid)
+            except Exception as e:
+                logger.debug(f"Plivo record_call notice: {e}")
+
         # 4. Send initial greeting
         greeting_text = self.orchestrator.get_initial_greeting()
         asyncio.create_task(self._send_greeting(greeting_text))
@@ -184,6 +199,10 @@ class PlivoMediaGateway:
         payload = media_data.get("payload")
         if payload:
             raw_audio = AudioCodecService.decode_base64_payload(payload)
+            # Transcode and buffer caller audio for call recording playback
+            pcm16 = AudioCodecService.decode_mulaw_to_pcm16(raw_audio)
+            if pcm16:
+                self._recorded_pcm_chunks.append(pcm16)
             await self.deepgram_service.send_audio(raw_audio)
 
     async def _on_deepgram_speech_started(self) -> None:
@@ -276,6 +295,11 @@ class PlivoMediaGateway:
         """
         if not self.ws or not mulaw_audio:
             return
+
+        # Transcode and buffer assistant audio for full two-way call recording
+        pcm16 = AudioCodecService.decode_mulaw_to_pcm16(mulaw_audio)
+        if pcm16:
+            self._recorded_pcm_chunks.append(pcm16)
 
         playback_id = self._playback_counter
         # 1280 bytes = 160ms of 8kHz μ-law audio
@@ -400,7 +424,31 @@ class PlivoMediaGateway:
             except Exception as e:
                 logger.error(f"Failed to bill Plivo call {self.call_id}: {e}")
 
+        summary_data = {}
+        transcripts = []
         if self.orchestrator:
+            transcripts = list(self.orchestrator.transcript_history)
             summary_data = await self.orchestrator.end_conversation()
             logger.info(f"Plivo Call {self.call_id} summary generated: {summary_data.get('summary')}")
             self.orchestrator = None
+
+        # Synchronize call to CRM, AI Employee stats, and save audio recording to WAV
+        if self.db and self.call_id:
+            try:
+                from server.services.voice.crm_sync_service import CRMSyncService
+                all_pcm = b"".join(self._recorded_pcm_chunks) if self._recorded_pcm_chunks else None
+                crm_res = CRMSyncService.sync_call_to_crm_and_employee(
+                    db=self.db,
+                    call_id=self.call_id,
+                    employee_id=self.ai_employee_id,
+                    phone_number=self.target_phone_number,
+                    direction=self.direction,
+                    duration_seconds=duration_seconds,
+                    transcript_history=transcripts,
+                    summary_data=summary_data,
+                    recorded_pcm16_bytes=all_pcm,
+                    workspace_id=self.workspace_id,
+                )
+                logger.info(f"Plivo Call {self.call_id} synced to CRM & Employee: {crm_res}")
+            except Exception as e:
+                logger.error(f"Failed to sync call {self.call_id} to CRM and employee: {e}", exc_info=True)

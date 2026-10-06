@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import List, Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.responses import StreamingResponse, FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 
@@ -561,26 +561,66 @@ async def stream_call_recording(
 ):
     """
     Authenticated, secure audio streaming endpoint.
-    Prevents public exposure of raw file storage paths.
-    Supports HTTP Range requests for seeking in browser audio players.
+    Streams recorded call voice audio for browser HTML5 audio player.
+    Supports HTTP Range requests for seamless audio seeking.
     """
-    call = db.query(CallRecord).filter(CallRecord.id == call_id).first()
-    if not call or not call.recording:
-        raise HTTPException(status_code=404, detail="Recording not found")
+    from server.models import Call
 
-    file_path = call.recording.file_path
-    if not os.path.exists(file_path):
-        # Generate dummy 1-second silence or return empty audio if demo file not physically written yet
-        return FileResponse(os.path.join(RECORDINGS_DIR, "demo_sample.wav")) if os.path.exists(os.path.join(RECORDINGS_DIR, "demo_sample.wav")) else HTTPException(status_code=404, detail="Audio file missing from secure storage")
+    # 1. Check local audio file on disk first
+    direct_wav = os.path.join(RECORDINGS_DIR, f"{call_id}.wav")
+    if os.path.exists(direct_wav) and os.path.getsize(direct_wav) > 100:
+        return FileResponse(
+            path=direct_wav,
+            media_type="audio/wav",
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": f"inline; filename={call_id}.wav"
+            }
+        )
 
-    return FileResponse(
-        path=file_path,
-        media_type=call.recording.mime_type or "audio/wav",
-        headers={
-            "Accept-Ranges": "bytes",
-            "Content-Disposition": f"inline; filename={call.recording.file_name}"
-        }
-    )
+    # 2. Check CRM CallRecord
+    crm_call = db.query(CallRecord).filter(
+        (CallRecord.id == call_id) | (CallRecord.session_id == call_id)
+    ).first()
+
+    if crm_call and crm_call.recording:
+        fp = crm_call.recording.file_path
+        if fp and fp.startswith("http"):
+            return RedirectResponse(url=fp)
+        if fp and os.path.exists(fp) and os.path.getsize(fp) > 100:
+            return FileResponse(
+                path=fp,
+                media_type=crm_call.recording.mime_type or "audio/wav",
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Disposition": f"inline; filename={crm_call.recording.file_name or f'{call_id}.wav'}"
+                }
+            )
+
+    # 3. Check Telephony Call model
+    call = db.query(Call).filter(
+        (Call.id == call_id) | (Call.twilio_call_sid.like(f"%{call_id}%"))
+    ).first()
+
+    if call and call.recording_url:
+        if call.recording_url.startswith("http"):
+            return RedirectResponse(url=call.recording_url)
+        if os.path.exists(call.recording_url):
+            return FileResponse(
+                path=call.recording_url,
+                media_type="audio/wav",
+                headers={
+                    "Accept-Ranges": "bytes",
+                    "Content-Disposition": f"inline; filename={call_id}.wav"
+                }
+            )
+
+    # 4. Fallback: Check demo sample if present
+    demo_sample = os.path.join(RECORDINGS_DIR, "demo_sample.wav")
+    if os.path.exists(demo_sample):
+        return FileResponse(path=demo_sample, media_type="audio/wav")
+
+    raise HTTPException(status_code=404, detail="Call audio recording not found.")
 
 
 @router.post("/calls/{call_id}/analyze")

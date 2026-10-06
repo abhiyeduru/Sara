@@ -612,47 +612,25 @@ async def voice_websocket_endpoint(
             session_record.ended_at = datetime.now(timezone.utc)
             db.commit()
 
-            # Auto-log completed voice call into Saadhyam CRM
+            # Auto-log completed voice call into Saadhyam CRM & update AI Employee
             try:
-                from server.models import CallRecord, CallTranscript, CallIntelligence
+                from server.services.voice.crm_sync_service import CRMSyncService
                 from server.engine.crm_intelligence import analyze_call_transcript
 
                 duration = int((session_record.ended_at - session_record.started_at).total_seconds()) if session_record.started_at else 0
                 msgs = db.query(SessionMessage).filter(SessionMessage.session_id == session_record.id).all()
                 if msgs:
-                    crm_call = CallRecord(
-                        id=str(uuid.uuid4()),
-                        user_id=session_record.user_id,
-                        session_id=session_record.id,
-                        caller="Web Voice Caller",
-                        receiver=agent.name if agent else "SARA",
-                        phone_number="Web Audio Client",
-                        direction="Inbound",
-                        call_type="AI Voice Call",
-                        start_time=session_record.started_at,
-                        end_time=session_record.ended_at,
-                        duration_seconds=max(duration, 5),
-                        call_status="Completed"
-                    )
-                    db.add(crm_call)
-                    db.flush()
-
                     full_lines = []
-                    offset = 0.0
+                    t_history = []
                     for m in msgs:
-                        db.add(CallTranscript(
-                            id=str(uuid.uuid4()),
-                            call_id=crm_call.id,
-                            speaker="Agent" if m.role == "agent" else "Customer",
-                            speaker_name=agent.name if m.role == "agent" else "Customer",
-                            start_time_offset=round(offset, 1),
-                            end_time_offset=round(offset + 3.0, 1),
-                            text=m.content,
-                            language=m.detected_language or "en",
-                            sentiment="Positive" if m.role == "agent" else "Interested"
-                        ))
-                        full_lines.append(f"{'Agent' if m.role == 'agent' else 'Customer'}: {m.content}")
-                        offset += 3.5
+                        speaker = "Agent" if m.role == "agent" else "Customer"
+                        t_history.append({
+                            "speaker": speaker,
+                            "role": m.role,
+                            "text": m.content,
+                            "language": m.detected_language or "te",
+                        })
+                        full_lines.append(f"{speaker}: {m.content}")
 
                     intel = analyze_call_transcript(
                         transcript_text="\n".join(full_lines),
@@ -660,29 +638,30 @@ async def voice_websocket_endpoint(
                         agent_name=agent.name if agent else "SARA"
                     )
 
-                    db.add(CallIntelligence(
-                        id=str(uuid.uuid4()),
-                        call_id=crm_call.id,
-                        customer_intent=intel.get("customer_intent", "Voice inquiry"),
-                        requirements=intel.get("requirements", []),
-                        budget=intel.get("budget", ""),
-                        timeline=intel.get("timeline", ""),
-                        objections=intel.get("objections", []),
-                        questions=intel.get("questions", []),
-                        sentiment=intel.get("sentiment", "Interested"),
-                        sentiment_score=intel.get("sentiment_score", 0.85),
-                        purchase_intent=intel.get("purchase_intent", "High"),
-                        purchase_intent_score=intel.get("purchase_intent_score", 0.9),
-                        promises=intel.get("promises", []),
-                        follow_up_needed=intel.get("follow_up_needed", True),
-                        follow_up_reason=intel.get("follow_up_reason", "Voice inquiry callback"),
-                        next_recommended_action=intel.get("next_recommended_action", "Follow up with customer"),
-                        call_summary=intel.get("call_summary", "")
-                    ))
-                    db.commit()
-                    logger.info(f"Auto-logged voice session {session_record.id} to Saadhyam CRM CallRecord {crm_call.id}")
+                    crm_sync_res = CRMSyncService.sync_call_to_crm_and_employee(
+                        db=db,
+                        call_id=session_record.id,
+                        employee_id=agent_id if agent_id != "agent_sara_default" else None,
+                        phone_number="Web Audio Client",
+                        direction="inbound",
+                        duration_seconds=max(duration, 5),
+                        transcript_history=t_history,
+                        summary_data={
+                            "summary": intel.get("call_summary") or f"Web voice session completed ({len(msgs)} turns).",
+                            "intent": intel.get("customer_intent", "Voice Consultation"),
+                            "sentiment": intel.get("sentiment", "Positive"),
+                            "lead_quality": 4,
+                            "lead_name": "Web Voice Caller",
+                            "budget": intel.get("budget", ""),
+                            "timeline": intel.get("timeline", ""),
+                            "action_items": [intel.get("next_recommended_action", "Follow-up required")],
+                            "extracted_requirements": intel.get("requirements", []),
+                        },
+                        workspace_id=session_record.user_id,
+                    )
+                    logger.info(f"Auto-synced voice session {session_record.id} via CRMSyncService: {crm_sync_res}")
             except Exception as crm_err:
-                logger.warning(f"Auto CRM call logging skipped: {crm_err}")
+                logger.warning(f"Auto CRM call logging skipped: {crm_err}", exc_info=True)
     except Exception as e:
         logger.exception("Error in voice WebSocket session")
         try:
