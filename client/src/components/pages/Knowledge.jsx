@@ -3,6 +3,7 @@ import {
   GraduationCap, Upload, Globe, FileText, Search, Plus, Trash2,
   RefreshCw, CheckCircle2, Clock, AlertTriangle, BookOpen, Sparkles, Filter, Database
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const CATEGORIES = ['All', 'Company Knowledge', 'Products', 'FAQs', 'Policies', 'SOPs'];
 
@@ -107,25 +108,32 @@ export default function Knowledge({ onNavigate }) {
   });
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, margin: '0 auto' }}>
-      {/* Top Banner */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+    <div className="page-content animate-fade-in">
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <GraduationCap size={26} color="var(--primary)" />
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <GraduationCap size={12} color="#A855F7" />
+            Shared Intelligence Memory
+          </div>
+          <h1 className="page-title">
             AI Knowledge & Training Center
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
+          <p className="page-subtitle">
             Feed company knowledge, SOPs, websites, and documents into your AI workforce's shared intelligence memory.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
             onClick={() => setShowAddModal(true)}
-            className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 600 }}
+            className="btn btn-primary"
           >
-            <Plus size={16} />
+            <Plus size={15} />
             Add Knowledge Source
           </button>
         </div>
@@ -266,10 +274,7 @@ export default function Knowledge({ onNavigate }) {
       {/* Knowledge Sources Table / List */}
       <div className="card" style={{ overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-            <div>Loading knowledge base...</div>
-          </div>
+          <SkeletonLoader type="table" count={4} />
         ) : filteredSources.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <BookOpen size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />

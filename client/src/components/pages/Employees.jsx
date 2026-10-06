@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bot, Phone, Play, MoreHorizontal, PlusCircle, Search, Filter,
   TrendingUp, CheckSquare, Sparkles, Pause, Edit3, Mic, RefreshCw } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const FILTERS = ['All', 'Active', 'Idle', 'Draft'];
 
@@ -42,19 +43,28 @@ export default function Employees({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <Bot size={12} color="#A855F7" />
+            Autonomous Workforce
+          </div>
+          <h1 className="page-title">
             My AI Employees
           </h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>
-            {employees.filter(e=>e.status==='active').length} active · {employees.length} total AI employees in your workforce
+          <p className="page-subtitle">
+            {employees.filter(e => e.status === 'active').length} active · {employees.length} total AI employees in your digital workforce
           </p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchEmployees}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={() => onNavigate('employees/new')}>
             <PlusCircle size={15} />
@@ -63,25 +73,24 @@ export default function Employees({ onNavigate }) {
         </div>
       </div>
 
-      {/* Search + Filters */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <div className="search-input" style={{ flex:'0 0 260px' }}>
-          <Search size={14} color="var(--text-muted)" />
-          <input placeholder="Search employees..." value={search} onChange={e=>setSearch(e.target.value)} />
+      {/* Search + Luxury Filter Tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
+        <div className="search-input" style={{ flex: '0 0 280px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+          <Search size={14} color="#94A3B8" />
+          <input placeholder="Search employees by name, role..." value={search} onChange={e => setSearch(e.target.value)} style={{ fontSize: 13.5 }} />
         </div>
-        <div style={{ display:'flex', gap:6 }}>
+        <div className="luxury-tabs">
           {FILTERS.map(f => (
-            <button key={f} className={`chip ${filter===f?'active':''}`} onClick={() => setFilter(f)}>{f}</button>
+            <button key={f} className={`tab-item ${filter === f ? 'active' : ''}`} onClick={() => setFilter(f)}>
+              {f.toUpperCase()}
+            </button>
           ))}
         </div>
       </div>
 
       {/* Grid */}
       {loading ? (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-          <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-          <div>Loading AI employees...</div>
-        </div>
+        <SkeletonLoader type="cards" count={6} />
       ) : filtered.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon"><Bot size={28} color="#94a3b8" /></div>

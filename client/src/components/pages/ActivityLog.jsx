@@ -3,6 +3,7 @@ import {
   Activity, Shield, User, Bot, Clock, Filter, RefreshCw, CheckCircle2,
   AlertCircle, ArrowRight, Download, Search
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function ActivityLog({ onNavigate }) {
   const [activeTab, setActiveTab] = useState('activity'); // activity | audit
@@ -160,10 +161,7 @@ export default function ActivityLog({ onNavigate }) {
       {/* Timeline / Table Card */}
       <div className="card" style={{ overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-            <div>Loading activity history...</div>
-          </div>
+          <SkeletonLoader type="table" count={5} />
         ) : filteredItems.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Activity size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />

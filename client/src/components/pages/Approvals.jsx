@@ -3,6 +3,7 @@ import {
   ShieldCheck, CheckCircle2, XCircle, Eye, AlertTriangle, Clock,
   Bot, DollarSign, MessageCircle, Megaphone, RefreshCw, Plus
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const TYPE_ICONS = {
   campaign: Megaphone,
@@ -96,7 +97,9 @@ export default function Approvals({ onNavigate }) {
       <div style={{ marginBottom: 32 }}>
         <div className="section-heading" style={{ marginBottom: 16 }}>Pending Approval</div>
 
-        {pending.length === 0 ? (
+        {loading && pending.length === 0 ? (
+          <SkeletonLoader type="table" count={3} />
+        ) : pending.length === 0 ? (
           <div className="empty-state" style={{ background: '#fff', border: '1px solid var(--border)', borderRadius: 12, padding: '36px 20px', textAlign: 'center' }}>
             <div className="empty-icon" style={{ display: 'inline-flex', padding: 12, borderRadius: '50%', background: '#f0fdf4', marginBottom: 12 }}>
               <CheckCircle2 size={32} color="#16a34a" />

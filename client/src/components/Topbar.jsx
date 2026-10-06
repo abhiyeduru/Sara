@@ -20,15 +20,21 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
   return (
     <header className="topbar">
       {/* Search */}
-      <div className="search-input" style={{ flex: '0 0 280px' }}>
-        <Search size={14} color="var(--text-muted)" />
+      <div className="search-input" style={{
+        flex: '0 0 280px',
+        background: '#f8fafc',
+        border: '1px solid var(--border)',
+        borderRadius: 8
+      }}>
+        <Search size={14} color="#94a3b8" />
         <input
           placeholder="Search anything..."
           value={searchVal}
           onChange={e => setSearchVal(e.target.value)}
+          style={{ fontSize: 13, background: 'transparent' }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, opacity: 0.6, fontSize: 11 }}>
-          <Command size={11} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, background: '#e2e8f0', padding: '1px 5px', borderRadius: 4, color: '#475569', fontWeight: 600 }}>
+          <Command size={10} />
           <span>K</span>
         </div>
       </div>
@@ -37,8 +43,10 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
       <div style={{ flex: 1, paddingLeft: 16 }}>
         {title && (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2 }}>{title}</div>
-            {subtitle && <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{subtitle}</div>}
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+              {title}
+            </div>
+            {subtitle && <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{subtitle}</div>}
           </div>
         )}
       </div>
@@ -48,12 +56,12 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
         {/* Credits */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-          background: 'linear-gradient(135deg,#f5f3ff,#ede9fe)',
-          border: '1px solid #ddd6fe', borderRadius: 20, cursor: 'pointer'
+          background: '#f8fafc',
+          border: '1px solid var(--border)', borderRadius: 20, cursor: 'pointer'
         }}>
-          <Zap size={12} color="#7c3aed" />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>₹{credits}</span>
-          <span style={{ fontSize: 11, color: '#a78bfa' }}>credits</span>
+          <Zap size={13} color="#2563eb" />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>₹{credits}</span>
+          <span style={{ fontSize: 11, color: '#64748b' }}>credits</span>
         </div>
 
         {/* Talk with Sara Button */}
@@ -61,16 +69,16 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           className="btn btn-primary btn-sm"
           onClick={onTalkWithSara}
           style={{
-            background: 'linear-gradient(135deg, #10b981, #059669)',
+            background: '#10b981',
             border: 'none',
-            boxShadow: '0 2px 10px rgba(16, 185, 129, 0.35)',
+            boxShadow: '0 1px 3px rgba(16, 185, 129, 0.3)',
             gap: 6,
-            fontWeight: 700,
+            fontWeight: 600,
             padding: '6px 14px'
           }}
           title="Start live conversational speech with SARA"
         >
-          <Mic size={14} className="animate-pulse" />
+          <Mic size={14} />
           Talk with Sara
         </button>
 
@@ -79,7 +87,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           className="btn btn-secondary btn-sm"
           onClick={onAskSara}
         >
-          <Sparkles size={13} color="#7c3aed" />
+          <Sparkles size={13} color="#2563eb" />
           Ask Sara
         </button>
 
@@ -89,7 +97,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           <div style={{
             position: 'absolute', top: 6, right: 6,
             width: 7, height: 7, borderRadius: '50%',
-            background: '#7c3aed', border: '2px solid #fff'
+            background: '#2563eb', border: '2px solid #fff'
           }} />
         </button>
 

@@ -73,58 +73,117 @@ const NAV = [
 export default function Sidebar({ activePage, onNavigate }) {
   return (
     <aside className="sidebar">
-      {/* Logo */}
-      <div style={{ padding: '16px 16px 10px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-             onClick={() => onNavigate('dashboard')}>
-          <div style={{
-            width: 34, height: 34, borderRadius: 10,
-            background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0, boxShadow: '0 2px 8px rgba(124,58,237,0.3)'
-          }}>
-            <Sparkles size={17} color="#fff" />
-          </div>
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16, color: 'var(--text-primary)', lineHeight: 1.1, fontFamily: 'Plus Jakarta Sans' }}>SARA</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500, letterSpacing:'0.02em' }}>AI Workforce</div>
-          </div>
+      {/* Logo Header (Fixed top) */}
+      <div className="sidebar-header">
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', width: '100%' }}
+          onClick={() => onNavigate('dashboard')}
+        >
+          <img
+            src="/saadhyam-logo.png"
+            alt="Saadhyam Logo"
+            style={{
+              height: 26,
+              width: 'auto',
+              objectFit: 'contain',
+              display: 'block'
+            }}
+          />
+          <span
+            style={{
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: '-0.02em',
+              color: 'var(--text-primary)',
+              lineHeight: 1,
+            }}
+          >
+            Saadhyam
+          </span>
+          <span
+            className="brand-chip"
+            style={{
+              fontSize: 10,
+              fontWeight: 600,
+              padding: '2px 7px',
+              borderRadius: 6,
+              marginLeft: 'auto'
+            }}
+          >
+            Voice AI
+          </span>
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav style={{ flex: 1, paddingBottom: 16 }}>
+      {/* Navigation (Smooth scrollable body) */}
+      <nav className="sidebar-nav">
         {NAV.map(({ section, items }) => (
-          <div key={section}>
+          <div key={section} style={{ marginBottom: 4 }}>
             <div className="nav-section-label">{section}</div>
-            {items.map(({ id, label, icon: Icon }) => (
-              <div
-                key={id}
-                className={`nav-item ${activePage === id ? 'active' : ''}`}
-                onClick={() => onNavigate(id)}
-              >
-                <Icon size={15} className="nav-icon" />
-                <span>{label}</span>
-              </div>
-            ))}
+            {items.map(({ id, label, icon: Icon }) => {
+              const isActive = activePage === id;
+              return (
+                <div
+                  key={id}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => onNavigate(id)}
+                >
+                  <Icon size={15} className="nav-icon" />
+                  <span style={{ fontSize: 13, flex: 1 }}>{label}</span>
+                </div>
+              );
+            })}
           </div>
         ))}
       </nav>
 
-      {/* Bottom — Workspace */}
-      <div style={{ borderTop: '1px solid var(--border)', padding: '12px 16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, cursor: 'pointer',
-          padding: '7px 8px', borderRadius: 8, transition: 'background 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.background='var(--surface-soft)'}
-          onMouseLeave={e => e.currentTarget.style.background='transparent'}
+      {/* Bottom — Workspace (Fixed bottom) */}
+      <div className="sidebar-footer">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            cursor: 'pointer',
+            padding: '6px 8px',
+            borderRadius: 8,
+            transition: 'background 0.15s ease'
+          }}
+          onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-soft)'}
+          onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
         >
-          <div style={{ width: 28, height: 28, borderRadius: 7, background: 'linear-gradient(135deg,#7c3aed,#6d28d9)',
-            display:'flex', alignItems:'center', justifyContent:'center', fontSize: 11, fontWeight: 700, color:'#fff' }}>A</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>Abhi's Workspace</div>
-            <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Admin</div>
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 7,
+              background: '#2563eb',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 12,
+              fontWeight: 700,
+              color: '#fff'
+            }}
+          >
+            A
           </div>
-          <ChevronDown size={13} color="var(--text-muted)" />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 600,
+                color: 'var(--text-primary)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              Abhi's Workspace
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Admin</div>
+          </div>
+          <ChevronDown size={14} color="var(--text-muted)" />
         </div>
       </div>
     </aside>

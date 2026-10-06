@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GitBranch, Plus, Play, Pause, MoreHorizontal, ArrowDown, ArrowRight,
   CheckCircle2, XCircle, Clock, Zap, Bot, MessageCircle, Database, Bell, RefreshCw } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function Workflows({ onNavigate }) {
   const [workflows, setWorkflows] = useState([]);
@@ -93,10 +94,7 @@ export default function Workflows({ onNavigate }) {
 
       {/* Grid */}
       {loading && workflows.length === 0 ? (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-          <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-          <div>Loading workflows...</div>
-        </div>
+        <SkeletonLoader type="cards" count={4} />
       ) : workflows.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon"><GitBranch size={28} color="#94a3b8" /></div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Play, Pause, PhoneCall, Clock, TrendingUp, DollarSign,
   Users, ChevronRight, Mic, MicOff, PhoneOff, MessageSquare, RefreshCw, Volume2 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function VoiceCalls({ onNavigate }) {
   const [calls, setCalls] = useState([]);
@@ -45,34 +46,48 @@ export default function VoiceCalls({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>Voice Calls</h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>AI-powered voice calling dashboard & telephony logs</p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <PhoneCall size={12} color="#A855F7" />
+            Autonomous Telephony
+          </div>
+          <h1 className="page-title">
+            Voice Calls & Telephony Center
+          </h1>
+          <p className="page-subtitle">
+            AI-powered voice calling logs, live transcripts, recordings, and lead qualification scores.
+          </p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchCalls}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
-          <button className="btn btn-primary" onClick={() => onNavigate('phone-numbers')}>
-            <PhoneCall size={14} /> Make Outbound Call
+          <button className="btn btn-primary" onClick={() => onNavigate('campaigns')}>
+            <PhoneCall size={14} /> Open Voice Dialer
           </button>
         </div>
       </div>
 
-      {/* Stats */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))', gap:12, marginBottom:20 }}>
+      {/* Luxury KPI Stats */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 26 }}>
         {[
-          { label:'Active Now', value: liveCalls.length, color:'#16a34a' },
-          { label:'Total Calls', value: totalCalls, color:'#0284c7' },
-          { label:'Connected', value: connectedCalls, color:'#7c3aed' },
-          { label:'Qualified / Interested', value: qualifiedCalls, color:'#16a34a' },
-          { label:'Avg Duration', value: `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s`, color:'#ea580c' },
-          { label:'Credits Used', value: totalCredits.toFixed(1), color:'#64748b' },
+          { label: 'Active Now', value: liveCalls.length, color: '#16a34a' },
+          { label: 'Total Calls', value: totalCalls, color: '#0284c7' },
+          { label: 'Connected', value: connectedCalls, color: '#7c3aed' },
+          { label: 'Qualified / Interested', value: qualifiedCalls, color: '#16a34a' },
+          { label: 'Avg Duration', value: `${Math.floor(avgDuration / 60)}m ${avgDuration % 60}s`, color: '#ea580c' },
+          { label: 'Credits Used', value: totalCredits.toFixed(1), color: '#64748b' },
         ].map(({ label, value, color }) => (
-          <div className="kpi-card" key={label} style={{ padding:14 }}>
-            <div style={{ fontSize:22, fontWeight:800, color, marginBottom:4 }}>{value}</div>
-            <div style={{ fontSize:11, color:'var(--text-muted)', fontWeight:500 }}>{label}</div>
+          <div className="kpi-card" key={label} style={{ padding: '18px 20px' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color, marginBottom: 6, letterSpacing: '-0.02em', lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 12.5, color: '#6D6585', fontWeight: 500 }}>{label}</div>
           </div>
         ))}
       </div>
@@ -108,10 +123,7 @@ export default function VoiceCalls({ onNavigate }) {
             </div>
 
             {loading && calls.length === 0 ? (
-              <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-                <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-                <div>Loading call records...</div>
-              </div>
+              <SkeletonLoader type="table" count={5} />
             ) : calls.length === 0 ? (
               <div style={{ padding: 48, textAlign: 'center' }}>
                 <Phone size={36} color="var(--text-muted)" style={{ marginBottom: 10, opacity: 0.5 }} />

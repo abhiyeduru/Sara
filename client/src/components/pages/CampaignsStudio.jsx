@@ -5,6 +5,7 @@ import {
   Users, Clock, ArrowRight, Check, Send, PhoneOff, Award, ChevronRight,
   ExternalLink, Zap, HelpCircle, Activity, Plus, Trash2
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const PRESETS = [
   {
@@ -83,10 +84,20 @@ export default function CampaignsStudio({ onNavigate }) {
   const [isSavingBiz, setIsSavingBiz] = useState(false);
   const [bizSavedMessage, setBizSavedMessage] = useState('');
 
+  const [pageLoading, setPageLoading] = useState(true);
+
   // ── Fetch Initial Data ────────────────────────────────────────────────────
   useEffect(() => {
-    fetchBusinessProfile();
-    fetchCampaigns();
+    const load = async () => {
+      try {
+        await Promise.all([fetchBusinessProfile(), fetchCampaigns()]);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setTimeout(() => setPageLoading(false), 280);
+      }
+    };
+    load();
   }, []);
 
   // Timer for active call duration
@@ -321,47 +332,56 @@ export default function CampaignsStudio({ onNavigate }) {
     }));
   };
 
+  if (pageLoading) {
+    return <SkeletonLoader type="campaigns" />;
+  }
+
   return (
-    <div style={{ maxWidth: 1360, margin: '0 auto', padding: '24px 32px' }} className="animate-fade-in">
+    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '28px 36px' }} className="animate-fade-in">
       {/* Top Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 28, flexWrap: 'wrap', gap: 18 }}>
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{
-              width: 36, height: 36, borderRadius: 10,
-              background: 'linear-gradient(135deg, #7c3aed, #a78bfa)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 4px 12px rgba(124, 58, 237, 0.3)'
-            }}>
-              <Volume2 size={20} color="#fff" />
-            </div>
-            <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'Plus Jakarta Sans' }}>
-                Saadhyam Voice AI Platform
-              </h1>
-              <p style={{ margin: '2px 0 0', fontSize: 13, color: 'var(--text-muted)' }}>
-                Production Voice Runtime — Powered by Plivo, Groq & Indic Multilingual TTS
-              </p>
-            </div>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <Sparkles size={12} color="#A855F7" />
+            Voice AI Intelligence Studio
           </div>
+          <h1
+            className="font-editorial"
+            style={{
+              fontFamily: "'Newsreader', 'Instrument Serif', Georgia, serif",
+              fontSize: 'clamp(28px, 3.2vw, 36px)',
+              fontWeight: 500,
+              lineHeight: 1.15,
+              letterSpacing: '-0.025em',
+              margin: 0,
+              color: '#17112B',
+            }}
+          >
+            Saadhyam Voice AI Platform
+          </h1>
+          <p style={{ margin: '4px 0 0', fontSize: 14, color: '#6D6585' }}>
+            Production Voice Runtime — Powered by Plivo, Groq & Indic Multilingual TTS
+          </p>
         </div>
 
-        {/* Telephony Connection Status Badge */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Telephony Connection Status Badge & Tabs */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-            borderRadius: 20, background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.3)',
-            fontSize: 12, fontWeight: 600, color: '#059669'
+            display: 'flex', alignItems: 'center', gap: 7, padding: '6px 14px',
+            borderRadius: 20, background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)',
+            fontSize: 12, fontWeight: 700, color: '#047857'
           }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10b981' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 8px rgba(16, 185, 129, 0.8)' }} />
             Plivo Gateway Active (+91 80 6552 2007)
           </div>
 
-          {/* Navigation Tabs */}
-          <div style={{
-            display: 'flex', background: 'var(--bg-secondary, #f1f5f9)',
-            padding: 4, borderRadius: 12, border: '1px solid var(--border)'
-          }}>
+          {/* Navigation Tabs (Luxury Pill Bar) */}
+          <div className="luxury-tabs">
             {[
               { id: 'call_now', label: '📞 Call Now (Direct)', icon: PhoneCall },
               { id: 'auto_campaign', label: '📊 Auto Campaign (Sheets)', icon: FileSpreadsheet },
@@ -370,14 +390,7 @@ export default function CampaignsStudio({ onNavigate }) {
               <button
                 key={t.id}
                 onClick={() => setActiveTab(t.id)}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
-                  borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  background: activeTab === t.id ? '#fff' : 'transparent',
-                  color: activeTab === t.id ? 'var(--primary, #7c3aed)' : 'var(--text-muted)',
-                  boxShadow: activeTab === t.id ? '0 2px 6px rgba(0,0,0,0.06)' : 'none'
-                }}
+                className={`tab-item ${activeTab === t.id ? 'active' : ''}`}
               >
                 {t.label}
               </button>
@@ -390,58 +403,76 @@ export default function CampaignsStudio({ onNavigate }) {
           TAB 1: CALL NOW (DIRECT DIALER)
       ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'call_now' && (
-        <div style={{ display: 'grid', gridTemplateColumns: activeCall || callStatus ? '1.1fr 0.9fr' : '1fr', gap: 28 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.25fr) minmax(360px, 0.75fr)', gap: 28, alignItems: 'start' }}>
           {/* Main Dialing Console */}
-          <div className="card" style={{ padding: 28, borderRadius: 16, border: '1px solid var(--border)', background: '#fff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+          <div className="luxury-card" style={{ padding: 30, background: '#fff', border: '1px solid rgba(147, 51, 234, 0.15)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-                <span style={{ fontSize: 12, fontWeight: 700, color: '#059669', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 6px #10b981' }} />
+                <span style={{ fontSize: 12, fontWeight: 800, color: '#059669', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
                   Live Telephony Dialer
                 </span>
               </div>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg-secondary, #f8fafc)', padding: '4px 10px', borderRadius: 20 }}>
-                Caller: <strong>{bizProfile.business_name || 'My Business'}</strong>
+              <span className="brand-chip" style={{ fontSize: 11.5 }}>
+                Caller: <strong>{bizProfile.business_name || 'SARA Business Owner'}</strong>
               </span>
             </div>
 
             {/* Instruction Presets (Clickable Templates) */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
+            <div style={{ marginBottom: 22 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#17112B', marginBottom: 9 }}>
                 ⚡ Quick Templates (Click to fill instruction)
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
-                {PRESETS.map(p => (
-                  <div
-                    key={p.id}
-                    onClick={() => {
-                      setInstruction(p.instruction);
-                    }}
-                    style={{
-                      padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border)',
-                      cursor: 'pointer', background: instruction === p.instruction ? 'rgba(124,58,237,0.06)' : 'var(--bg-secondary, #f8fafc)',
-                      borderColor: instruction === p.instruction ? 'var(--primary, #7c3aed)' : 'var(--border)',
-                      fontSize: 12, fontWeight: 600, color: 'var(--text-primary)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                    }}
-                  >
-                    <span>{p.title}</span>
-                    {instruction === p.instruction && <Check size={14} color="#7c3aed" />}
-                  </div>
-                ))}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                {PRESETS.map(p => {
+                  const isSelected = instruction === p.instruction;
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setInstruction(p.instruction)}
+                      style={{
+                        padding: '12px 14px', borderRadius: 12, border: '1px solid',
+                        borderColor: isSelected ? '#9333EA' : '#E2E8F0',
+                        cursor: 'pointer',
+                        background: isSelected
+                          ? 'linear-gradient(135deg, rgba(147, 51, 234, 0.08) 0%, rgba(236, 72, 153, 0.04) 100%)'
+                          : '#F8FAFC',
+                        fontSize: 12.5, fontWeight: 600, color: isSelected ? '#7E22CE' : '#17112B',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        boxShadow: isSelected ? '0 0 0 2px rgba(168, 85, 247, 0.18)' : 'none',
+                        transition: 'all 0.18s ease'
+                      }}
+                      onMouseEnter={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = '#C084FC';
+                          e.currentTarget.style.background = '#F5EEFD';
+                        }
+                      }}
+                      onMouseLeave={e => {
+                        if (!isSelected) {
+                          e.currentTarget.style.borderColor = '#E2E8F0';
+                          e.currentTarget.style.background = '#F8FAFC';
+                        }
+                      }}
+                    >
+                      <span>{p.title}</span>
+                      {isSelected && <Check size={15} color="#9333EA" strokeWidth={2.5} />}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
             {/* Form Inputs */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 18 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#17112B', marginBottom: 6 }}>
                   📞 Customer Phone Number *
                 </label>
                 <div style={{ position: 'relative' }}>
                   <input
                     type="tel"
-                    className="input"
+                    className="luxury-input"
                     value={phoneNumber}
                     onChange={(e) => {
                       const clean = e.target.value.replace(/=/g, '+');
@@ -449,60 +480,63 @@ export default function CampaignsStudio({ onNavigate }) {
                       checkCompliance(clean);
                     }}
                     placeholder="Enter phone number (e.g. 9876543210 or +91 6305259617)"
-                    style={{ width: '100%', fontSize: 14, fontWeight: 600, paddingLeft: 42 }}
+                    style={{ paddingLeft: 46, fontSize: 14, fontWeight: 600 }}
                   />
-                  <span style={{ position: 'absolute', left: 12, top: 10, fontSize: 13, color: 'var(--text-muted)', fontWeight: 600 }}>
+                  <span style={{
+                    position: 'absolute', left: 12, top: 12, fontSize: 13,
+                    color: '#7E22CE', fontWeight: 700
+                  }}>
                     🇮🇳 +91
                   </span>
                 </div>
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#17112B', marginBottom: 6 }}>
                   👤 Customer / Lead Name
                 </label>
                 <input
                   type="text"
-                  className="input"
+                  className="luxury-input"
                   value={leadName}
                   onChange={(e) => setLeadName(e.target.value)}
                   placeholder="e.g. Abhiram"
-                  style={{ width: '100%', fontSize: 14 }}
+                  style={{ fontSize: 14 }}
                 />
               </div>
             </div>
 
             {/* What Should Sara Do? */}
-            <div style={{ marginBottom: 18 }}>
+            <div style={{ marginBottom: 20 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#17112B' }}>
                   🎯 What should Sara do on this call?
                 </label>
-                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 11, color: '#9D93B8' }}>
                   Sara follows your business instructions dynamically
                 </span>
               </div>
               <textarea
-                className="input"
+                className="luxury-input"
                 rows={3}
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
                 placeholder="Example: Call customer, introduce our services, ask their requirements, and schedule a consultation slot."
-                style={{ width: '100%', fontSize: 13, lineHeight: 1.5, resize: 'vertical' }}
+                style={{ fontSize: 13.5, lineHeight: 1.5, resize: 'vertical' }}
               />
             </div>
 
             {/* Lead Source & Voice */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 22 }}>
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#17112B', marginBottom: 6 }}>
                   📊 Lead Source
                 </label>
                 <select
-                  className="input"
+                  className="luxury-input"
                   value={leadSource}
                   onChange={(e) => setLeadSource(e.target.value)}
-                  style={{ width: '100%', fontSize: 13 }}
+                  style={{ fontSize: 13 }}
                 >
                   <option value="manual_direct">Manual Direct Dial</option>
                   <option value="google_sheets">Google Sheets Sync</option>
@@ -512,14 +546,14 @@ export default function CampaignsStudio({ onNavigate }) {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 6 }}>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#17112B', marginBottom: 6 }}>
                   🎙️ AI Voice & Language
                 </label>
                 <select
-                  className="input"
+                  className="luxury-input"
                   value={selectedVoice}
                   onChange={(e) => setSelectedVoice(e.target.value)}
-                  style={{ width: '100%', fontSize: 13 }}
+                  style={{ fontSize: 13 }}
                 >
                   <option value="330c4fa0-1da3-4c55-8e97-951bfd724e20">Priya — Telugu & English (Cartesia Sonic)</option>
                   <option value="3a8e6fea-81e5-4d4d-8755-86093146cdb8">Lakshmi — Indian English (Cartesia Sonic)</option>
@@ -531,7 +565,7 @@ export default function CampaignsStudio({ onNavigate }) {
             {/* Compliance Status Guard */}
             {compliance && (
               <div style={{
-                padding: '12px 16px', borderRadius: 10, marginBottom: 22,
+                padding: '12px 16px', borderRadius: 12, marginBottom: 22,
                 background: compliance.can_call_now ? 'rgba(16,185,129,0.06)' : 'rgba(234,88,12,0.06)',
                 border: `1px solid ${compliance.can_call_now ? '#10b981' : '#f97316'}`
               }}>
@@ -542,11 +576,11 @@ export default function CampaignsStudio({ onNavigate }) {
                       TRAI & India Telecom Compliance Guard
                     </span>
                   </div>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)' }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: '#6D6585' }}>
                     IST Time: {compliance.current_ist_time}
                   </span>
                 </div>
-                <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 4 }}>
+                <div style={{ fontSize: 12, color: '#645E78', marginTop: 4 }}>
                   • Format: <strong>{compliance.formatted_number}</strong> | Window: <strong>09:00 AM – 09:00 PM IST</strong> | DND: <strong>{compliance.is_dnd_registered ? 'BLOCKED' : 'CLEAN ✓'}</strong>
                 </div>
                 <div style={{ fontSize: 11, color: compliance.can_call_now ? '#059669' : '#ea580c', marginTop: 2, fontWeight: 500 }}>
@@ -559,13 +593,10 @@ export default function CampaignsStudio({ onNavigate }) {
             <button
               onClick={handleTriggerQuickCall}
               disabled={isCalling}
+              className="btn-luxury"
               style={{
-                width: '100%', padding: '14px 20px', borderRadius: 12,
-                background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                color: '#fff', border: 'none', fontSize: 16, fontWeight: 700,
-                cursor: isCalling ? 'not-allowed' : 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-                boxShadow: '0 4px 14px rgba(124,58,237,0.35)', transition: 'transform 0.1s'
+                width: '100%', padding: '16px 24px', borderRadius: 14,
+                fontSize: 15.5, letterSpacing: '0.03em', fontWeight: 800
               }}
             >
               <PhoneCall size={18} />
@@ -573,9 +604,84 @@ export default function CampaignsStudio({ onNavigate }) {
             </button>
           </div>
 
-          {/* Live Call Progress & Transcript Panel */}
-          {(activeCall || callStatus) && (
-            <div className="card" style={{ padding: 24, borderRadius: 16, border: '1px solid var(--border)', background: '#fff', display: 'flex', flexDirection: 'column' }}>
+          {/* Right Column Companion: Live Voice Companion or Call Monitor */}
+          {(!activeCall && !callStatus) ? (
+            <div className="luxury-card" style={{ padding: 28, background: '#fff', border: '1px solid rgba(147, 51, 234, 0.15)', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #F1EBF9', paddingBottom: 16 }}>
+                <div>
+                  <div className="font-editorial" style={{ fontSize: 20, fontWeight: 600, color: '#17112B' }}>
+                    Sara Live Telephony Runtime
+                  </div>
+                  <div style={{ fontSize: 12, color: '#9D93B8', marginTop: 2 }}>
+                    Low-latency conversational speech architecture
+                  </div>
+                </div>
+                <span className="brand-chip">
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#10B981', boxShadow: '0 0 6px #10B981' }} />
+                  Online
+                </span>
+              </div>
+
+              {/* Pulsing Visualizer Orb */}
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '16px 0', textAlign: 'center' }}>
+                <div style={{
+                  width: 90, height: 90, borderRadius: '50%',
+                  background: 'radial-gradient(circle at 35% 35%, #FFFFFF 0%, #C084FC 45%, #7C3AED 100%)',
+                  boxShadow: '0 0 40px rgba(168, 85, 247, 0.35)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  marginBottom: 14,
+                  animation: 'pulse 2.2s ease-in-out infinite'
+                }}>
+                  <Volume2 size={36} color="#FFFFFF" />
+                </div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#17112B' }}>Priya — Indic Multilingual</div>
+                <div style={{ fontSize: 12, color: '#645E78', marginTop: 2 }}>Cartesia Sonic Ultra-Fast Model</div>
+              </div>
+
+              {/* Engine Specs */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE', textTransform: 'uppercase' }}>Latency</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>~180ms</div>
+                  <div style={{ fontSize: 11, color: '#9D93B8', marginTop: 2 }}>Real-time voice stream</div>
+                </div>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE', textTransform: 'uppercase' }}>LLM Core</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>Groq 70B</div>
+                  <div style={{ fontSize: 11, color: '#9D93B8', marginTop: 2 }}>Llama 3.3 Versatile</div>
+                </div>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE', textTransform: 'uppercase' }}>Carrier</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>Plivo PSTN</div>
+                  <div style={{ fontSize: 11, color: '#9D93B8', marginTop: 2 }}>+91 80 6552 2007</div>
+                </div>
+                <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE', textTransform: 'uppercase' }}>Billing</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>₹6.00 / min</div>
+                  <div style={{ fontSize: 11, color: '#9D93B8', marginTop: 2 }}>Wallet auto-deduct</div>
+                </div>
+              </div>
+
+              {/* Supported Languages */}
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#645E78', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Native Languages Supported
+                </div>
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {['Telugu (తెలుగు)', 'English (India)', 'Hindi (हिन्दी)', 'Tamil (தமிழ்)', 'Kannada (ಕನ್ನಡ)'].map(l => (
+                    <span key={l} style={{
+                      fontSize: 11, fontWeight: 600, padding: '4px 10px', borderRadius: 20,
+                      background: '#F8FAFC', border: '1px solid #E2E8F0', color: '#7E22CE'
+                    }}>
+                      {l}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Live Call Progress & Transcript Panel */
+            <div className="luxury-card" style={{ padding: 26, background: '#fff', border: '1px solid rgba(147, 51, 234, 0.2)', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -718,9 +824,9 @@ export default function CampaignsStudio({ onNavigate }) {
           TAB 2: AUTO CAMPAIGN (GOOGLE SHEETS PIPELINE)
       ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'auto_campaign' && (
-        <div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
           {/* Campaign Stats Overview */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 14, marginBottom: 20 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
             {[
               { label: 'Total Ingested Leads', val: campaignStats.total, color: '#0284c7' },
               { label: 'Calls Placed', val: campaignStats.called, color: '#7c3aed' },
@@ -728,23 +834,28 @@ export default function CampaignsStudio({ onNavigate }) {
               { label: 'Qualified / Interested', val: campaignStats.interested, color: '#16a34a' },
               { label: 'Follow-ups Scheduled', val: campaignStats.followup, color: '#ea580c' },
             ].map((s, idx) => (
-              <div key={idx} className="kpi-card" style={{ padding: 16, background: '#fff', borderRadius: 12, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.val}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500, marginTop: 4 }}>{s.label}</div>
+              <div key={idx} className="kpi-card" style={{ padding: '18px 20px' }}>
+                <div style={{ fontSize: 28, fontWeight: 800, color: s.color, letterSpacing: '-0.02em', lineHeight: 1 }}>{s.val}</div>
+                <div style={{ fontSize: 12.5, color: '#6D6585', fontWeight: 500, marginTop: 6 }}>{s.label}</div>
               </div>
             ))}
           </div>
 
           {/* Google Sheets Connection Box */}
-          <div className="card" style={{ padding: 22, borderRadius: 16, border: '1px solid var(--border)', background: '#fff', marginBottom: 24 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <FileSpreadsheet size={22} color="#059669" />
+          <div className="luxury-card" style={{ padding: 28, background: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 40, height: 40, borderRadius: 12, background: 'rgba(5, 150, 105, 0.1)',
+                  border: '1px solid rgba(5, 150, 105, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <FileSpreadsheet size={22} color="#059669" />
+                </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <h3 className="font-editorial" style={{ margin: 0, fontSize: 20, fontWeight: 600, color: '#17112B' }}>
                     Google Sheets / CSV Auto-Calling Pipeline
                   </h3>
-                  <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
+                  <p style={{ margin: '3px 0 0', fontSize: 13, color: '#6D6585' }}>
                     Paste your Google Sheet link or raw CSV (Name, Phone, Notes) to queue leads automatically
                   </p>
                 </div>
@@ -755,18 +866,20 @@ export default function CampaignsStudio({ onNavigate }) {
                   onClick={syncSheetLeads}
                   disabled={campaignLoading || (!sheetUrl && !csvInput)}
                   className="btn btn-secondary"
-                  style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 7 }}
                 >
-                  <RefreshCw size={14} className={campaignLoading ? 'spin' : ''} /> Sync & Preview Leads
+                  <RefreshCw size={14} className={campaignLoading ? 'animate-spin' : ''} /> Sync & Preview Leads
                 </button>
                 <button
                   onClick={() => setIsCampaignRunning(!isCampaignRunning)}
                   disabled={campaignLeads.length === 0}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px',
-                    borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '10px 20px',
+                    borderRadius: 12, border: 'none', fontSize: 13.5, fontWeight: 700,
                     cursor: campaignLeads.length === 0 ? 'not-allowed' : 'pointer',
-                    background: isCampaignRunning ? '#ef4444' : '#10b981', color: '#fff'
+                    background: isCampaignRunning ? '#ef4444' : 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    color: '#fff',
+                    boxShadow: isCampaignRunning ? '0 4px 14px rgba(239, 68, 68, 0.3)' : '0 4px 14px rgba(16, 185, 129, 0.3)'
                   }}
                 >
                   {isCampaignRunning ? <Pause size={14} /> : <Play size={14} />}
@@ -775,101 +888,114 @@ export default function CampaignsStudio({ onNavigate }) {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <input
-                className="input"
-                value={sheetUrl}
-                onChange={(e) => setSheetUrl(e.target.value)}
-                placeholder="Paste public Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/...)"
-                style={{ width: '100%', fontSize: 13 }}
-              />
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
-                <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>OR PASTE CSV DIRECTLY</span>
-                <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#17112B', marginBottom: 6 }}>
+                  Google Sheet Shareable Link
+                </label>
+                <input
+                  className="luxury-input"
+                  value={sheetUrl}
+                  onChange={(e) => setSheetUrl(e.target.value)}
+                  placeholder="Paste public Google Sheet URL (e.g. https://docs.google.com/spreadsheets/d/...)"
+                  style={{ fontSize: 13.5 }}
+                />
               </div>
 
-              <textarea
-                className="input"
-                rows={2}
-                value={csvInput}
-                onChange={(e) => setCsvInput(e.target.value)}
-                placeholder="Name, Phone, Notes&#10;Ravi, 9876543210, Interested in weight loss"
-                style={{ width: '100%', fontSize: 12, resize: 'vertical' }}
-              />
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ flex: 1, height: 1, background: '#EFEBF8' }} />
+                <span style={{ fontSize: 11, color: '#9D93B8', fontWeight: 700, letterSpacing: '0.06em' }}>OR PASTE CSV ROWS DIRECTLY</span>
+                <div style={{ flex: 1, height: 1, background: '#EFEBF8' }} />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#17112B', marginBottom: 6 }}>
+                  Raw CSV Data (Name, Phone, Notes)
+                </label>
+                <textarea
+                  className="luxury-input"
+                  rows={2}
+                  value={csvInput}
+                  onChange={(e) => setCsvInput(e.target.value)}
+                  placeholder="Name, Phone, Notes&#10;Ravi, 9876543210, Interested in weight loss"
+                  style={{ fontSize: 13, resize: 'vertical' }}
+                />
+              </div>
             </div>
           </div>
 
           {/* Leads Queue & 2-Way Sync Table */}
-          <div className="card" style={{ padding: 20, borderRadius: 16, border: '1px solid var(--border)', background: '#fff' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-              <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Lead Queue & Real-time Status ({campaignLeads.length})
-              </h3>
-              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                Post-call statuses update in real time
+          <div className="luxury-card" style={{ padding: 26, background: '#fff' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
+              <div>
+                <h3 className="font-editorial" style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#17112B' }}>
+                  Lead Queue & Real-time Status ({campaignLeads.length})
+                </h3>
+                <span style={{ fontSize: 12.5, color: '#6D6585' }}>
+                  Post-call qualification statuses update live in real time
+                </span>
+              </div>
+              <span className="brand-chip" style={{ fontSize: 11 }}>
+                2-Way CRM Sync Active
               </span>
             </div>
 
             {campaignLeads.length === 0 ? (
-              <div style={{ padding: '36px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                <FileSpreadsheet size={36} color="var(--text-muted)" style={{ margin: '0 auto 10px', opacity: 0.5 }} />
-                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)' }}>No leads loaded yet</div>
-                <p style={{ margin: '4px 0 0', fontSize: 12 }}>
+              <div style={{ padding: '40px 20px', textAlign: 'center', color: '#6D6585', border: '1px dashed #E2E8F0', borderRadius: 16, background: '#F8FAFC' }}>
+                <FileSpreadsheet size={38} color="#A855F7" style={{ margin: '0 auto 12px', opacity: 0.7 }} />
+                <div className="font-editorial" style={{ fontWeight: 600, fontSize: 17, color: '#17112B' }}>No leads loaded yet</div>
+                <p style={{ margin: '6px 0 0', fontSize: 13, color: '#6D6585' }}>
                   Paste a Google Sheet URL or enter CSV rows above and click <strong>Sync & Preview Leads</strong>.
                 </p>
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13.5 }}>
                   <thead>
-                    <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Lead Name</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Phone</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Status</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Notes / Requirements</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Compliance</th>
-                      <th style={{ padding: '10px 14px', fontWeight: 600 }}>Action</th>
+                    <tr style={{ borderBottom: '1px solid #E2E8F0', color: '#6D6585', background: '#F8FAFC' }}>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Lead Name</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Phone</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Status</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Notes / Requirements</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Compliance</th>
+                      <th style={{ padding: '12px 16px', fontWeight: 700 }}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {campaignLeads.map((lead, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
-                        <td style={{ padding: '12px 14px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <tr key={idx} style={{ borderBottom: '1px solid #F3EFFA' }}>
+                        <td style={{ padding: '14px 16px', fontWeight: 600, color: '#17112B' }}>
                           {lead.name}
                         </td>
-                        <td style={{ padding: '12px 14px', color: 'var(--text-secondary)' }}>
+                        <td style={{ padding: '14px 16px', color: '#6D6585' }}>
                           {lead.phone}
                         </td>
-                        <td style={{ padding: '12px 14px' }}>
-                          <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 8px', borderRadius: 12, background: 'rgba(2,132,199,0.1)', color: '#0284c7' }}>
+                        <td style={{ padding: '14px 16px' }}>
+                          <span style={{ fontSize: 11.5, fontWeight: 700, padding: '3px 9px', borderRadius: 12, background: 'rgba(2,132,199,0.1)', color: '#0284c7', border: '1px solid rgba(2,132,199,0.2)' }}>
                             {lead.status}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 14px', color: 'var(--text-muted)', fontSize: 12 }}>
+                        <td style={{ padding: '14px 16px', color: '#6D6585', fontSize: 12.5 }}>
                           {lead.notes || '—'}
                         </td>
-                        <td style={{ padding: '12px 14px' }}>
+                        <td style={{ padding: '14px 16px' }}>
                           <span style={{
-                            fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
+                            fontSize: 11, fontWeight: 700, padding: '3px 8px', borderRadius: 12,
                             background: lead.compliance?.can_call_now ? 'rgba(16,185,129,0.1)' : 'rgba(234,88,12,0.1)',
-                            color: lead.compliance?.can_call_now ? '#059669' : '#ea580c'
+                            color: lead.compliance?.can_call_now ? '#059669' : '#ea580c',
+                            border: `1px solid ${lead.compliance?.can_call_now ? 'rgba(16,185,129,0.25)' : 'rgba(234,88,12,0.25)'}`
                           }}>
                             {lead.compliance?.can_call_now ? 'Eligible' : 'Outside Window'}
                           </span>
                         </td>
-                        <td style={{ padding: '12px 14px' }}>
+                        <td style={{ padding: '14px 16px' }}>
                           <button
                             onClick={() => {
                               setPhoneNumber(lead.phone.replace(/[^0-9]/g, '').slice(-10));
                               setLeadName(lead.name);
                               setActiveTab('call_now');
                             }}
-                            style={{
-                              padding: '4px 10px', borderRadius: 6, border: '1px solid var(--border)',
-                              background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', color: '#7c3aed'
-                            }}
+                            className="btn btn-secondary btn-sm"
                           >
                             Call Single
                           </button>
@@ -885,189 +1011,239 @@ export default function CampaignsStudio({ onNavigate }) {
       )}
 
       {/* ───────────────────────────────────────────────────────────────────────
-          TAB 3: BUSINESS AI PROFILE (THE CORE ENGINE)
+          TAB 3: BUSINESS AI PROFILE (THE CORE ENGINE - MATCHING ONBOARDING)
       ──────────────────────────────────────────────────────────────────────── */}
       {activeTab === 'business_profile' && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 28 }}>
-          <div className="card" style={{ padding: 26, borderRadius: 16, border: '1px solid var(--border)', background: '#fff' }}>
-            <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-              Business Profile & Calling Instruction
-            </h3>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Business Name *
-                </label>
-                <input
-                  className="input"
-                  value={bizProfile.business_name}
-                  placeholder="e.g. Acme Fitness"
-                  onChange={(e) => setBizProfile({ ...bizProfile, business_name: e.target.value })}
-                  style={{ width: '100%' }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Industry / Type
-                </label>
-                <input
-                  className="input"
-                  value={bizProfile.industry}
-                  placeholder="e.g. Health & Fitness"
-                  onChange={(e) => setBizProfile({ ...bizProfile, industry: e.target.value })}
-                  style={{ width: '100%' }}
-                />
-              </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+          {/* Header Description for Tab 3 */}
+          <div style={{ textAlign: 'center', maxWidth: 640, margin: '0 auto 12px' }}>
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '4px 12px',
+                borderRadius: 20,
+                background: 'rgba(147, 51, 234, 0.08)',
+                border: '1px solid rgba(147, 51, 234, 0.18)',
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                color: '#7E22CE',
+                marginBottom: 8,
+              }}
+            >
+              <Sparkles size={12} color="#A855F7" />
+              Business Knowledge & Instruction Engine
             </div>
+            <h2
+              className="font-editorial"
+              style={{
+                fontFamily: "'Newsreader', 'Instrument Serif', Georgia, serif",
+                fontSize: 28,
+                fontWeight: 500,
+                letterSpacing: '-0.025em',
+                margin: '0 0 6px',
+                color: '#17112B',
+              }}
+            >
+              Configure Your Business AI Profile
+            </h2>
+            <p style={{ fontSize: 14, color: '#6D6585', margin: 0, lineHeight: 1.45 }}>
+              Sara uses these details to speak on behalf of your business, answer queries, explain pricing, and qualify leads.
+            </p>
+          </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Operating Hours
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 28, alignItems: 'start' }}>
+            {/* Left Column: The Configuration Form */}
+            <div className="luxury-card" style={{ padding: 32, background: '#fff' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 7 }}>
+                    <Building2 size={14} color="#9333EA" />
+                    <span>Business Name</span>
+                    <span style={{ color: '#EC4899' }}>*</span>
+                  </label>
+                  <input
+                    className="luxury-input"
+                    value={bizProfile.business_name}
+                    placeholder="e.g. Acme Fitness or ABC Realty"
+                    onChange={(e) => setBizProfile({ ...bizProfile, business_name: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 7 }}>
+                    <Sparkles size={14} color="#9333EA" />
+                    <span>Industry / Category</span>
+                    <span style={{ color: '#EC4899' }}>*</span>
+                  </label>
+                  <input
+                    className="luxury-input"
+                    value={bizProfile.industry}
+                    placeholder="e.g. Health & Fitness"
+                    onChange={(e) => setBizProfile({ ...bizProfile, industry: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 7 }}>
+                    <Clock size={14} color="#9333EA" />
+                    <span>Operating Hours</span>
+                  </label>
+                  <input
+                    className="luxury-input"
+                    value={bizProfile.operating_hours}
+                    placeholder="09:00 AM – 09:00 PM IST"
+                    onChange={(e) => setBizProfile({ ...bizProfile, operating_hours: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 7 }}>
+                    <Phone size={14} color="#9333EA" />
+                    <span>Business Phone</span>
+                  </label>
+                  <input
+                    className="luxury-input"
+                    value={bizProfile.phone}
+                    placeholder="+91..."
+                    onChange={(e) => setBizProfile({ ...bizProfile, phone: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 7 }}>
+                  <Sparkles size={14} color="#9333EA" />
+                  <span>Owner Calling Instruction (Sara converts this into Policy)</span>
                 </label>
-                <input
-                  className="input"
-                  value={bizProfile.operating_hours}
-                  placeholder="09:00 AM – 09:00 PM IST"
-                  onChange={(e) => setBizProfile({ ...bizProfile, operating_hours: e.target.value })}
-                  style={{ width: '100%' }}
+                <textarea
+                  className="luxury-input"
+                  rows={3}
+                  value={bizProfile.calling_instruction}
+                  placeholder="Whenever a new lead comes, call them. Explain our offerings, ask their requirements, and book a consultation slot."
+                  onChange={(e) => setBizProfile({ ...bizProfile, calling_instruction: e.target.value })}
+                  style={{ fontSize: 13.5, lineHeight: 1.5 }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                  Business Phone
+              {/* Products / Offerings */}
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#17112B', marginBottom: 8 }}>
+                  📦 Products, Packages & Pricing
                 </label>
-                <input
-                  className="input"
-                  value={bizProfile.phone}
-                  placeholder="+91..."
-                  onChange={(e) => setBizProfile({ ...bizProfile, phone: e.target.value })}
-                  style={{ width: '100%' }}
-                />
-              </div>
-            </div>
 
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
-                Owner Voice/Text Calling Instruction (Sara converts this into Policy)
-              </label>
-              <textarea
-                className="input"
-                rows={3}
-                value={bizProfile.calling_instruction}
-                placeholder="Whenever a new lead comes, call them. Explain our offerings, ask their requirements, and book a consultation slot."
-                onChange={(e) => setBizProfile({ ...bizProfile, calling_instruction: e.target.value })}
-                style={{ width: '100%', fontSize: 13, lineHeight: 1.5 }}
-              />
-            </div>
+                {/* Add New Service Input */}
+                <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+                  <input
+                    className="luxury-input"
+                    placeholder="Product/Service name (e.g. Annual Gym Pass)"
+                    value={newServiceName}
+                    onChange={(e) => setNewServiceName(e.target.value)}
+                    style={{ flex: 2 }}
+                  />
+                  <input
+                    className="luxury-input"
+                    placeholder="Price (e.g. ₹9,999)"
+                    value={newServicePrice}
+                    onChange={(e) => setNewServicePrice(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button onClick={addOffering} className="btn btn-secondary" style={{ padding: '0 16px' }}>
+                    <Plus size={15} /> Add
+                  </button>
+                </div>
 
-            {/* Products / Offerings */}
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8 }}>
-                Products, Packages & Pricing
-              </label>
-
-              {/* Add New Service Input */}
-              <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                <input
-                  className="input"
-                  placeholder="Product/Service name"
-                  value={newServiceName}
-                  onChange={(e) => setNewServiceName(e.target.value)}
-                  style={{ flex: 2, fontSize: 13 }}
-                />
-                <input
-                  className="input"
-                  placeholder="Price (e.g. ₹999/mo)"
-                  value={newServicePrice}
-                  onChange={(e) => setNewServicePrice(e.target.value)}
-                  style={{ flex: 1, fontSize: 13 }}
-                />
-                <button onClick={addOffering} className="btn btn-secondary" style={{ padding: '0 12px' }}>
-                  <Plus size={14} /> Add
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(!bizProfile.products_services || bizProfile.products_services.length === 0) ? (
-                  <div style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic', padding: 8 }}>
-                    No products added yet. Add your plans or offerings above.
-                  </div>
-                ) : (
-                  bizProfile.products_services.map((p, idx) => (
-                    <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderRadius: 8, background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)' }}>
-                      <div>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
-                        {p.details && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.details}</div>}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: '#7c3aed' }}>{p.price}</span>
-                        <button onClick={() => removeOffering(idx)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}>
-                          <Trash2 size={13} />
-                        </button>
-                      </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {(!bizProfile.products_services || bizProfile.products_services.length === 0) ? (
+                    <div style={{ fontSize: 12.5, color: '#6D6585', fontStyle: 'italic', padding: 12, background: '#F8FAFC', borderRadius: 10, border: '1px dashed #E2E8F0' }}>
+                      No products added yet. Add your offerings above so Sara can quote them accurately.
                     </div>
-                  ))
+                  ) : (
+                    bizProfile.products_services.map((p, idx) => (
+                      <div key={idx} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                        <div>
+                          <div style={{ fontSize: 13.5, fontWeight: 600, color: '#17112B' }}>{p.name}</div>
+                          {p.details && <div style={{ fontSize: 11.5, color: '#6D6585' }}>{p.details}</div>}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                          <span style={{ fontSize: 13.5, fontWeight: 700, color: '#7E22CE' }}>{p.price}</span>
+                          <button onClick={() => removeOffering(idx)} style={{ background: 'none', border: 'none', color: '#EF4444', cursor: 'pointer', padding: 4 }}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <button
+                  onClick={handleSaveBusinessProfile}
+                  disabled={isSavingBiz}
+                  className="btn btn-primary"
+                  style={{
+                    padding: '13px 24px',
+                    fontSize: 14,
+                    fontWeight: 600,
+                    borderRadius: 12
+                  }}
+                >
+                  <Sparkles size={15} color="#C084FC" />
+                  <span>{isSavingBiz ? 'Compiling AI Policy...' : 'Save & Compile AI Policy'}</span>
+                  <ArrowRight size={14} />
+                </button>
+                {bizSavedMessage && (
+                  <span style={{ fontSize: 12.5, color: '#059669', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <CheckCircle2 size={14} /> {bizSavedMessage}
+                  </span>
                 )}
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button
-                onClick={handleSaveBusinessProfile}
-                disabled={isSavingBiz}
-                className="btn-primary"
-                style={{ padding: '10px 20px', fontSize: 13, fontWeight: 700 }}
-              >
-                {isSavingBiz ? 'Compiling AI Policy...' : 'Save & Compile AI Policy'}
-              </button>
-              {bizSavedMessage && (
-                <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
-                  {bizSavedMessage}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Compiled Policy Card */}
-          <div className="card" style={{ padding: 26, borderRadius: 16, border: '1px solid var(--border)', background: '#fff' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-              <Sparkles size={18} color="#7c3aed" />
-              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>
-                Compiled Business Calling Policy
-              </h3>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>
-              This policy is executed dynamically on every call. Business rules remain strictly enforced while conversation remains natural.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>PRIMARY MISSION</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginTop: 2 }}>
-                  {bizProfile.policy?.goal || 'Qualify prospect and schedule next step'}
-                </div>
+            {/* Right Column: Compiled Policy Preview */}
+            <div className="luxury-card" style={{ padding: 28, background: '#fff' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                <Sparkles size={18} color="#9333EA" />
+                <h3 className="font-editorial" style={{ margin: 0, fontSize: 19, fontWeight: 600, color: '#17112B' }}>
+                  Compiled Business Calling Policy
+                </h3>
               </div>
+              <p style={{ fontSize: 12.5, color: '#6D6585', marginBottom: 18, lineHeight: 1.45 }}>
+                This policy is executed dynamically on every call. Business rules remain strictly enforced while conversation remains natural.
+              </p>
 
-              <div style={{ padding: 12, borderRadius: 8, background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)' }}>CONVERSATION GUARDRAILS</div>
-                <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: 12, color: 'var(--text-secondary)' }}>
-                  <li>Never invent unverified prices or offerings</li>
-                  <li>Numbers, timings, and prices always spoken in English numerals</li>
-                  <li>Politely terminate call immediately if user asks not to call</li>
-                </ul>
-              </div>
-
-              <div style={{ padding: 12, borderRadius: 8, background: 'rgba(16,185,129,0.06)', border: '1px solid rgba(16,185,129,0.3)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 700, fontSize: 12 }}>
-                  <ShieldCheck size={16} /> Plivo Telephony & TRAI Ready
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6D6585', letterSpacing: '0.05em' }}>PRIMARY MISSION</div>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: '#17112B', marginTop: 4 }}>
+                    {bizProfile.policy?.goal || 'Qualify prospect and schedule next step'}
+                  </div>
                 </div>
-                <div style={{ fontSize: 11, color: '#047857', marginTop: 4 }}>
-                  Account SID: <strong>ACd0a3e1a6f50ee90d1579c85d9baa1d1e</strong><br />
-                  TRAI calling hours (09:00 - 21:00 IST) enforced automatically.
+
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: '#F8FAFC', border: '1px solid #E2E8F0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6D6585', letterSpacing: '0.05em' }}>CONVERSATION GUARDRAILS</div>
+                  <ul style={{ margin: '6px 0 0', paddingLeft: 18, fontSize: 12.5, color: '#6D6585', lineHeight: 1.5 }}>
+                    <li>Never invent unverified prices or offerings</li>
+                    <li>Numbers, timings, and prices always spoken in English numerals</li>
+                    <li>Politely terminate call immediately if user asks not to call</li>
+                  </ul>
+                </div>
+
+                <div style={{ padding: '14px 16px', borderRadius: 12, background: 'rgba(16, 185, 129, 0.06)', border: '1px solid rgba(16, 185, 129, 0.25)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#059669', fontWeight: 700, fontSize: 12.5 }}>
+                    <ShieldCheck size={16} /> Plivo Telephony & TRAI Ready
+                  </div>
+                  <div style={{ fontSize: 11.5, color: '#047857', marginTop: 4, lineHeight: 1.45 }}>
+                    Account SID: <strong>ACd0a3e1a6f50ee90d1579c85d9baa1d1e</strong><br />
+                    TRAI calling hours (09:00 - 21:00 IST) enforced automatically.
+                  </div>
                 </div>
               </div>
             </div>

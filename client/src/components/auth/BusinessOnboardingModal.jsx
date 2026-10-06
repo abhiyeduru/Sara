@@ -160,8 +160,8 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
                 gap: 6,
                 padding: '6px 14px',
                 borderRadius: 20,
-                border: '1px solid #EADBFC',
-                background: '#FAF8FE',
+                border: '1px solid #E2E8F0',
+                background: '#F8FAFC',
                 color: '#6D28D9',
                 fontSize: 12.5,
                 fontWeight: 600,
@@ -174,8 +174,8 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
                 e.currentTarget.style.transform = 'translateX(-2px)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#FAF8FE';
-                e.currentTarget.style.borderColor = '#EADBFC';
+                e.currentTarget.style.backgroundColor = '#F8FAFC';
+                e.currentTarget.style.borderColor = '#E2E8F0';
                 e.currentTarget.style.transform = 'translateX(0)';
               }}
             >
@@ -262,7 +262,7 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
                 padding: '4px 12px 4px 5px',
                 borderRadius: 20,
                 border: '1px solid #ECE4F8',
-                background: '#FAF8FE',
+                background: '#F8FAFC',
               }}
             >
               {user?.avatar_url ? (
@@ -395,7 +395,7 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
               style={{
                 background: '#FFFFFF',
                 borderRadius: 22,
-                border: '1px solid #EADBFC',
+                border: '1px solid #E2E8F0',
                 padding: '30px 34px',
                 boxShadow: '0 12px 36px rgba(124, 58, 237, 0.08), 0 2px 8px rgba(0, 0, 0, 0.03)',
                 display: 'flex',

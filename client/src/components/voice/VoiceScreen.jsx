@@ -284,8 +284,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
       {/* Mode Switcher Tabs */}
       <div style={{
-        display: 'flex', gap: 8, background: '#fff', padding: 6,
-        borderRadius: 12, border: '1px solid var(--border)', marginBottom: 20
+        display: 'flex', gap: 6, background: '#f1f5f9', padding: 4,
+        borderRadius: 10, border: '1px solid var(--border)', marginBottom: 20
       }}>
         {[
           { id: 'mic', label: 'Microphone Test', desc: 'Real-time bidirectional voice with STT & TTS', icon: Mic },
@@ -298,20 +298,25 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
               key={id}
               onClick={() => setActiveMode(id)}
               style={{
-                flex: 1, padding: '12px 16px', borderRadius: 8, cursor: 'pointer',
-                background: isActive ? '#f5f3ff' : 'transparent',
-                border: isActive ? '1px solid #7c3aed' : '1px solid transparent',
+                flex: 1, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                background: isActive ? '#ffffff' : 'transparent',
+                border: isActive ? '1px solid var(--border)' : '1px solid transparent',
+                boxShadow: isActive ? '0 1px 3px rgba(0,0,0,0.06)' : 'none',
                 transition: 'all 0.15s ease'
               }}
             >
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-                <Icon size={16} color={isActive ? '#7c3aed' : 'var(--text-muted)'} />
-                <span style={{ fontWeight: 700, fontSize: 14, color: isActive ? '#7c3aed' : 'var(--text-primary)' }}>
+                <Icon size={15} color={isActive ? '#2563eb' : '#64748b'} />
+                <span style={{ fontWeight: 600, fontSize: 13.5, color: isActive ? '#0f172a' : '#475569' }}>
                   {label}
                 </span>
-                {isActive && <span className="chip chip-purple" style={{ fontSize: 10, padding: '2px 6px' }}>Active</span>}
+                {isActive && (
+                  <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 10, background: '#eff6ff', color: '#2563eb', marginLeft: 'auto' }}>
+                    Active
+                  </span>
+                )}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{desc}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{desc}</div>
             </div>
           );
         })}
@@ -323,66 +328,65 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         background: '#fff', border: '1px solid var(--border)', borderRadius: 10,
         padding: '10px 18px', marginBottom: 20, fontSize: 12
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-muted)', fontWeight: 600 }}>
-          <Activity size={14} color="#16a34a" /> Live AI Voice Stack:
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#64748b', fontWeight: 600 }}>
+          <Activity size={14} color="#10b981" /> Live AI Voice Stack:
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.deepgram?.ready ? '#16a34a' : '#ea580c' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.deepgram?.ready ? '#10b981' : '#f59e0b' }} />
             <strong>STT:</strong> Deepgram Streaming
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.cartesia?.ready ? '#16a34a' : '#ea580c' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.cartesia?.ready ? '#10b981' : '#f59e0b' }} />
             <strong>TTS:</strong> Cartesia Sonic ({providersHealth.cartesia?.latency_ms ? `${providersHealth.cartesia.latency_ms}ms` : 'Ready'})
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.openai?.ready ? '#16a34a' : '#ea580c' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.openai?.ready ? '#10b981' : '#f59e0b' }} />
             <strong>LLM:</strong> OpenAI {providersHealth.openai?.model || 'gpt-4o-mini'}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: providersHealth.plivo?.ready ? '#16a34a' : '#ea580c' }} />
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.plivo?.ready ? '#10b981' : '#f59e0b' }} />
             <strong>Telephony:</strong> Plivo India Voice (+91)
           </span>
         </div>
       </div>
 
       {/* Main Mode Content */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20 }}>
         {/* Left Column: Interactive Screen according to Active Mode */}
-        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', minHeight: 560 }}>
+        <div className="card" style={{ padding: 22, display: 'flex', flexDirection: 'column', minHeight: 540 }}>
           
           {/* MODE 1: MICROPHONE TEST */}
           {activeMode === 'mic' && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
               {/* Visualizer & State Badge */}
               <div style={{
-                background: 'linear-gradient(180deg, #faf5ff 0%, #ffffff 100%)',
-                border: '1px solid #ede9fe', borderRadius: 16, padding: '36px 20px',
-                textAlign: 'center', marginBottom: 20
+                background: '#f8fafc',
+                border: '1px solid var(--border)', borderRadius: 12, padding: '30px 20px',
+                textAlign: 'center', marginBottom: 18
               }}>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', borderRadius: 20, background: '#fff', border: '1px solid var(--border)', marginBottom: 20, boxShadow: '0 2px 6px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, padding: '5px 12px', borderRadius: 20, background: '#fff', border: '1px solid var(--border)', marginBottom: 18, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
                   <span style={{
-                    width: 10, height: 10, borderRadius: '50%',
-                    background: state === 'speaking' ? '#16a34a' : state === 'listening' ? '#2563eb' : state === 'thinking' ? '#7c3aed' : state === 'interrupted' ? '#ea580c' : '#94a3b8',
-                    boxShadow: state !== 'idle' ? '0 0 10px currentColor' : 'none'
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: state === 'speaking' ? '#10b981' : state === 'listening' ? '#2563eb' : state === 'thinking' ? '#8b5cf6' : state === 'interrupted' ? '#ea580c' : '#94a3b8'
                   }} />
-                  <span style={{ fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: '#0f172a' }}>
                     {state === 'speaking' ? 'Sara Speaking' : state === 'listening' ? 'Listening to You' : state === 'thinking' ? 'Sara Thinking' : state === 'interrupted' ? 'Barge-In Interrupted' : 'Ready to Connect'}
                   </span>
                 </div>
 
                 {/* Animated Voice Orb / Waveform */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 100, gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 80, gap: 5 }}>
                   {[0.4, 0.7, 1.0, 0.6, 0.8, 1.2, 0.9, 0.5, 0.3].map((factor, i) => {
                     const h = state === 'speaking' || (state === 'listening' && audioLevel > 0.05)
-                      ? Math.max(12, Math.min(85, audioLevel * 140 * factor + 15))
+                      ? Math.max(12, Math.min(75, audioLevel * 140 * factor + 15))
                       : 10;
                     return (
                       <div
                         key={i}
                         style={{
-                          width: 6, height: `${h}px`, borderRadius: 3,
-                          background: state === 'speaking' ? 'linear-gradient(180deg, #10b981, #059669)' : 'linear-gradient(180deg, #7c3aed, #a78bfa)',
+                          width: 5, height: `${h}px`, borderRadius: 3,
+                          background: state === 'speaking' ? '#10b981' : '#2563eb',
                           transition: 'height 0.08s ease'
                         }}
                       />
@@ -390,7 +394,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                   })}
                 </div>
 
-                <div style={{ marginTop: 20, fontSize: 13, color: 'var(--text-secondary)' }}>
+                <div style={{ marginTop: 16, fontSize: 13, color: '#64748b' }}>
                   {state === 'listening' && "Speak freely. Sara will respond as soon as you finish speaking."}
                   {state === 'speaking' && "Sara is talking. Start speaking anytime to test instant barge-in."}
                   {state === 'thinking' && "Generating streaming neural audio..."}
@@ -399,40 +403,40 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
               </div>
 
               {/* Controls */}
-              <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 18 }}>
                 <button
                   className={isMicOn ? "btn btn-danger" : "btn btn-primary"}
                   onClick={handleToggleMic}
-                  style={{ minWidth: 180, padding: '12px 24px', fontSize: 15, fontWeight: 700 }}
+                  style={{ minWidth: 170, padding: '11px 22px', fontSize: 14, fontWeight: 600 }}
                 >
-                  {isMicOn ? <><MicOff size={18} /> Stop Microphone</> : <><Mic size={18} /> Start Microphone</>}
+                  {isMicOn ? <><MicOff size={16} /> Stop Microphone</> : <><Mic size={16} /> Start Microphone</>}
                 </button>
                 {isMicOn && (
                   <button className="btn btn-secondary" onClick={handleInterrupt} title="Test Barge-in Interruption">
-                    <Zap size={16} color="#ea580c" /> Interrupt Agent
+                    <Zap size={15} color="#ea580c" /> Interrupt Agent
                   </button>
                 )}
               </div>
 
               {/* Live Transcripts Scroll */}
-              <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflowY: 'auto', maxHeight: 240, background: '#fafafa' }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12 }}>
+              <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 10, padding: 14, overflowY: 'auto', maxHeight: 220, background: '#f8fafc' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10 }}>
                   Live Conversation Transcript
                 </div>
                 {transcripts.length === 0 && !interimText && (
-                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 20 }}>
+                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 12.5, padding: 16 }}>
                     No messages yet. Speak or type to start.
                   </div>
                 )}
                 {transcripts.map((t, idx) => (
-                  <div key={idx} style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{t.speaker} • {t.time}</div>
+                  <div key={idx} style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>{t.speaker} • {t.time}</div>
                     <div style={{
-                      maxWidth: '80%', padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.5,
-                      background: t.role === 'user' ? '#7c3aed' : '#ffffff',
-                      color: t.role === 'user' ? '#ffffff' : 'var(--text-primary)',
+                      maxWidth: '80%', padding: '9px 13px', borderRadius: 10, fontSize: 13, lineHeight: 1.5,
+                      background: t.role === 'user' ? '#2563eb' : '#ffffff',
+                      color: t.role === 'user' ? '#ffffff' : '#0f172a',
                       border: t.role === 'user' ? 'none' : '1px solid var(--border)',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                     }}>
                       {t.text}
                     </div>
@@ -440,7 +444,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 ))}
                 {interimText && (
                   <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-                    <div style={{ maxWidth: '80%', padding: '8px 12px', borderRadius: 10, background: '#f3e8ff', color: '#6b21a8', fontSize: 12, fontStyle: 'italic' }}>
+                    <div style={{ maxWidth: '80%', padding: '7px 11px', borderRadius: 8, background: '#eff6ff', color: '#1d4ed8', fontSize: 12, fontStyle: 'italic' }}>
                       {interimText}...
                     </div>
                   </div>
@@ -451,26 +455,27 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
           {/* MODE 2: TEXT SIMULATION */}
           {activeMode === 'simulation' && (
-            <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-              <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 10, border: '1px solid #e2e8f0', marginBottom: 16, fontSize: 13 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', height: 490 }}>
+              <div style={{ padding: '10px 14px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--border)', marginBottom: 12, fontSize: 12.5, color: '#475569' }}>
                 <strong>Simulation Mode Active:</strong> Test conversational intelligence, tool execution, and prompt adherence directly via chat without audio hardware.
               </div>
 
-              {/* Chat history */}
-              <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 12, padding: 16, overflowY: 'auto', minHeight: 280, background: '#fafafa', marginBottom: 16 }}>
+              {/* Chat history scroll container */}
+              <div style={{ flex: 1, border: '1px solid var(--border)', borderRadius: 10, padding: 14, overflowY: 'auto', background: '#f8fafc', marginBottom: 12 }}>
                 {transcripts.length === 0 && (
-                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: 13, padding: 30 }}>
+                  <div style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13, padding: 28 }}>
                     Type a message below or pick a sample scenario to test {activeEmployee?.name || 'Sara'}.
                   </div>
                 )}
                 {transcripts.map((t, idx) => (
-                  <div key={idx} style={{ marginBottom: 12, display: 'flex', flexDirection: 'column', alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{t.speaker}</div>
+                  <div key={idx} style={{ marginBottom: 10, display: 'flex', flexDirection: 'column', alignItems: t.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>{t.speaker}</div>
                     <div style={{
-                      maxWidth: '80%', padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.5,
-                      background: t.role === 'user' ? '#7c3aed' : '#ffffff',
-                      color: t.role === 'user' ? '#ffffff' : 'var(--text-primary)',
-                      border: t.role === 'user' ? 'none' : '1px solid var(--border)'
+                      maxWidth: '80%', padding: '9px 13px', borderRadius: 10, fontSize: 13, lineHeight: 1.5,
+                      background: t.role === 'user' ? '#2563eb' : '#ffffff',
+                      color: t.role === 'user' ? '#ffffff' : '#0f172a',
+                      border: t.role === 'user' ? 'none' : '1px solid var(--border)',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.04)'
                     }}>
                       {t.text}
                     </div>
@@ -479,20 +484,20 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
               </div>
 
               {/* Sample test prompts */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
                 {[
                   "I'm looking for a 2BHK flat in Gachibowli under 90 Lakhs.",
                   "Can I book a site visit for this Saturday at 11 AM?",
                   "Can I speak with a human executive?",
                   "Thank you, that answers all my questions. Goodbye!"
                 ].map(p => (
-                  <button key={p} className="chip" style={{ fontSize: 11 }} onClick={() => { setTextInput(p); }}>
+                  <button key={p} className="chip" style={{ fontSize: 11.5 }} onClick={() => { setTextInput(p); }}>
                     {p}
                   </button>
                 ))}
               </div>
 
-              {/* Chat Input form */}
+              {/* Pinned Chat Input Form */}
               <form onSubmit={handleSendText} style={{ display: 'flex', gap: 8 }}>
                 <input
                   type="text"
@@ -503,7 +508,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                   style={{ flex: 1 }}
                 />
                 <button type="submit" className="btn btn-primary">
-                  <Send size={15} /> Send
+                  <Send size={14} /> Send
                 </button>
               </form>
             </div>
@@ -512,31 +517,31 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           {/* MODE 3: REAL PHONE TEST */}
           {activeMode === 'phone' && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-              <div style={{ padding: '14px 18px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', marginBottom: 16 }}>
-                <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14, marginBottom: 4 }}>
+              <div style={{ padding: '12px 16px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe', marginBottom: 16 }}>
+                <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 13.5, marginBottom: 3 }}>
                   Real Plivo Phone Call (+91 India Line)
                 </div>
-                <div style={{ fontSize: 12, color: '#3b82f6', lineHeight: 1.5 }}>
+                <div style={{ fontSize: 12, color: '#3b82f6', lineHeight: 1.45 }}>
                   Outbound call via Plivo Voice API (+91 80 6552 2007). When answered, Sara streams bidirectional live AI speech in Telugu or English.
                 </div>
               </div>
 
               {/* Telephony Rate & Limit Information Strip */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
-                <div style={{ padding: '10px 12px', background: '#f5f3ff', borderRadius: 8, border: '1px solid #ddd6fe' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase' }}>Calling Rate</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#4c1d95', marginTop: 2 }}>₹{billingInfo.rate_per_minute || 6.0}/min</div>
-                  <div style={{ fontSize: 10, color: '#7c3aed' }}>Direct wallet debit</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 18 }}>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Calling Rate</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>₹{billingInfo.rate_per_minute || 6.0}/min</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>Direct wallet debit</div>
                 </div>
-                <div style={{ padding: '10px 12px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase' }}>Call Limit Cap</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#1e40af', marginTop: 2 }}>{billingInfo.call_limit_minutes || 10} min max</div>
-                  <div style={{ fontSize: 10, color: '#3b82f6' }}>30s voice warning</div>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Call Limit Cap</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{billingInfo.call_limit_minutes || 10} min max</div>
+                  <div style={{ fontSize: 11, color: '#94a3b8' }}>30s voice warning</div>
                 </div>
-                <div style={{ padding: '10px 12px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Wallet Balance</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#166534', marginTop: 2 }}>₹{Number(billingInfo.balance || 0).toLocaleString('en-IN')}</div>
-                  <div style={{ fontSize: 10, color: '#16a34a' }}>~{Math.floor((billingInfo.balance || 0) / (billingInfo.rate_per_minute || 6.0))} mins available</div>
+                <div style={{ padding: '10px 12px', background: '#f8fafc', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Wallet Balance</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>₹{Number(billingInfo.balance || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 11, color: '#10b981' }}>~{Math.floor((billingInfo.balance || 0) / (billingInfo.rate_per_minute || 6.0))} mins available</div>
                 </div>
               </div>
 
@@ -546,9 +551,9 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 </div>
               )}
 
-              <form onSubmit={handleTriggerPhoneCall} style={{ maxWidth: 480, margin: '0 auto', width: '100%' }}>
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+              <form onSubmit={handleTriggerPhoneCall} style={{ maxWidth: 460, margin: '0 auto', width: '100%' }}>
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 5 }}>
                     Destination Phone Number (with Country Code)
                   </label>
                   <input
@@ -558,18 +563,18 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                     value={phoneTargetNumber}
                     onChange={(e) => setPhoneTargetNumber(e.target.value.replace(/=/g, '+'))}
                     required
-                    style={{ fontSize: 15 }}
+                    style={{ fontSize: 14 }}
                   />
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
+                  <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
                     Enter the phone number you would like Sara to call.
                   </div>
                 </div>
 
-                <div style={{ marginBottom: 20 }}>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, marginBottom: 6 }}>
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 5 }}>
                     AI Employee Caller
                   </label>
-                  <div style={{ padding: '10px 14px', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>
+                  <div style={{ padding: '9px 12px', background: '#f8fafc', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, fontWeight: 500, color: '#0f172a' }}>
                     {activeEmployee?.name || 'Sara'} — {activeEmployee?.role || 'Property Advisor'}
                   </div>
                 </div>
@@ -578,27 +583,27 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                   type="submit"
                   className="btn btn-primary"
                   disabled={phoneCalling || !phoneTargetNumber.trim() || Number(billingInfo.balance || 0) < 6.0}
-                  style={{ width: '100%', padding: '12px 20px', fontSize: 15, fontWeight: 700, justifyContent: 'center' }}
+                  style={{ width: '100%', padding: '11px 18px', fontSize: 14, fontWeight: 600, justifyContent: 'center' }}
                 >
-                  <PhoneCall size={18} /> {phoneCalling ? 'Initiating Call...' : 'Start Real Phone Call'}
+                  <PhoneCall size={16} /> {phoneCalling ? 'Initiating Call...' : 'Start Real Phone Call'}
                 </button>
               </form>
 
               {phoneCallMessage && (
                 <div style={{
-                  marginTop: 20, padding: 14, borderRadius: 10,
+                  marginTop: 18, padding: 12, borderRadius: 8,
                   background: phoneCallStatus === 'failed' ? '#fef2f2' : '#f0fdf4',
                   border: phoneCallStatus === 'failed' ? '1px solid #fecaca' : '1px solid #bbf7d0',
                   color: phoneCallStatus === 'failed' ? '#991b1b' : '#166534',
-                  fontSize: 13
+                  fontSize: 12.5
                 }}>
-                  <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 600, marginBottom: 3 }}>
                     {phoneCallStatus === 'failed' ? 'Call Failed' : 'Call Status'}
                   </div>
                   <div>{phoneCallMessage}</div>
 
                   {phoneCallStatus === 'failed' && (phoneCallMessage.includes('Trial') || phoneCallMessage.includes('Verified') || phoneCallMessage.includes('422')) && (
-                    <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <a
                         href="https://console.twilio.com/us1/develop/phone-numbers/manage/verified"
                         target="_blank"
@@ -628,38 +633,46 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           
           {/* Latency Telemetry Card */}
-          <div className="card" style={{ padding: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Clock size={14} color="#7c3aed" /> Real-Time Latency Telemetry
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Clock size={14} color="#2563eb" /> Real-Time Latency Telemetry
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div style={{ background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>STT Deepgram</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#2563eb' }}>{latestMetrics.stt_ms} ms</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>STT Deepgram</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: isMicOn ? '#2563eb' : '#64748b' }}>
+                  {isMicOn ? `${latestMetrics.stt_ms} ms` : 'Ready'}
+                </div>
               </div>
-              <div style={{ background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>LLM TTFT</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#7c3aed' }}>{latestMetrics.llm_first_token_ms} ms</div>
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>LLM TTFT</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: isMicOn ? '#2563eb' : '#64748b' }}>
+                  {isMicOn ? `${latestMetrics.llm_first_token_ms} ms` : 'Ready'}
+                </div>
               </div>
-              <div style={{ background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>TTS Cartesia</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#16a34a' }}>{latestMetrics.tts_first_audio_ms} ms</div>
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>TTS Cartesia</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: isMicOn ? '#10b981' : '#64748b' }}>
+                  {isMicOn ? `${latestMetrics.tts_first_audio_ms} ms` : 'Ready'}
+                </div>
               </div>
-              <div style={{ background: '#f8fafc', padding: 10, borderRadius: 8, border: '1px solid var(--border)' }}>
-                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600 }}>Total Turn</div>
-                <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{latestMetrics.total_ms} ms</div>
+              <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Total Turn</div>
+                <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+                  {isMicOn ? `${latestMetrics.total_ms} ms` : 'Ready'}
+                </div>
               </div>
             </div>
           </div>
 
           {/* Voice Settings Card */}
-          <div className="card" style={{ padding: 18 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <Volume2 size={14} color="#7c3aed" /> Voice Configuration
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Volume2 size={14} color="#2563eb" /> Voice Configuration
             </div>
 
             <div style={{ marginBottom: 12 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
+              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
                 Primary Language
               </label>
               <div style={{ display: 'flex', gap: 6 }}>
@@ -670,9 +683,9 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 ].map(l => (
                   <button
                     key={l.code}
-                    className={selectedLanguage === l.code ? "chip chip-purple" : "chip"}
+                    className={selectedLanguage === l.code ? "btn btn-primary btn-sm" : "btn btn-secondary btn-sm"}
                     onClick={() => setSelectedLanguage(l.code)}
-                    style={{ flex: 1, fontSize: 11, padding: '6px 8px', justifyContent: 'center' }}
+                    style={{ flex: 1, fontSize: 11, padding: '5px 6px', justifyContent: 'center' }}
                   >
                     {l.label}
                   </button>
@@ -680,8 +693,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
               </div>
             </div>
 
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
+            <div style={{ marginBottom: 10 }}>
+              <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
                 Cartesia Neural Voice
               </label>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -691,25 +704,26 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                     onClick={() => setSelectedVoiceId(v.id)}
                     style={{
                       padding: '8px 10px', borderRadius: 8, cursor: 'pointer',
-                      border: selectedVoiceId === v.id ? '1px solid #7c3aed' : '1px solid var(--border)',
-                      background: selectedVoiceId === v.id ? '#faf5ff' : '#ffffff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+                      border: selectedVoiceId === v.id ? '1px solid #2563eb' : '1px solid var(--border)',
+                      background: selectedVoiceId === v.id ? '#eff6ff' : '#ffffff',
+                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      transition: 'all 0.15s ease'
                     }}
                   >
                     <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: selectedVoiceId === v.id ? '#7c3aed' : 'var(--text-primary)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: selectedVoiceId === v.id ? '#2563eb' : '#0f172a' }}>
                         {v.name}
                       </div>
-                      <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>{v.desc}</div>
+                      <div style={{ fontSize: 10.5, color: '#64748b' }}>{v.desc}</div>
                     </div>
                     <button
                       type="button"
                       className="btn btn-icon"
-                      style={{ width: 26, height: 26 }}
+                      style={{ width: 24, height: 24, padding: 0 }}
                       onClick={(e) => { e.stopPropagation(); handlePreviewVoice(v.id); }}
                       title="Preview Voice Sample"
                     >
-                      {previewingVoice === v.id ? <Pause size={12} color="#7c3aed" /> : <Play size={12} />}
+                      {previewingVoice === v.id ? <Pause size={11} color="#2563eb" /> : <Play size={11} />}
                     </button>
                   </div>
                 ))}

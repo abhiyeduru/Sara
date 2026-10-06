@@ -6,6 +6,7 @@ import {
   TrendingUp, Users, DollarSign, Phone, Bot, Zap, ArrowUpRight, ArrowDownRight,
   Sparkles, RefreshCw, CheckSquare
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function Analytics({ onNavigate }) {
   const [period, setPeriod] = useState('1M');
@@ -68,21 +69,54 @@ export default function Analytics({ onNavigate }) {
   // Dynamic Funnel data from leadStats
   const funnelData = leadStats?.funnel || [];
 
+  if (loading && !dashboard) {
+    return <SkeletonLoader type="dashboard" />;
+  }
+
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'Plus Jakarta Sans' }}>Executive Analytics</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--text-muted)' }}>Real-time business telemetry and AI workforce performance</p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <TrendingUp size={12} color="#A855F7" />
+            Executive Intelligence
+          </div>
+          <h1 className="page-title">
+            Executive Analytics & Telemetry
+          </h1>
+          <p className="page-subtitle">
+            Real-time business telemetry and AI workforce performance
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-secondary btn-sm" onClick={fetchAnalytics} title="Refresh">
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="btn btn-secondary" onClick={fetchAnalytics} title="Refresh">
             <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
-          <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('ask')}>
-            <Sparkles size={13} />Ask Sara
+          <button className="btn btn-secondary" onClick={() => onNavigate('ask')}>
+            <Sparkles size={13} color="#7c3aed" /> Ask Sara
           </button>
+        </div>
+      </div>
+
+      {/* Period Selector Tabs */}
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 20 }}>
+        <div className="luxury-tabs">
+          {['24H', '7D', '1M', '3M', '1Y'].map((p) => (
+            <button
+              key={p}
+              className={`tab-item ${period === p ? 'active' : ''}`}
+              onClick={() => setPeriod(p)}
+            >
+              {p}
+            </button>
+          ))}
         </div>
       </div>
 

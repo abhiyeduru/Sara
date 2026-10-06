@@ -3,6 +3,7 @@ import {
   Cpu, Plus, CheckCircle2, AlertCircle, RefreshCw, Trash2,
   ExternalLink, Terminal, Shield, Zap, Search, X
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function MCPConnections({ onNavigate }) {
   const [servers, setServers] = useState([]);
@@ -91,7 +92,9 @@ export default function MCPConnections({ onNavigate }) {
       </div>
 
       {/* Grid or Empty State */}
-      {servers.length === 0 ? (
+      {loading && servers.length === 0 ? (
+        <SkeletonLoader type="cards" count={3} />
+      ) : servers.length === 0 ? (
         <div className="card" style={{ padding: '48px 24px', textAlign: 'center', borderRadius: 12 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <Cpu size={28} color="#7c3aed" />

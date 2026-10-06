@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, Users, TrendingUp, Phone, MessageCircle,
   Search, Filter, Plus, ChevronRight, ArrowRight, RefreshCw, PhoneCall } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const STAGES = [
   { id:'new', label:'New', color:'#64748b' },
@@ -43,18 +44,28 @@ export default function CRM({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>
-            CRM & Pipeline
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <Building2 size={12} color="#A855F7" />
+            Autonomous CRM & Deals
+          </div>
+          <h1 className="page-title">
+            CRM & Pipeline Center
           </h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>
-            AI-managed sales pipeline · {leads.length} active leads tracked
+          <p className="page-subtitle">
+            AI-managed sales pipeline · {leads.length} active leads tracked across stages
           </p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchLeads}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={() => onNavigate('leads')}>
             <Plus size={14} /> Add Lead
@@ -63,19 +74,16 @@ export default function CRM({ onNavigate }) {
       </div>
 
       {/* Search */}
-      <div style={{ marginBottom: 20, maxWidth: 320 }}>
-        <div className="search-input">
-          <Search size={14} color="var(--text-muted)" />
-          <input placeholder="Filter pipeline leads..." value={search} onChange={e => setSearch(e.target.value)} />
+      <div style={{ marginBottom: 22, maxWidth: 340 }}>
+        <div className="search-input" style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+          <Search size={14} color="#94A3B8" />
+          <input placeholder="Filter pipeline leads..." value={search} onChange={e => setSearch(e.target.value)} style={{ fontSize: 13.5 }} />
         </div>
       </div>
 
       {/* Kanban Board */}
       {loading && leads.length === 0 ? (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-          <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-          <div>Loading CRM pipeline...</div>
-        </div>
+        <SkeletonLoader type="kanban" />
       ) : leads.length === 0 ? (
         <div className="empty-state">
           <div className="empty-icon"><Building2 size={28} color="#94a3b8" /></div>

@@ -381,7 +381,7 @@ export default function LoginModal({ onLoginSuccess }) {
         inputBorder: '#E4DCF5',
         inputText: '#17112B',
         btnSecondaryBg: '#F8F6FE',
-        btnSecondaryBorder: '#EADBFC',
+        btnSecondaryBorder: '#E2E8F0',
         btnSecondaryText: '#1E1238',
         btnSecondaryHover: '#F2EDFD',
         btnPrimaryBg: '#17112B',

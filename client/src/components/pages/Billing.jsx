@@ -4,6 +4,7 @@ import {
   RefreshCw, DollarSign, X
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, XAxis, Tooltip } from 'recharts';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const PLANS = [
   { id: 'starter', name: 'Starter', price: '₹4,999/mo', features: ['3 AI Employees', '1,000 AI calls/mo', 'Basic CRM', 'Email support'] },
@@ -133,14 +134,32 @@ export default function Billing({ onNavigate }) {
 
   const usagePercent = totalPurchased > 0 ? Math.min(100, Math.round((totalConsumed / totalPurchased) * 100)) : 0;
 
+  if (loading && !account) {
+    return <SkeletonLoader type="dashboard" />;
+  }
+
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'Plus Jakarta Sans' }}>Billing & Credits</h1>
-          <p style={{ margin: '4px 0 0', fontSize: 14, color: 'var(--text-muted)' }}>Manage subscription, credit balance, and telephony consumption</p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <CreditCard size={12} color="#A855F7" />
+            Wallet & Telephony Billing
+          </div>
+          <h1 className="page-title">
+            Billing & Credit Management
+          </h1>
+          <p className="page-subtitle">
+            Manage business subscription, recharge wallet credits, and monitor per-minute telephony consumption
+          </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchBillingData} title="Refresh">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh

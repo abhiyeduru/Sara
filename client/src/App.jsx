@@ -155,7 +155,7 @@ export default function App() {
   });
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [page, setPage] = useState('campaigns');
+  const [page, setPage] = useState('dashboard');
   const [pageParams, setPageParams] = useState({});
   const [showAskSara, setShowAskSara] = useState(false);
   const meta = PAGE_META[page] || {};
@@ -316,7 +316,7 @@ export default function App() {
       {/* Floating Ask Sara Button */}
       {!isFullPage && (
         <button className="ask-sara-fab" onClick={() => setShowAskSara(s => !s)} title="Ask Sara">
-          <Sparkles size={22} />
+          <Sparkles size={18} />
         </button>
       )}
 

@@ -3,6 +3,7 @@ import {
   Hash, Plus, Phone, PhoneCall, Bot, CheckCircle2, Shield, Search,
   RefreshCw, Trash2, Globe, Radio, ExternalLink, ArrowRight, UserCheck
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function PhoneNumbers({ onNavigate }) {
   const [numbers, setNumbers] = useState([]);
@@ -145,36 +146,39 @@ export default function PhoneNumbers({ onNavigate }) {
   };
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, margin: '0 auto' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+    <div className="page-content animate-fade-in">
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Hash size={26} color="var(--primary)" />
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <Hash size={12} color="#A855F7" />
+            Telephony & Virtual Carrier Lines
+          </div>
+          <h1 className="page-title">
             Telephony & Virtual Phone Lines
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            Manage active phone lines powered by Plivo (+91 India carrier) and SARA Voice Runtime. Route inbound inquiries and place autonomous outbound AI calls.
+          <p className="page-subtitle">
+            Manage active phone lines powered by Plivo (+91 India carrier) and SARA Voice Runtime.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 12 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button
             onClick={() => setShowCallModal(true)}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8,
-              border: '1px solid var(--border)', background: 'var(--bg-secondary, #fff)',
-              fontSize: 14, fontWeight: 600, cursor: 'pointer', color: 'var(--text-primary)'
-            }}
+            className="btn btn-secondary"
           >
-            <PhoneCall size={16} color="var(--primary)" />
+            <PhoneCall size={15} color="#7c3aed" />
             Test Outbound AI Call
           </button>
           <button
             onClick={() => { setShowBuyModal(true); handleSearchAvailable(); }}
-            className="btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 18px', borderRadius: 8, fontSize: 14, fontWeight: 600 }}
+            className="btn btn-primary"
           >
-            <Plus size={16} /> Get New Phone Number
+            <Plus size={15} /> Get New Phone Number
           </button>
         </div>
       </div>
@@ -227,10 +231,7 @@ export default function PhoneNumbers({ onNavigate }) {
       {/* Numbers Table */}
       <div className="card" style={{ overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-            <div>Loading virtual lines...</div>
-          </div>
+          <SkeletonLoader type="table" count={3} />
         ) : numbers.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Hash size={40} color="var(--text-muted)" style={{ marginBottom: 12, opacity: 0.5 }} />

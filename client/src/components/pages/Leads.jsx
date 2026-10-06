@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Star, Phone, MessageCircle, Mail, Filter, Search,
   ChevronRight, Plus, TrendingUp, Clock, ArrowUpRight, RefreshCw, PhoneCall } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const STATUSES = ['All', 'new', 'contacted', 'qualified', 'proposal', 'negotiation', 'won', 'lost'];
 
@@ -127,43 +128,54 @@ export default function Leads({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      {/* Luxury Editorial Header */}
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>Leads</h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>{leads.length} leads · AI-managed qualification pipeline</p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(147, 51, 234, 0.08)', border: '1px solid rgba(147, 51, 234, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7E22CE', marginBottom: 8
+          }}>
+            <Users size={12} color="#A855F7" />
+            Lead Pipeline & CRM
+          </div>
+          <h1 className="page-title">
+            Lead Database & Management
+          </h1>
+          <p className="page-subtitle">
+            {leads.length} leads in qualification pipeline · Automated AI outreach & scoring
+          </p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchLeads}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
-            <Plus size={14} /> Add Lead
+            <Plus size={14} /> Add New Lead
           </button>
         </div>
       </div>
 
-      {/* Search and Filters */}
-      <div style={{ display:'flex', alignItems:'center', gap:12, marginBottom:20 }}>
-        <div className="search-input" style={{ flex:'0 0 280px' }}>
-          <Search size={14} color="var(--text-muted)" />
-          <input placeholder="Search leads by name, phone..." value={search} onChange={e=>setSearch(e.target.value)} />
+      {/* Search and Luxury Filter Tabs */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22, flexWrap: 'wrap' }}>
+        <div className="search-input" style={{ flex: '0 0 300px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12 }}>
+          <Search size={14} color="#94A3B8" />
+          <input placeholder="Search leads by name, phone, intent..." value={search} onChange={e => setSearch(e.target.value)} style={{ fontSize: 13.5 }} />
         </div>
-        <div style={{ display:'flex', gap:6, overflowX:'auto' }}>
+        <div className="luxury-tabs">
           {STATUSES.map(s => (
-            <button key={s} className={`chip ${statusFilter===s?'active':''}`} onClick={() => setStatusFilter(s)}>
+            <button key={s} className={`tab-item ${statusFilter === s ? 'active' : ''}`} onClick={() => setStatusFilter(s)}>
               {s.toUpperCase()}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Table */}
-      <div className="card" style={{ overflow: 'hidden' }}>
+      {/* Luxury Table Container */}
+      <div className="luxury-card" style={{ overflow: 'hidden', background: '#FFFFFF' }}>
         {loading && leads.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-            <div>Loading leads...</div>
-          </div>
+          <SkeletonLoader type="table" count={5} />
         ) : filtered.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <Users size={36} color="var(--text-muted)" style={{ marginBottom: 10, opacity: 0.5 }} />

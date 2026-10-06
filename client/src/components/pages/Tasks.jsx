@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { CheckSquare, Plus, Filter, Clock, Bot, User, AlertCircle, CheckCircle2, RefreshCw } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 const TABS = ['All Tasks', 'Pending', 'Running', 'Completed'];
 const STATUS_COLORS = { running:'#0284c7', completed:'#16a34a', pending:'#64748b' };
@@ -140,10 +141,7 @@ export default function Tasks({ onNavigate }) {
       {/* Task List */}
       <div className="card" style={{ overflow: 'hidden' }}>
         {loading && tasks.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)' }}>
-            <RefreshCw size={24} className="spin" style={{ marginBottom: 10 }} />
-            <div>Loading tasks...</div>
-          </div>
+          <SkeletonLoader type="table" count={5} />
         ) : filtered.length === 0 ? (
           <div style={{ padding: 48, textAlign: 'center' }}>
             <CheckSquare size={36} color="var(--text-muted)" style={{ marginBottom: 10, opacity: 0.5 }} />

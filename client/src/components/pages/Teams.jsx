@@ -3,6 +3,7 @@ import {
   UsersRound, Plus, Bot, ArrowRight, CheckCircle2, Target, Sparkles,
   GitBranch, ShieldCheck, MoreVertical, Settings, UserPlus, RefreshCw, Trash2, X
 } from 'lucide-react';
+import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function Teams({ onNavigate }) {
   const [teams, setTeams] = useState([]);
@@ -122,7 +123,9 @@ export default function Teams({ onNavigate }) {
       </div>
 
       {/* Grid or Empty State */}
-      {teams.length === 0 ? (
+      {loading && teams.length === 0 ? (
+        <SkeletonLoader type="cards" count={3} />
+      ) : teams.length === 0 ? (
         <div className="card" style={{ padding: '48px 24px', textAlign: 'center', borderRadius: 12 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <UsersRound size={28} color="#7c3aed" />
