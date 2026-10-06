@@ -42,22 +42,31 @@ function LottieShowcase() {
   useEffect(() => {
     if (containerRef.current) {
       if (animRef.current) {
-        animRef.current.destroy();
+        try { animRef.current.destroy(); } catch (_) {}
       }
 
-      animRef.current = lottie.loadAnimation({
-        container: containerRef.current,
-        renderer: 'svg',
-        loop: true,
-        autoplay: true,
-        path: '/login-animation.json',
-      });
+      try {
+        const loadFn = lottie?.loadAnimation || lottie?.default?.loadAnimation || (typeof window !== 'undefined' && window.lottie?.loadAnimation);
+        if (typeof loadFn === 'function') {
+          animRef.current = loadFn({
+            container: containerRef.current,
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            path: '/login-animation.json',
+          });
+        }
+      } catch (err) {
+        console.warn('Lottie animation failed to load:', err);
+      }
     }
 
     return () => {
-      if (animRef.current) {
-        animRef.current.destroy();
-      }
+      try {
+        if (animRef.current) {
+          animRef.current.destroy();
+        }
+      } catch (_) {}
     };
   }, []);
 

@@ -4,6 +4,7 @@ import {
   CheckSquare, GitBranch, GraduationCap, Phone, Zap, Megaphone,
   PhoneIncoming, MessageCircle, Inbox, Building2, UserCheck,
   BarChart3, LineChart, Grid2x2, Link, Cpu, Hash, Code2,
+  CreditCard, Settings, ChevronDown, Bot, Sparkles,
   Bell, Shield, ShieldCheck, Activity, Mic
 } from 'lucide-react';
 
