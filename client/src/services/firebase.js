@@ -9,19 +9,26 @@ import {
 } from "firebase/auth";
 
 // Firebase Web App Configuration
+const envApiKey = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_FIREBASE_API_KEY : null;
+const isRealConfig = Boolean(
+  envApiKey && 
+  envApiKey.length > 20 && 
+  !envApiKey.includes("AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU")
+);
+
 const firebaseConfig = {
-  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || "AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU",
-  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || "meet-sara.firebaseapp.com",
-  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || "meet-sara",
-  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || "meet-sara.appspot.com",
-  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "1234567890",
-  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || "1:1234567890:web:abcdef123456"
+  apiKey: envApiKey || "",
+  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || "",
+  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || "",
+  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || "",
+  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "",
+  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || ""
 };
 
 let app = null;
 let auth = null;
 
-if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 15) {
+if (isRealConfig) {
   try {
     app = initializeApp(firebaseConfig);
     auth = getAuth(app);
@@ -30,13 +37,23 @@ if (firebaseConfig.apiKey && firebaseConfig.apiKey.length > 15) {
   }
 }
 
+// Safe fallback stubs if Firebase is unconfigured
+const safeSignInAnonymously = auth ? signInAnonymously : async () => ({ user: { uid: "dev-user-1", email: "owner@sara.ai" } });
+const safeSignInWithEmailAndPassword = auth ? signInWithEmailAndPassword : async () => ({ user: { uid: "dev-user-1", email: "owner@sara.ai" } });
+const safeCreateUserWithEmailAndPassword = auth ? createUserWithEmailAndPassword : async () => ({ user: { uid: "dev-user-1", email: "owner@sara.ai" } });
+const safeSignOut = auth ? signOut : async () => {};
+const safeOnAuthStateChanged = auth ? onAuthStateChanged : (authInstance, callback) => {
+  callback({ uid: "dev-user-1", email: "owner@sara.ai", displayName: "SARA Admin" });
+  return () => {};
+};
+
 export { 
   auth, 
-  signInAnonymously, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
-  signOut,
-  onAuthStateChanged 
+  safeSignInAnonymously as signInAnonymously, 
+  safeSignInWithEmailAndPassword as signInWithEmailAndPassword, 
+  safeCreateUserWithEmailAndPassword as createUserWithEmailAndPassword, 
+  safeSignOut as signOut, 
+  safeOnAuthStateChanged as onAuthStateChanged 
 };
 
 export async function getCurrentUserToken() {

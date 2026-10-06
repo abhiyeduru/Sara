@@ -89,8 +89,8 @@ class DeepgramSTTService:
             "smart_format=true",
             "interim_results=true",
             "vad_events=true",
-            "endpointing=400",
-            "utterance_end_ms=1000",
+            "endpointing=250",
+            "utterance_end_ms=600",
             f"language={lang_param}",
         ]
         return f"{base}?{'&'.join(params)}"

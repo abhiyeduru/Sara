@@ -80,14 +80,14 @@ function uint8ToBase64(uint8) {
 }
 
 export class AudioStreamer {
-  constructor({ onStateChange, onAudioLevel, onTranscript, onMetrics, onEvent }) {
+  constructor({ onStateChange, onAudioLevel, onTranscript, onMetrics, onEvent, agentId }) {
     this.onStateChange = onStateChange || (() => {});
     this.onAudioLevel = onAudioLevel || (() => {});
     this.onTranscript = onTranscript || (() => {});
     this.onMetrics = onMetrics || (() => {});
     this.onEvent = onEvent || (() => {});
 
-    this.agentId = null;
+    this.agentId = agentId || 'agent_sara_default';
     this.ws = null;
     this.audioContext = null;
     this.analyser = null;
@@ -107,11 +107,11 @@ export class AudioStreamer {
     this.dataArray = null;
     this.agentState = 'idle';
 
-    // Ultra-Fast Responsive VAD and Speaker-Echo-Protected Barge-In parameters
+    // Ultra-Fast Responsive VAD (280ms pause for instant response) and Speaker-Echo-Protected Barge-In
     this.speechDetected = false;
     this.speechStartTime = null;
     this.silenceStartTime = null;
-    this.silenceThresholdMs = 380; // 380ms pause triggers immediate response
+    this.silenceThresholdMs = 280; // 280ms pause triggers ultra-low latency response
     this.noiseFloor = 0.003; // Dynamic adaptive noise floor baseline
     this.bargeInRmsThreshold = 0.075; // Elevated threshold during speaker playback to eliminate self-interruption echo
     this.bargeInHits = 0;
@@ -263,13 +263,14 @@ export class AudioStreamer {
     checkLevel();
   }
 
-  async startMic() {
+  async startMic(agentId = null) {
+    if (agentId) this.agentId = agentId;
+    if (!this.agentId) this.agentId = 'agent_sara_default';
+
     // Re-verify WebSocket connection before starting microphone
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.agentId) {
-        console.log("WebSocket not active. Connecting to agent:", this.agentId);
-        await this.connect(this.agentId);
-      }
+      console.log("WebSocket not active. Connecting to agent:", this.agentId);
+      await this.connect(this.agentId);
     }
 
     // If SARA is speaking, interrupt first
@@ -530,10 +531,15 @@ export class AudioStreamer {
     }
   }
 
-  sendText(text) {
+  async sendText(text) {
     this.unlockAudio();
     this.lastTextSentTime = Date.now();
     this.resetVAD();
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.agentId) this.agentId = 'agent_sara_default';
+      await this.connect(this.agentId);
+    }
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       if (this.isPlaying) {

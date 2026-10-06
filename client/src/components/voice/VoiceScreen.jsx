@@ -100,7 +100,9 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
   // Initialize AudioStreamer
   useEffect(() => {
+    const agentId = activeEmployee?.id || 'agent_sara_default';
     const s = new AudioStreamer({
+      agentId,
       onStateChange: (newState) => {
         setState(newState);
         if (newState === 'listening') setIsMicOn(true);
@@ -129,11 +131,15 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       }
     });
 
+    s.connect(agentId);
     setStreamer(s);
 
     return () => {
       s.stopPlayback();
       s.stopMic();
+      if (s.ws) {
+        try { s.ws.close(); } catch {}
+      }
     };
   }, [activeEmployee?.id]);
 
@@ -146,7 +152,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       setState('idle');
     } else {
       const agentId = activeEmployee?.id || 'agent_sara_default';
-      await streamer.startMic();
+      await streamer.startMic(agentId);
       setIsMicOn(true);
       setState('listening');
     }

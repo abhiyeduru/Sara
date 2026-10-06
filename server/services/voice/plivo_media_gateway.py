@@ -221,24 +221,36 @@ class PlivoMediaGateway:
         lang: str = "te",
         confidence: float = 0.95
     ) -> None:
-        """Handle transcript produced by Deepgram with smart barge-in and debounced turn assembly."""
+        """Handle transcript produced by Deepgram with smart barge-in, echo suppression, and debounced turn assembly."""
         clean = transcript.strip()
         if not clean or not self.orchestrator:
             return
 
         # 1. Genuine Barge-in: interrupt ONLY when the caller speaks substantive words during playback
         if self.orchestrator.is_speaking:
+            now = time.time()
+            time_speaking = now - getattr(self.orchestrator, "speaking_start_time", 0.0)
+
+            # Suppress self-interruption from acoustic echo during the first 1.2s of assistant playback
+            if time_speaking < 1.2:
+                logger.debug(f"[Call {self.call_id}] Suppressing echo during initial speech playback ({time_speaking:.2f}s)")
+                return
+
             words = clean.split()
             single_word_greetings = {"హలో", "హలో!", "హలో.", "hello", "hi", "hey", "హా", "హా!", "yes", "yeah", "నమస్తే", "నమస్కారం"}
             is_greeting = len(words) <= 2 and all(w.lower().strip("!.,? ") in single_word_greetings for w in words)
-            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen"}
+            interruption_words = {"ఆగండి", "ఆగు", "wait", "stop", "వద్దు", "వినండి", "విను", "listen", "hold on"}
             has_interruption = any(w.lower().strip("!.,? ") in interruption_words for w in words)
 
-            if not is_greeting or has_interruption or len(words) >= 3:
+            # Require confirmed final transcript OR explicit stop words to interrupt
+            should_interrupt = has_interruption or (is_final and not is_greeting and len(words) >= 3 and confidence > 0.60)
+
+            if should_interrupt:
                 logger.info(f"[Call {self.call_id}] Caller spoke substantive words ('{clean}') -> barge-in confirmed")
                 await self.orchestrator.handle_barge_in()
             else:
-                logger.debug(f"[Call {self.call_id}] Ignoring greeting/backchannel during assistant speech: '{clean}'")
+                logger.debug(f"[Call {self.call_id}] Ignoring non-interrupting speech during assistant speech: '{clean}'")
+                return
 
         # 2. Accumulate final transcripts into a coherent customer utterance
         if is_final:
@@ -252,21 +264,21 @@ class PlivoMediaGateway:
 
             self._pending_utterance_chunks.append(clean)
             if speech_final:
-                # Deepgram confirmed speech endpointing -> debounce 200ms to allow multi-clause utterances to merge smoothly
+                # Deepgram confirmed speech endpointing -> flush immediately (30ms) for ultra-low latency!
                 if self._utterance_flush_task and not self._utterance_flush_task.done():
                     self._utterance_flush_task.cancel()
                 self._utterance_flush_task = asyncio.create_task(
-                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.200)
+                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.030)
                 )
             else:
-                # User might still be speaking -> reset 400ms silence debouncer
+                # User might still be speaking -> short 250ms silence debouncer
                 if self._utterance_flush_task and not self._utterance_flush_task.done():
                     self._utterance_flush_task.cancel()
                 self._utterance_flush_task = asyncio.create_task(
-                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.400)
+                    self._debounced_flush(lang=lang, confidence=confidence, delay=0.250)
                 )
 
-    async def _debounced_flush(self, lang: str, confidence: float, delay: float = 0.350) -> None:
+    async def _debounced_flush(self, lang: str, confidence: float, delay: float = 0.250) -> None:
         try:
             await asyncio.sleep(delay)
             await self._flush_pending_utterance(lang=lang, confidence=confidence)
@@ -281,12 +293,46 @@ class PlivoMediaGateway:
         combined_text = " ".join(self._pending_utterance_chunks).strip()
         self._pending_utterance_chunks = []
         if combined_text:
+            # Detect Answering Machine / Voicemail / Carrier IVR
+            voicemail_patterns = [
+                "person you are calling", "person you have called", "trying to reach",
+                "at the tone", "record your message", "rect your message", "please record",
+                "leave a message", "after the beep", "you have reached", "currently unavailable",
+                "switched off", "not reachable", "mailbox is full", "call forwarding"
+            ]
+            lower_text = combined_text.lower()
+            if any(p in lower_text for p in voicemail_patterns):
+                logger.warning(f"⚠️ [Call {self.call_id}] Carrier IVR / Voicemail detected: '{combined_text}'")
+                voicemail_msg = "నమస్కారం! మేము Sara AI నుంచి కాల్ చేశాము. తర్వాత మళ్ళీ సంప్రదిస్తాము. ధన్యవాదాలు." if (self.orchestrator.language or "te") in ["te", "telugu"] else "Hello, this is Sara AI. We will reach back later. Thank you."
+                asyncio.create_task(self._leave_voicemail_and_hangup(voicemail_msg))
+                return
+
             logger.info(f"[Call {self.call_id}] Dispatching full customer utterance: '{combined_text}'")
             await self.orchestrator.handle_user_utterance(
                 text=combined_text,
                 confidence=confidence,
                 detected_lang=lang
             )
+
+    async def _leave_voicemail_and_hangup(self, message: str) -> None:
+        """Play brief voicemail message and terminate the call gracefully."""
+        try:
+            if self.orchestrator:
+                synth = await self.orchestrator.cartesia_service.synthesize(
+                    text=message,
+                    voice_id=self.orchestrator.voice_id,
+                    language=self.orchestrator.language,
+                    output_mode=self.orchestrator.output_mode,
+                    speed=self.orchestrator.speed
+                )
+                audio_bytes = synth.get("audio_bytes", b"")
+                if audio_bytes:
+                    await self._send_audio_to_plivo(audio_bytes, message)
+                    await asyncio.sleep(2.5)
+            if self.call_uuid:
+                plivo_client.hangup_call(self.call_uuid)
+        except Exception as e:
+            logger.error(f"[Call {self.call_id}] Error in voicemail handler: {e}")
 
     async def _send_audio_to_plivo(self, mulaw_audio: bytes, text: str) -> None:
         """

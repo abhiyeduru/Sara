@@ -449,8 +449,8 @@ async def voice_websocket_endpoint(
 
             # Low-Latency Streaming LLM -> Sentence Chunker -> TTS
             await websocket.send_json({"type": "llm.started"})
-            # Fluid melodic chunking: 4-16 words creates complete, human-sounding prosody without chopping
-            chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=16)
+            # Ultra-low latency streaming chunker (min 2 words for rapid Time-To-First-Audio)
+            chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
 
             full_response_text = []
             first_token_time = None
