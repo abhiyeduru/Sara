@@ -221,13 +221,14 @@ RULES:
 
     async def handle_barge_in(self) -> None:
         """
-        Executed when genuine caller speech is detected during assistant playback.
-        Stops current speaking turn, flushes audio queue, and transitions to LISTENING.
+        Executed when caller speech is detected during assistant playback or turn generation.
+        Stops current speaking turn, cancels ongoing generation/synthesis, flushes audio queue, and transitions to LISTENING.
         """
-        if not self.is_speaking and self.state != ConversationState.SPEAKING:
+        is_active = self.is_speaking or (self.state == ConversationState.SPEAKING) or (self.active_turn_task and not self.active_turn_task.done())
+        if not is_active:
             return
 
-        logger.info(f"[Call {self.call_id}] Barge-in confirmed -> interrupting assistant turn")
+        logger.info(f"[Call {self.call_id}] 🛑 Barge-in confirmed -> interrupting assistant turn immediately")
         self.set_state(ConversationState.INTERRUPTED)
         self.is_speaking = False
 
@@ -278,6 +279,7 @@ RULES:
                 pass
         self.is_speaking = False
 
+        prev_user_time = self.last_user_time
         self.last_user_text = clean_text
         self.last_user_time = now
         self.turn_index += 1
@@ -285,9 +287,9 @@ RULES:
 
         logger.info(f"[Call {self.call_id}] Customer (Turn {self.turn_index}): {clean_text}")
 
-        # Record customer message - consolidate consecutive user utterances so the LLM sees complete thought
+        # Record customer message - only consolidate if user continued speaking within 2.5s
         is_consolidated = False
-        if self.messages and self.messages[-1]["role"] == "user":
+        if self.messages and self.messages[-1]["role"] == "user" and (now - prev_user_time < 2.5):
             prev_content = self.messages[-1]["content"]
             if clean_text.lower() not in prev_content.lower():
                 self.messages[-1]["content"] = f"{prev_content} {clean_text}".strip()

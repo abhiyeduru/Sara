@@ -80,14 +80,14 @@ function uint8ToBase64(uint8) {
 }
 
 export class AudioStreamer {
-  constructor({ onStateChange, onAudioLevel, onTranscript, onMetrics, onEvent }) {
+  constructor({ onStateChange, onAudioLevel, onTranscript, onMetrics, onEvent, agentId }) {
     this.onStateChange = onStateChange || (() => {});
     this.onAudioLevel = onAudioLevel || (() => {});
     this.onTranscript = onTranscript || (() => {});
     this.onMetrics = onMetrics || (() => {});
     this.onEvent = onEvent || (() => {});
 
-    this.agentId = null;
+    this.agentId = agentId || 'agent_sara_default';
     this.ws = null;
     this.audioContext = null;
     this.analyser = null;
@@ -107,20 +107,21 @@ export class AudioStreamer {
     this.dataArray = null;
     this.agentState = 'idle';
 
-    // Ultra-Fast Responsive VAD and Speaker-Echo-Protected Barge-In parameters
+    // Natural Conversational VAD (550ms pause) and Instant Responsive Barge-In
     this.speechDetected = false;
     this.speechStartTime = null;
     this.silenceStartTime = null;
-    this.silenceThresholdMs = 380; // 380ms pause triggers immediate response
+    this.silenceThresholdMs = 550; // 550ms pause allows natural human breathing & commas without cut-off
     this.noiseFloor = 0.003; // Dynamic adaptive noise floor baseline
-    this.bargeInRmsThreshold = 0.075; // Elevated threshold during speaker playback to eliminate self-interruption echo
+    this.bargeInRmsThreshold = 0.022; // Responsive barge-in threshold capturing normal conversational voice
     this.bargeInHits = 0;
-    this.minBargeInHits = 3; // Require 3 consecutive frames (~270ms) of sustained speech to barge in
+    this.minBargeInHits = 1; // Instant 1-frame response to interrupt assistant the moment user speaks
     this.lastSpeechTime = 0;
     this.lastPlaybackEndTime = 0;
     this.lastTextSentTime = 0;
     this.lastAudioSentTime = 0;
     this.micSource = null;
+    this.reconnectAttempts = 0;
   }
 
 
@@ -147,9 +148,10 @@ export class AudioStreamer {
     if (this.ws) {
       const oldWs = this.ws;
       this.ws = null;
+      oldWs.__saraIntentionalClose = true;
       try {
-        if (oldWs.readyState === WebSocket.OPEN) {
-          oldWs.close();
+        if (oldWs.readyState === WebSocket.OPEN || oldWs.readyState === WebSocket.CONNECTING) {
+          oldWs.close(1000, 'reconnecting');
         }
       } catch {}
     }
@@ -173,15 +175,18 @@ export class AudioStreamer {
         resolve(false);
         return;
       }
+      const ws = this.ws;
 
-      this.ws.onopen = () => {
+      ws.onopen = () => {
+        if (this.ws !== ws) return;
         this.reconnectAttempts = 0;
         this.updateState('connected');
         this.onEvent({ type: 'connected', message: 'WebSocket Connected' });
         resolve(true);
       };
 
-      this.ws.onmessage = async (event) => {
+      ws.onmessage = async (event) => {
+        if (this.ws !== ws) return;
         try {
           const data = JSON.parse(event.data);
           this.handleServerMessage(data);
@@ -190,13 +195,18 @@ export class AudioStreamer {
         }
       };
 
-      this.ws.onerror = (err) => {
+      ws.onerror = (err) => {
+        if (this.ws !== ws || ws.__saraIntentionalClose) {
+          resolve(false);
+          return;
+        }
         console.warn('WebSocket connection note:', err?.message || 'Handshake failed or host unreachable');
         this.updateState('error');
         resolve(false);
       };
 
-      this.ws.onclose = (event) => {
+      ws.onclose = (event) => {
+        if (this.ws !== ws || ws.__saraIntentionalClose) return;
         if (event.code === 1000 || event.code === 1005) {
           console.debug('WebSocket closed normally:', event.code);
         } else {
@@ -225,6 +235,34 @@ export class AudioStreamer {
 
       this.initAudioContext();
     });
+  }
+
+  disconnect(reason = 'client disconnect') {
+    this.stopPlayback();
+    this.stopMic({ flushPendingAudio: false });
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
+    if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
+      ws.__saraIntentionalClose = true;
+      try {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.close(1000, reason);
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onerror = () => {};
+          ws.onopen = () => {
+            try { ws.close(1000, reason); } catch {}
+          };
+        }
+      } catch {}
+    }
+    if (this.audioContext) {
+      try { this.audioContext.close(); } catch {}
+      this.audioContext = null;
+    }
   }
 
   updateState(newState) {
@@ -263,13 +301,14 @@ export class AudioStreamer {
     checkLevel();
   }
 
-  async startMic() {
+  async startMic(agentId = null) {
+    if (agentId) this.agentId = agentId;
+    if (!this.agentId) this.agentId = 'agent_sara_default';
+
     // Re-verify WebSocket connection before starting microphone
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      if (this.agentId) {
-        console.log("WebSocket not active. Connecting to agent:", this.agentId);
-        await this.connect(this.agentId);
-      }
+      console.log("WebSocket not active. Connecting to agent:", this.agentId);
+      await this.connect(this.agentId);
     }
 
     // If SARA is speaking, interrupt first
@@ -299,8 +338,8 @@ export class AudioStreamer {
         window.__sara_micSource = this.micSource;
       } catch {}
 
-      // ScriptProcessor for collecting PCM samples
-      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      // ScriptProcessor for collecting PCM samples (2048 buffer for ultra-low latency capture)
+      this.processor = this.audioContext.createScriptProcessor(2048, 1, 1);
       try {
         window.__sara_processor = this.processor;
       } catch {}
@@ -364,9 +403,9 @@ export class AudioStreamer {
           this.recordedSamples.push(inputData[i]);
         }
 
-        // Rolling Pre-Speech Ring Buffer: Keep only last 350ms of audio before speech starts
-        // Prevents accumulating multi-second dead silence that confuses STT models
-        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.35);
+        // Rolling Pre-Speech Ring Buffer: Keep only last 180ms of audio before speech starts
+        // Prevents accumulating multi-second dead silence that adds lag to STT models
+        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.18);
         if (!this.speechDetected && this.recordedSamples.length > preSpeechMaxSamples) {
           this.recordedSamples = this.recordedSamples.slice(-preSpeechMaxSamples);
         }
@@ -396,9 +435,9 @@ export class AudioStreamer {
           }
         }
 
-        // Safety Cutoff: If user has been speaking continuously for > 4.5s, force send to prevent unbounded audio
-        if (this.speechDetected && this.speechStartTime && (Date.now() - this.speechStartTime > 4500) && this.recordedSamples.length > 4000) {
-          console.log('[VAD] Utterance reached maximum chunk duration (4.5s), finalizing speech turn.');
+        // Safety Cutoff: If user has been speaking continuously for > 12s, finalize chunk
+        if (this.speechDetected && this.speechStartTime && (Date.now() - this.speechStartTime > 12000) && this.recordedSamples.length > 4000) {
+          console.log('[VAD] Utterance reached maximum continuous duration (12s), finalizing speech turn.');
           this.finalizeAndSendAudio();
         }
       };
@@ -438,8 +477,8 @@ export class AudioStreamer {
     const samplesToSend = [...this.recordedSamples];
     this.resetVAD();
 
-    // Minimum 0.12 seconds of speech so even short commands ("Stop", "Yes", "హలో", "ధర ఎంత") trigger immediately
-    const minSampleCount = Math.round((this.audioContext?.sampleRate || 16000) * 0.12);
+    // Minimum 0.08 seconds of speech so short commands ("Stop", "Yes", "హలో", "ధర ఎంత") trigger immediately
+    const minSampleCount = Math.round((this.audioContext?.sampleRate || 16000) * 0.08);
     if (samplesToSend.length >= minSampleCount) {
 
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
@@ -489,12 +528,12 @@ export class AudioStreamer {
     }
   }
 
-  stopMic() {
+  stopMic({ flushPendingAudio = true } = {}) {
     this.continuousMode = false;
     if (!this.isRecording) return;
     this.isRecording = false;
 
-    if (this.speechDetected && this.recordedSamples.length > 2000) {
+    if (flushPendingAudio && this.speechDetected && this.recordedSamples.length > 2000) {
       this.finalizeAndSendAudio();
     } else {
       this.resetVAD();
@@ -530,10 +569,15 @@ export class AudioStreamer {
     }
   }
 
-  sendText(text) {
+  async sendText(text) {
     this.unlockAudio();
     this.lastTextSentTime = Date.now();
     this.resetVAD();
+
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (!this.agentId) this.agentId = 'agent_sara_default';
+      await this.connect(this.agentId);
+    }
 
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       if (this.isPlaying) {
@@ -753,28 +797,4 @@ export class AudioStreamer {
     }
   }
 
-  disconnect() {
-    this.stopMic();
-    this.stopPlayback();
-    if (this.animFrameId) {
-      cancelAnimationFrame(this.animFrameId);
-    }
-    if (this.ws) {
-      const ws = this.ws;
-      this.ws = null;
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, "Normal Closure");
-        } else if (ws.readyState === WebSocket.CONNECTING) {
-          ws.onopen = () => {
-            try { ws.close(1000, "Normal Closure"); } catch {}
-          };
-        }
-      } catch {}
-    }
-    if (this.audioContext) {
-      try { this.audioContext.close(); } catch {}
-      this.audioContext = null;
-    }
-  }
 }

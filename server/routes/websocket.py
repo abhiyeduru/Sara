@@ -26,15 +26,26 @@ from server.providers.sarvam_tts import SarvamTTS
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
+from server.providers.assemblyai_stt import AssemblyAISTT
 from server.providers.deepgram_stt import DeepgramSTT
 
 class UnifiedSTT:
-    def __init__(self, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+    def __init__(self, assemblyai: AssemblyAISTT, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+        self.assemblyai = assemblyai
         self.deepgram = deepgram
         self.sarvam = sarvam
 
     async def transcribe(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> Dict[str, Any]:
-        # Deepgram is the Primary STT Provider
+        # 1. AssemblyAI is the Primary STT Provider
+        if getattr(settings, "PRIMARY_STT", "assemblyai") == "assemblyai" and self.assemblyai.api_key:
+            try:
+                res = await self.assemblyai.transcribe(audio_bytes, language_hint=language_hint)
+                if res.get("transcript"):
+                    return res
+            except Exception as e:
+                logger.warning(f"AssemblyAI STT notice: {e}")
+
+        # 2. Deepgram STT Provider
         if self.deepgram.api_key:
             try:
                 res = await self.deepgram.transcribe(audio_bytes, language_hint=language_hint)
@@ -43,7 +54,7 @@ class UnifiedSTT:
             except Exception as e:
                 logger.warning(f"Deepgram STT notice: {e}")
 
-        # Fallback if Deepgram encounters network issue
+        # 3. Fallback to Sarvam / Groq Whisper
         try:
             res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
             if res.get("transcript") and not res.get("error"):
@@ -53,7 +64,7 @@ class UnifiedSTT:
 
         return await self.sarvam._fallback_groq(audio_bytes, time.perf_counter(), language_hint=language_hint)
 
-stt_provider = UnifiedSTT(DeepgramSTT(), SarvamSTT())
+stt_provider = UnifiedSTT(AssemblyAISTT(), DeepgramSTT(), SarvamSTT())
 llm_provider = OpenAILLM() if settings.PRIMARY_LLM == "openai" else GroqLLM()
 from server.providers.edge_tts_provider import EdgeTTSProvider
 
@@ -104,6 +115,7 @@ async def voice_websocket_endpoint(
     await websocket.accept()
     db: Session = SessionLocal()
     session_record: Optional[ConversationSession] = None
+    conv_state: Optional[ConversationState] = None
     manager: Optional[ConversationManager] = None
 
     try:
@@ -187,6 +199,7 @@ async def voice_websocket_endpoint(
             logger.warning(f"Session record persistence bypassed: {db_err}")
             db.rollback()
             session_record = None
+            conv_state = None
 
         # 4. Initialize ConversationManager
         manager = ConversationManager(
@@ -194,7 +207,7 @@ async def voice_websocket_endpoint(
             system_prompt=system_prompt,
             greeting_prompt=greeting_prompt,
             faqs=faq_list,
-            voice_id=getattr(agent, 'voice_id', 'sarvam-te-pooja'),
+            voice_id=getattr(agent, 'voice_id', None) or "330c4fa0-1da3-4c55-8e97-951bfd724e20",
             llm_provider=llm_provider,
             tts_provider=tts_provider,
             stt_provider=stt_provider,
@@ -204,7 +217,7 @@ async def voice_websocket_endpoint(
         # Notify frontend that session has started
         await websocket.send_json({
             "type": "session.started",
-            "session_id": session_record.id,
+            "session_id": session_record.id if session_record else session_id,
             "agent_name": agent.name,
             "greeting": greeting_prompt,
             "voice_id": agent.voice_id,
@@ -233,15 +246,16 @@ async def voice_websocket_endpoint(
             })
 
             # Record greeting message
-            msg = SessionMessage(
-                session_id=session_record.id,
-                role="agent",
-                content=greeting_prompt,
-                detected_language="en",
-                detected_intent="greeting"
-            )
-            db.add(msg)
-            db.commit()
+            if session_record:
+                msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="agent",
+                    content=greeting_prompt,
+                    detected_language="en",
+                    detected_intent="greeting"
+                )
+                db.add(msg)
+                db.commit()
 
         turn_index = 1
         last_activity_time = time.time()
@@ -429,15 +443,16 @@ async def voice_websocket_endpoint(
             })
 
             # Save User Message to Database
-            user_msg = SessionMessage(
-                session_id=session_record.id,
-                role="user",
-                content=user_text,
-                detected_language=detected_lang,
-                detected_intent=detected_intent
-            )
-            db.add(user_msg)
-            db.commit()
+            if session_record:
+                user_msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="user",
+                    content=user_text,
+                    detected_language=detected_lang,
+                    detected_intent=detected_intent
+                )
+                db.add(user_msg)
+                db.commit()
 
             # Add to conversation history for LLM
             manager.messages.append({"role": "user", "content": user_text})
@@ -449,8 +464,8 @@ async def voice_websocket_endpoint(
 
             # Low-Latency Streaming LLM -> Sentence Chunker -> TTS
             await websocket.send_json({"type": "llm.started"})
-            # Fluid melodic chunking: 4-16 words creates complete, human-sounding prosody without chopping
-            chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=16)
+            # Ultra-low latency streaming chunker (min 2 words for rapid Time-To-First-Audio)
+            chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
 
             full_response_text = []
             first_token_time = None
@@ -544,36 +559,38 @@ async def voice_websocket_endpoint(
             time_to_first_audio_ms = (first_audio_time - turn_start_time) * 1000 if first_audio_time else total_response_ms
 
             # Save Latency Metric to Neon Database
-            metric = LatencyMetric(
-                session_id=session_record.id,
-                turn_index=turn_index,
-                stt_ms=round(stt_latency, 2),
-                llm_first_token_ms=round(llm_first_token_ms, 2),
-                llm_total_ms=round(total_response_ms - stt_latency, 2),
-                tts_first_audio_ms=round(tts_first_audio_ms, 2),
-                time_to_first_audio_ms=round(time_to_first_audio_ms, 2),
-                total_response_ms=round(total_response_ms, 2)
-            )
-            db.add(metric)
+            if session_record:
+                metric = LatencyMetric(
+                    session_id=session_record.id,
+                    turn_index=turn_index,
+                    stt_ms=round(stt_latency, 2),
+                    llm_first_token_ms=round(llm_first_token_ms, 2),
+                    llm_total_ms=round(total_response_ms - stt_latency, 2),
+                    tts_first_audio_ms=round(tts_first_audio_ms, 2),
+                    time_to_first_audio_ms=round(time_to_first_audio_ms, 2),
+                    total_response_ms=round(total_response_ms, 2)
+                )
+                db.add(metric)
 
-            # Save Agent Message
-            agent_msg = SessionMessage(
-                session_id=session_record.id,
-                role="agent",
-                content=complete_agent_reply,
-                detected_language=detected_lang,
-                detected_intent=detected_intent
-            )
-            db.add(agent_msg)
+                # Save Agent Message
+                agent_msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="agent",
+                    content=complete_agent_reply,
+                    detected_language=detected_lang,
+                    detected_intent=detected_intent
+                )
+                db.add(agent_msg)
 
-            # Update session state in DB
-            conv_state.conversation_stage = manager.stage
-            conv_state.current_intent = manager.current_intent
-            conv_state.collected_fields = manager.collected_fields
-            conv_state.escalation_required = manager.escalation_required
-            conv_state.last_user_message = user_text
-            conv_state.last_agent_message = complete_agent_reply
-            db.commit()
+                # Update session state in DB
+                if conv_state:
+                    conv_state.conversation_stage = manager.stage
+                    conv_state.current_intent = manager.current_intent
+                    conv_state.collected_fields = manager.collected_fields
+                    conv_state.escalation_required = manager.escalation_required
+                    conv_state.last_user_message = user_text
+                    conv_state.last_agent_message = complete_agent_reply
+                db.commit()
 
             # Broadcast comprehensive turn metrics to Test Console
             await websocket.send_json({
@@ -612,47 +629,25 @@ async def voice_websocket_endpoint(
             session_record.ended_at = datetime.now(timezone.utc)
             db.commit()
 
-            # Auto-log completed voice call into Saadhyam CRM
+            # Auto-log completed voice call into Saadhyam CRM & update AI Employee
             try:
-                from server.models import CallRecord, CallTranscript, CallIntelligence
+                from server.services.voice.crm_sync_service import CRMSyncService
                 from server.engine.crm_intelligence import analyze_call_transcript
 
                 duration = int((session_record.ended_at - session_record.started_at).total_seconds()) if session_record.started_at else 0
                 msgs = db.query(SessionMessage).filter(SessionMessage.session_id == session_record.id).all()
                 if msgs:
-                    crm_call = CallRecord(
-                        id=str(uuid.uuid4()),
-                        user_id=session_record.user_id,
-                        session_id=session_record.id,
-                        caller="Web Voice Caller",
-                        receiver=agent.name if agent else "SARA",
-                        phone_number="Web Audio Client",
-                        direction="Inbound",
-                        call_type="AI Voice Call",
-                        start_time=session_record.started_at,
-                        end_time=session_record.ended_at,
-                        duration_seconds=max(duration, 5),
-                        call_status="Completed"
-                    )
-                    db.add(crm_call)
-                    db.flush()
-
                     full_lines = []
-                    offset = 0.0
+                    t_history = []
                     for m in msgs:
-                        db.add(CallTranscript(
-                            id=str(uuid.uuid4()),
-                            call_id=crm_call.id,
-                            speaker="Agent" if m.role == "agent" else "Customer",
-                            speaker_name=agent.name if m.role == "agent" else "Customer",
-                            start_time_offset=round(offset, 1),
-                            end_time_offset=round(offset + 3.0, 1),
-                            text=m.content,
-                            language=m.detected_language or "en",
-                            sentiment="Positive" if m.role == "agent" else "Interested"
-                        ))
-                        full_lines.append(f"{'Agent' if m.role == 'agent' else 'Customer'}: {m.content}")
-                        offset += 3.5
+                        speaker = "Agent" if m.role == "agent" else "Customer"
+                        t_history.append({
+                            "speaker": speaker,
+                            "role": m.role,
+                            "text": m.content,
+                            "language": m.detected_language or "te",
+                        })
+                        full_lines.append(f"{speaker}: {m.content}")
 
                     intel = analyze_call_transcript(
                         transcript_text="\n".join(full_lines),
@@ -660,29 +655,30 @@ async def voice_websocket_endpoint(
                         agent_name=agent.name if agent else "SARA"
                     )
 
-                    db.add(CallIntelligence(
-                        id=str(uuid.uuid4()),
-                        call_id=crm_call.id,
-                        customer_intent=intel.get("customer_intent", "Voice inquiry"),
-                        requirements=intel.get("requirements", []),
-                        budget=intel.get("budget", ""),
-                        timeline=intel.get("timeline", ""),
-                        objections=intel.get("objections", []),
-                        questions=intel.get("questions", []),
-                        sentiment=intel.get("sentiment", "Interested"),
-                        sentiment_score=intel.get("sentiment_score", 0.85),
-                        purchase_intent=intel.get("purchase_intent", "High"),
-                        purchase_intent_score=intel.get("purchase_intent_score", 0.9),
-                        promises=intel.get("promises", []),
-                        follow_up_needed=intel.get("follow_up_needed", True),
-                        follow_up_reason=intel.get("follow_up_reason", "Voice inquiry callback"),
-                        next_recommended_action=intel.get("next_recommended_action", "Follow up with customer"),
-                        call_summary=intel.get("call_summary", "")
-                    ))
-                    db.commit()
-                    logger.info(f"Auto-logged voice session {session_record.id} to Saadhyam CRM CallRecord {crm_call.id}")
+                    crm_sync_res = CRMSyncService.sync_call_to_crm_and_employee(
+                        db=db,
+                        call_id=session_record.id,
+                        employee_id=agent_id if agent_id != "agent_sara_default" else None,
+                        phone_number="Web Audio Client",
+                        direction="inbound",
+                        duration_seconds=max(duration, 5),
+                        transcript_history=t_history,
+                        summary_data={
+                            "summary": intel.get("call_summary") or f"Web voice session completed ({len(msgs)} turns).",
+                            "intent": intel.get("customer_intent", "Voice Consultation"),
+                            "sentiment": intel.get("sentiment", "Positive"),
+                            "lead_quality": 4,
+                            "lead_name": "Web Voice Caller",
+                            "budget": intel.get("budget", ""),
+                            "timeline": intel.get("timeline", ""),
+                            "action_items": [intel.get("next_recommended_action", "Follow-up required")],
+                            "extracted_requirements": intel.get("requirements", []),
+                        },
+                        workspace_id=session_record.user_id,
+                    )
+                    logger.info(f"Auto-synced voice session {session_record.id} via CRMSyncService: {crm_sync_res}")
             except Exception as crm_err:
-                logger.warning(f"Auto CRM call logging skipped: {crm_err}")
+                logger.warning(f"Auto CRM call logging skipped: {crm_err}", exc_info=True)
     except Exception as e:
         logger.exception("Error in voice WebSocket session")
         try:

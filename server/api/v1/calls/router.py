@@ -231,3 +231,32 @@ async def hangup_call(
         "status": "completed"
     })
     return {"success": True, "message": "Call terminated successfully", "call_id": call_id}
+
+
+@router.get("/{call_id}/recording")
+async def get_call_recording(
+    call_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Stream call recording audio file for browser playback."""
+    import os
+    from fastapi.responses import FileResponse, RedirectResponse
+    from server.services.voice.crm_sync_service import STORAGE_RECORDINGS_DIR
+
+    wav_file = os.path.join(STORAGE_RECORDINGS_DIR, f"{call_id}.wav")
+    if os.path.exists(wav_file) and os.path.getsize(wav_file) > 100:
+        return FileResponse(
+            path=wav_file,
+            media_type="audio/wav",
+            headers={"Accept-Ranges": "bytes", "Content-Disposition": f"inline; filename={call_id}.wav"}
+        )
+
+    c = db.query(Call).filter(Call.id == call_id, Call.workspace_id == user.id).first()
+    if c and c.recording_url:
+        if c.recording_url.startswith("http"):
+            return RedirectResponse(url=c.recording_url)
+        if os.path.exists(c.recording_url):
+            return FileResponse(path=c.recording_url, media_type="audio/wav")
+
+    raise HTTPException(404, "Call recording audio not found.")

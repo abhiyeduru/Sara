@@ -21,6 +21,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   const [activeMode, setActiveMode] = useState('mic');
   const [employees, setEmployees] = useState([]);
   const [activeEmployee, setActiveEmployee] = useState(agent || null);
+  const [employeesLoaded, setEmployeesLoaded] = useState(Boolean(agent));
 
   // Audio Streamer & State Machine
   const [streamer, setStreamer] = useState(null);
@@ -70,9 +71,12 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
   // Fetch employees and provider health
   useEffect(() => {
+    let cancelled = false;
+
     fetch('/api/v1/employees')
       .then(r => r.json())
       .then(d => {
+        if (cancelled) return;
         const list = d.data || [];
         setEmployees(list);
         if (!activeEmployee && list.length > 0) {
@@ -81,7 +85,10 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           if (list[0].voice_language) setSelectedLanguage(list[0].voice_language);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setEmployeesLoaded(true);
+      });
 
     fetch('/api/v1/voice/providers/health')
       .then(r => r.json())
@@ -96,11 +103,19 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         if (b) setBillingInfo(b);
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize AudioStreamer
   useEffect(() => {
+    if (!employeesLoaded) return;
+
+    const agentId = activeEmployee?.id || 'agent_sara_default';
     const s = new AudioStreamer({
+      agentId,
       onStateChange: (newState) => {
         setState(newState);
         if (newState === 'listening') setIsMicOn(true);
@@ -129,13 +144,15 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       }
     });
 
+    if (activeMode !== 'phone') {
+      s.connect(agentId);
+    }
     setStreamer(s);
 
     return () => {
-      s.stopPlayback();
-      s.stopMic();
+      s.disconnect('voice screen cleanup');
     };
-  }, [activeEmployee?.id]);
+  }, [employeesLoaded, activeEmployee?.id, activeMode]);
 
   // Connect streamer to agent
   const handleToggleMic = async () => {
@@ -146,7 +163,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       setState('idle');
     } else {
       const agentId = activeEmployee?.id || 'agent_sara_default';
-      await streamer.startMic();
+      await streamer.startMic(agentId);
       setIsMicOn(true);
       setState('listening');
     }
@@ -333,8 +350,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         </div>
         <div style={{ display: 'flex', gap: 16 }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.deepgram?.ready ? '#10b981' : '#f59e0b' }} />
-            <strong>STT:</strong> Deepgram Streaming
+            <span style={{ width: 7, height: 7, borderRadius: '50%', background: (providersHealth.assemblyai?.ready || providersHealth.deepgram?.ready) ? '#10b981' : '#f59e0b' }} />
+            <strong>STT:</strong> {providersHealth.assemblyai?.ready ? 'AssemblyAI Universal-3.6 Pro' : 'Deepgram Nova-3'}
           </span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: providersHealth.cartesia?.ready ? '#10b981' : '#f59e0b' }} />

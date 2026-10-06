@@ -135,6 +135,35 @@ class PlivoClient:
             logger.warning(f"Plivo hangup failed for {clean_uuid}: {e}")
             return {"success": False, "error": str(e)}
 
+    def record_call(self, call_uuid: str, callback_url: Optional[str] = None) -> Dict[str, Any]:
+        """Start carrier-level call recording on Plivo."""
+        client = self.get_client()
+        clean_uuid = call_uuid.replace("plv_", "").replace("exo_", "").replace("CA_", "")
+        try:
+            kwargs = {"file_format": "mp3"}
+            if callback_url:
+                kwargs["callback_url"] = callback_url
+                kwargs["callback_method"] = "POST"
+            resp = client.calls.record(clean_uuid, **kwargs)
+            rec_url = getattr(resp, "url", None)
+            logger.info(f"🎙️ Plivo: Started recording call {clean_uuid} (url={rec_url})")
+            return {"success": True, "call_uuid": clean_uuid, "recording_url": rec_url}
+        except Exception as e:
+            logger.debug(f"Plivo recording start notice for {clean_uuid}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def stop_recording_call(self, call_uuid: str) -> Dict[str, Any]:
+        """Stop carrier-level call recording on Plivo."""
+        client = self.get_client()
+        clean_uuid = call_uuid.replace("plv_", "").replace("exo_", "").replace("CA_", "")
+        try:
+            client.calls.record_stop(clean_uuid)
+            logger.info(f"🎙️ Plivo: Stopped recording call {clean_uuid}")
+            return {"success": True, "call_uuid": clean_uuid}
+        except Exception as e:
+            logger.debug(f"Plivo recording stop notice for {clean_uuid}: {e}")
+            return {"success": False, "error": str(e)}
+
     def list_numbers(self) -> List[Dict[str, Any]]:
         """List all active numbers on this Plivo account."""
         if not self.is_configured:

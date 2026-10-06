@@ -20,6 +20,7 @@ from server.services.voice.call_service import CallService, normalize_phone_numb
 from server.services.voice.recording_service import RecordingService
 from server.services.voice.voice_events import voice_events_bus
 from server.services.voice.deepgram_service import DeepgramSTTService
+from server.services.voice.assemblyai_service import AssemblyAISTTService
 from server.services.voice.cartesia_service import CartesiaTTSService
 from server.services.voice.call_billing_service import CallBillingService
 
@@ -190,6 +191,52 @@ async def plivo_hangup_endpoint(
     return Response(content="<Response></Response>", media_type="application/xml")
 
 
+@router.api_route("/plivo/recording/{call_id}", methods=["GET", "POST"])
+async def plivo_recording_callback(
+    call_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Plivo calls this webhook when a carrier call recording is ready.
+    Extracts RecordUrl / RecordingUrl, updates Call and CRM CallRecording.
+    """
+    form_data = {}
+    if request.method == "POST":
+        try:
+            form_data = dict(await request.form())
+        except Exception:
+            pass
+
+    recording_url = (
+        form_data.get("RecordUrl") or
+        form_data.get("RecordingUrl") or
+        request.query_params.get("RecordUrl") or
+        request.query_params.get("RecordingUrl")
+    )
+
+    if recording_url:
+        call = db.query(Call).filter(
+            (Call.id == call_id) | (Call.twilio_call_sid.like(f"%{call_id}%"))
+        ).first()
+        if call:
+            call.recording_url = recording_url
+            db.commit()
+
+        from server.models import CallRecord, CallRecording
+        crm_call = db.query(CallRecord).filter(
+            (CallRecord.id == call_id) | (CallRecord.session_id == call_id)
+        ).first()
+        if crm_call and crm_call.recording:
+            crm_call.recording.file_path = recording_url
+            crm_call.recording.mime_type = "audio/mpeg" if recording_url.endswith(".mp3") else "audio/wav"
+            db.commit()
+
+        logger.info(f"🎙️ Plivo recording URL received for call {call_id}: {recording_url}")
+
+    return Response(content="<Response></Response>", media_type="application/xml")
+
+
 # ── 4. Outbound Call Trigger ─────────────────────────────────────────────────
 @router.post("/outbound-call")
 async def initiate_outbound_call(
@@ -313,7 +360,22 @@ async def check_providers_health(db: Session = Depends(get_db)):
         except Exception as e:
             results["plivo"] = {"status": "Error", "ready": False, "error": str(e)}
 
-    # 2. Deepgram STT
+    # 2. AssemblyAI STT (Primary)
+    if not settings.ASSEMBLYAI_API_KEY:
+        results["assemblyai"] = {"status": "Not configured", "ready": False}
+    else:
+        try:
+            aai = AssemblyAISTTService()
+            conn = await aai.connect()
+            if conn:
+                await aai.close()
+                results["assemblyai"] = {"status": "Healthy", "ready": True, "model": "universal-3-6-pro"}
+            else:
+                results["assemblyai"] = {"status": "Error", "ready": False, "error": "Handshake failed"}
+        except Exception as e:
+            results["assemblyai"] = {"status": "Error", "ready": False, "error": str(e)}
+
+    # 3. Deepgram STT (Fallback)
     if not settings.DEEPGRAM_API_KEY:
         results["deepgram"] = {"status": "Not configured", "ready": False}
     else:
