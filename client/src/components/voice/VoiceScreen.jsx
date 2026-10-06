@@ -54,12 +54,18 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   const [phoneCallId, setPhoneCallId] = useState(null);
   const [phoneCallMessage, setPhoneCallMessage] = useState('');
 
-  // Provider Health
+  // Provider Health & Billing
   const [providersHealth, setProvidersHealth] = useState({
     plivo: { ready: true, status: 'Healthy' },
     deepgram: { ready: true, status: 'Healthy' },
     cartesia: { ready: true, status: 'Healthy' },
     openai: { ready: true, status: 'Configured' }
+  });
+  const [billingInfo, setBillingInfo] = useState({
+    balance: 1000,
+    rate_per_minute: 6.0,
+    call_limit_minutes: 10,
+    min_balance_required: 6.0,
   });
 
   // Fetch employees and provider health
@@ -81,6 +87,13 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       .then(r => r.json())
       .then(data => {
         if (data) setProvidersHealth(data);
+      })
+      .catch(() => {});
+
+    fetch('/api/v1/billing/balance')
+      .then(r => r.json())
+      .then(b => {
+        if (b) setBillingInfo(b);
       })
       .catch(() => {});
   }, []);
@@ -499,14 +512,39 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           {/* MODE 3: REAL PHONE TEST */}
           {activeMode === 'phone' && (
             <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-              <div style={{ padding: '14px 18px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', marginBottom: 20 }}>
+              <div style={{ padding: '14px 18px', background: '#eff6ff', borderRadius: 10, border: '1px solid #bfdbfe', marginBottom: 16 }}>
                 <div style={{ fontWeight: 700, color: '#1e40af', fontSize: 14, marginBottom: 4 }}>
-                  Real Plivo Phone Call Test (+91 India Line)
+                  Real Plivo Phone Call (+91 India Line)
                 </div>
                 <div style={{ fontSize: 12, color: '#3b82f6', lineHeight: 1.5 }}>
-                  This initiates an actual telecom phone call to your phone via Plivo Voice API (+91 80 6552 2007). When you answer, Plivo connects to the Sara Bidirectional Media Stream.
+                  Outbound call via Plivo Voice API (+91 80 6552 2007). When answered, Sara streams bidirectional live AI speech in Telugu or English.
                 </div>
               </div>
+
+              {/* Telephony Rate & Limit Information Strip */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 20 }}>
+                <div style={{ padding: '10px 12px', background: '#f5f3ff', borderRadius: 8, border: '1px solid #ddd6fe' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#6d28d9', textTransform: 'uppercase' }}>Calling Rate</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#4c1d95', marginTop: 2 }}>₹{billingInfo.rate_per_minute || 6.0}/min</div>
+                  <div style={{ fontSize: 10, color: '#7c3aed' }}>Direct wallet debit</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', textTransform: 'uppercase' }}>Call Limit Cap</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#1e40af', marginTop: 2 }}>{billingInfo.call_limit_minutes || 10} min max</div>
+                  <div style={{ fontSize: 10, color: '#3b82f6' }}>30s voice warning</div>
+                </div>
+                <div style={{ padding: '10px 12px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase' }}>Wallet Balance</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#166534', marginTop: 2 }}>₹{Number(billingInfo.balance || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 10, color: '#16a34a' }}>~{Math.floor((billingInfo.balance || 0) / (billingInfo.rate_per_minute || 6.0))} mins available</div>
+                </div>
+              </div>
+
+              {Number(billingInfo.balance || 0) < 6.0 && (
+                <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, color: '#b91c1c', fontSize: 12, fontWeight: 600, marginBottom: 16 }}>
+                  ⚠️ Insufficient balance (₹{Number(billingInfo.balance || 0).toFixed(2)}). Minimum ₹6.00 required for a 1-minute call. Please top up your account.
+                </div>
+              )}
 
               <form onSubmit={handleTriggerPhoneCall} style={{ maxWidth: 480, margin: '0 auto', width: '100%' }}>
                 <div style={{ marginBottom: 16 }}>
@@ -539,7 +577,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={phoneCalling || !phoneTargetNumber.trim()}
+                  disabled={phoneCalling || !phoneTargetNumber.trim() || Number(billingInfo.balance || 0) < 6.0}
                   style={{ width: '100%', padding: '12px 20px', fontSize: 15, fontWeight: 700, justifyContent: 'center' }}
                 >
                   <PhoneCall size={18} /> {phoneCalling ? 'Initiating Call...' : 'Start Real Phone Call'}

@@ -19,6 +19,8 @@ from server.models import Call, AIEmployee
 from server.services.voice.deepgram_service import DeepgramSTTService
 from server.services.voice.conversation_orchestrator import ConversationOrchestrator, ConversationState
 from server.services.voice.audio_codec_service import AudioCodecService
+from server.services.voice.call_billing_service import CallBillingService
+from server.services.voice.plivo_client import plivo_client
 
 logger = logging.getLogger("sara.voice.plivo_gateway")
 
@@ -41,6 +43,11 @@ class PlivoMediaGateway:
         self._playback_counter = 0
         self._pending_utterance_chunks: List[str] = []
         self._utterance_flush_task: Optional[asyncio.Task] = None
+        self.call_start_time: Optional[float] = None
+        self.max_duration_seconds: int = 600
+        self._watchdog_task: Optional[asyncio.Task] = None
+        self._warning_sent: bool = False
+        self.workspace_id: Optional[str] = None
 
     async def handle_stream(self) -> None:
         """Main lifecycle loop for Plivo WebSocket Media Stream."""
@@ -134,7 +141,20 @@ class PlivoMediaGateway:
         if not connected:
             logger.error("Failed to connect to Deepgram STT stream for Plivo call")
 
-        # 3. Send initial greeting
+        # 3. Setup Call Start Time & Duration Limit Watchdog (5 to 10 min, ₹6/min)
+        self.call_start_time = time.time()
+        ws_id = (call.workspace_id if call else None) or "user_business_owner_1"
+        self.workspace_id = ws_id
+        eligibility = CallBillingService.verify_call_eligibility(self.db, ws_id)
+        self.max_duration_seconds = eligibility.get("effective_limit_seconds", 600)
+        logger.info(
+            f"Plivo Call {self.call_id} duration limit configured to {self.max_duration_seconds}s "
+            f"({self.max_duration_seconds // 60}m) at ₹{CallBillingService.RATE_PER_MINUTE_INR}/min "
+            f"(account balance: ₹{eligibility.get('balance', 0):,.2f})"
+        )
+        self._watchdog_task = asyncio.create_task(self._duration_watchdog())
+
+        # 4. Send initial greeting
         greeting_text = self.orchestrator.get_initial_greeting()
         asyncio.create_task(self._send_greeting(greeting_text))
 
@@ -299,12 +319,86 @@ class PlivoMediaGateway:
         except Exception as e:
             logger.warning(f"Error sending clearAudio to Plivo: {e}")
 
+    async def _duration_watchdog(self) -> None:
+        """
+        Runtime watchdog enforcing call duration limits (5 to 10 min, or wallet balance limit).
+        Plays a polite 30-second warning and gracefully hangs up call via Plivo API.
+        """
+        try:
+            while self.is_running:
+                await asyncio.sleep(2)
+                if not self.call_start_time or not self.is_running:
+                    continue
+
+                elapsed = time.time() - self.call_start_time
+
+                # 30-second advance warning before limit
+                if elapsed >= (self.max_duration_seconds - 30) and not self._warning_sent:
+                    self._warning_sent = True
+                    logger.warning(
+                        f"[Call {self.call_id}] Call limit reaching in 30 seconds "
+                        f"({elapsed:.1f}s / {self.max_duration_seconds}s)"
+                    )
+                    if self.orchestrator and self.is_running:
+                        warning_msg = (
+                            "మీ కాల్ గరిష్ట సమయ పరిమితిని చేరుకుంటోంది. మరో 30 సెకన్లలో కాల్ ముగుస్తుంది."
+                            if getattr(self.orchestrator, "language", "te") == "te"
+                            else "Your call duration limit is approaching. The call will end in 30 seconds."
+                        )
+                        asyncio.create_task(self._send_warning_notice(warning_msg))
+
+                # Hard cutoff at limit
+                if elapsed >= self.max_duration_seconds:
+                    logger.info(
+                        f"[Call {self.call_id}] Call duration limit reached "
+                        f"({elapsed:.1f}s >= {self.max_duration_seconds}s). Disconnecting via Plivo."
+                    )
+                    self.is_running = False
+                    if self.call_uuid:
+                        try:
+                            plivo_client.hangup_call(self.call_uuid)
+                        except Exception as e:
+                            logger.warning(f"Error disconnecting call via Plivo API: {e}")
+                    break
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.error(f"Error in Plivo duration watchdog: {e}")
+
+    async def _send_warning_notice(self, message_text: str) -> None:
+        """Synthesize and stream timeout warning audio to caller."""
+        try:
+            if self.orchestrator and self.is_running:
+                await self.orchestrator._synthesize_and_send_chunk(message_text, time.perf_counter(), True)
+                if self.orchestrator.state == ConversationState.SPEAKING:
+                    self.orchestrator.is_speaking = False
+                    self.orchestrator.set_state(ConversationState.LISTENING)
+        except Exception as e:
+            logger.debug(f"Could not synthesize warning notice: {e}")
+
     async def _on_stop(self) -> None:
-        """Call concluded: close STT, finalize conversation, generate AI call summary."""
+        """Call concluded: close STT, finalize conversation, bill call, generate AI call summary."""
         self.is_running = False
+        if self._watchdog_task and not self._watchdog_task.done():
+            self._watchdog_task.cancel()
+
         if self.deepgram_service:
             await self.deepgram_service.close()
             self.deepgram_service = None
+
+        duration_seconds = int(time.time() - self.call_start_time) if self.call_start_time else 0
+
+        # Finalize call duration & bill call directly (₹6/min)
+        if self.db and self.call_id:
+            try:
+                billing_res = CallBillingService.bill_completed_call(
+                    self.db,
+                    self.call_id,
+                    duration_seconds=duration_seconds,
+                )
+                logger.info(f"Plivo Call {self.call_id} billing result: {billing_res}")
+            except Exception as e:
+                logger.error(f"Failed to bill Plivo call {self.call_id}: {e}")
 
         if self.orchestrator:
             summary_data = await self.orchestrator.end_conversation()

@@ -21,6 +21,7 @@ from server.services.voice.recording_service import RecordingService
 from server.services.voice.voice_events import voice_events_bus
 from server.services.voice.deepgram_service import DeepgramSTTService
 from server.services.voice.cartesia_service import CartesiaTTSService
+from server.services.voice.call_billing_service import CallBillingService
 
 logger = logging.getLogger("sara.api.voice")
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice Telephony & Media Streams"])
@@ -148,18 +149,44 @@ async def plivo_hangup_endpoint(
     db: Session = Depends(get_db),
 ):
     """Plivo call termination callback."""
+    # Plivo may send Duration or BillDuration in form or query params
+    duration_sec = 0
+    try:
+        if request.method == "POST":
+            form = await request.form()
+            raw_dur = form.get("Duration") or form.get("BillDuration")
+            if raw_dur:
+                duration_sec = int(raw_dur)
+        if not duration_sec:
+            raw_q = request.query_params.get("Duration") or request.query_params.get("BillDuration")
+            if raw_q:
+                duration_sec = int(raw_q)
+    except Exception as e:
+        logger.debug(f"Could not parse hangup duration from request: {e}")
+
     call = db.query(Call).filter(
         (Call.id == call_id) | (Call.twilio_call_sid.like(f"%{call_id}%"))
     ).first()
     if call:
         call.status = "completed"
+        if duration_sec > 0:
+            call.duration_seconds = duration_sec
         db.commit()
+
+        # Bill call (idempotent; ₹6/min)
+        effective_dur = duration_sec or call.duration_seconds or 0
+        CallBillingService.bill_completed_call(db, call.id, effective_dur)
+
         await voice_events_bus.broadcast({
             "type": "call.completed",
             "call_id": call.id,
             "call_sid": call.twilio_call_sid,
             "status": "completed",
+            "duration": effective_dur,
         })
+    else:
+        CallBillingService.bill_completed_call(db, call_id, duration_sec)
+
     return Response(content="<Response></Response>", media_type="application/xml")
 
 

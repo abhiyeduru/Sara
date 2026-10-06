@@ -68,12 +68,13 @@ class PlivoService:
                 detail=f"AI Employee '{emp.name}' does not have permission to make outbound phone calls."
             )
 
-        # 3. Check Credits
-        account = db.query(CreditAccount).filter(CreditAccount.workspace_id == user.id).first()
-        if account and account.balance <= 0.0:
+        # 3. Check Credits & Call Eligibility (₹6/min minimum)
+        from .call_billing_service import CallBillingService
+        eligibility = CallBillingService.verify_call_eligibility(db, user.id)
+        if not eligibility.get("allowed"):
             raise HTTPException(
                 status_code=402,
-                detail="Insufficient workspace calling credits. Please top up your balance."
+                detail=eligibility.get("detail", "Insufficient calling credits. Please top up your wallet.")
             )
 
         # 4. Resolve caller ID

@@ -25,12 +25,13 @@ from server.models import (
     User, Workspace, WorkspaceMember, Organization, CreditAccount,
     CreditTransaction, Call, AIEmployee, Lead, Task, AuditLog, ActivityLog
 )
+from server.services.voice.call_billing_service import CallBillingService
 
 logger = logging.getLogger("sara.api.admin")
 
 router = APIRouter(prefix="/api/v1/admin", tags=["Super Admin & Platform Governance"])
 
-PER_MINUTE_CREDIT_RATE = 2.5  # 1 minute of calling = 2.5 credits (₹2.50)
+PER_MINUTE_CREDIT_RATE = CallBillingService.RATE_PER_MINUTE_INR  # 1 minute of calling = 6.0 credits (₹6.00)
 
 
 # ── RBAC / Admin Check ────────────────────────────────────────────────────────

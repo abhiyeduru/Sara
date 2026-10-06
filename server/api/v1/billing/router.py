@@ -34,24 +34,69 @@ def _get_user_account(db: Session, user: User) -> CreditAccount:
     return account
 
 
+from server.services.voice.call_billing_service import CallBillingService
+
+
 @router.get("/account")
 @router.get("/balance")
 async def get_billing_account(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Get credit balance and subscription info."""
+    """Get credit balance, call limits and subscription info."""
     account = _get_user_account(db, user)
+    call_limit = CallBillingService.get_call_limit_minutes(db, account.workspace_id)
 
     return {
         "id": account.id,
         "balance": account.balance,
-        "minutes": round(account.balance / 2.5, 1),
+        "minutes": round(account.balance / CallBillingService.RATE_PER_MINUTE_INR, 1),
+        "rate_per_minute": CallBillingService.RATE_PER_MINUTE_INR,
+        "call_limit_minutes": call_limit,
+        "min_balance_required": CallBillingService.MIN_BALANCE_REQUIRED,
         "total_purchased": account.total_purchased,
         "total_consumed": account.total_consumed,
         "currency": account.currency,
         "plan": account.plan,
         "updated_at": account.updated_at.isoformat() if account.updated_at else None,
+    }
+
+
+@router.get("/limits")
+async def get_call_limits(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get configured call duration limits (5 to 10 minutes) and calling rate."""
+    account = _get_user_account(db, user)
+    limit = CallBillingService.get_call_limit_minutes(db, account.workspace_id)
+    return {
+        "call_limit_minutes": limit,
+        "min_limit_minutes": CallBillingService.MIN_CALL_LIMIT_MINUTES,
+        "max_limit_minutes": CallBillingService.MAX_CALL_LIMIT_MINUTES,
+        "rate_per_minute": CallBillingService.RATE_PER_MINUTE_INR,
+        "min_balance_required": CallBillingService.MIN_BALANCE_REQUIRED,
+    }
+
+
+@router.put("/limits")
+async def set_call_limits(
+    minutes: int = Body(..., embed=True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Configure call duration limit between 5 and 10 minutes."""
+    if minutes < CallBillingService.MIN_CALL_LIMIT_MINUTES or minutes > CallBillingService.MAX_CALL_LIMIT_MINUTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Call limit must be between {CallBillingService.MIN_CALL_LIMIT_MINUTES} and {CallBillingService.MAX_CALL_LIMIT_MINUTES} minutes."
+        )
+    account = _get_user_account(db, user)
+    updated = CallBillingService.set_call_limit_minutes(db, account.workspace_id, minutes)
+    return {
+        "message": f"Call limit updated to {updated} minutes",
+        "call_limit_minutes": updated,
+        "rate_per_minute": CallBillingService.RATE_PER_MINUTE_INR,
     }
 
 
@@ -98,16 +143,24 @@ async def topup_credits(
     account.balance += amount
     account.total_purchased += amount
 
+    added_minutes = round(amount / CallBillingService.RATE_PER_MINUTE_INR, 1)
+    new_minutes = round(account.balance / CallBillingService.RATE_PER_MINUTE_INR, 1)
+
     txn = CreditTransaction(
         account_id=account.id,
         type="topup",
         amount=amount,
         balance_after=account.balance,
-        description=f"Credit top-up — ₹{amount:,.0f} (+{round(amount/2.5, 1)} minutes)",
+        description=f"Credit top-up — ₹{amount:,.0f} (+{added_minutes} minutes @ ₹{CallBillingService.RATE_PER_MINUTE_INR:.0f}/min)",
     )
     db.add(txn)
     db.commit()
-    return {"message": f"₹{amount:,.0f} added to account", "new_balance": account.balance, "new_minutes": round(account.balance / 2.5, 1)}
+    return {
+        "message": f"₹{amount:,.0f} added to account",
+        "new_balance": account.balance,
+        "new_minutes": new_minutes,
+        "rate_per_minute": CallBillingService.RATE_PER_MINUTE_INR,
+    }
 
 
 @router.get("/usage")

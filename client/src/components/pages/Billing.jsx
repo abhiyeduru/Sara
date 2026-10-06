@@ -19,6 +19,9 @@ export default function Billing({ onNavigate }) {
   const [showTopupModal, setShowTopupModal] = useState(false);
   const [topupAmount, setTopupAmount] = useState(2500);
   const [submittingTopup, setSubmittingTopup] = useState(false);
+  const [callLimitMinutes, setCallLimitMinutes] = useState(10);
+  const [updatingLimit, setUpdatingLimit] = useState(false);
+  const [limitSavedMsg, setLimitSavedMsg] = useState('');
 
   const fetchBillingData = async () => {
     setLoading(true);
@@ -32,6 +35,9 @@ export default function Billing({ onNavigate }) {
       if (accRes.ok) {
         const accData = await accRes.json();
         setAccount(accData);
+        if (accData.call_limit_minutes) {
+          setCallLimitMinutes(accData.call_limit_minutes);
+        }
       }
 
       if (txnRes.ok) {
@@ -72,6 +78,27 @@ export default function Billing({ onNavigate }) {
       console.error('Error topping up:', err);
     } finally {
       setSubmittingTopup(false);
+    }
+  };
+
+  const handleUpdateCallLimit = async (mins) => {
+    setUpdatingLimit(true);
+    try {
+      const res = await fetch('/api/v1/billing/limits', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ minutes: Number(mins) }),
+      });
+      if (res.ok) {
+        const d = await res.json();
+        setCallLimitMinutes(d.call_limit_minutes);
+        setLimitSavedMsg(`Call duration limit set to ${d.call_limit_minutes} minutes!`);
+        setTimeout(() => setLimitSavedMsg(''), 3500);
+      }
+    } catch (err) {
+      console.error('Failed to set call limit:', err);
+    } finally {
+      setUpdatingLimit(false);
     }
   };
 
@@ -147,6 +174,86 @@ export default function Billing({ onNavigate }) {
             <div style={{ fontSize: 11, color, marginTop: 3, fontWeight: 600 }}>{sub}</div>
           </div>
         ))}
+      </div>
+
+      {/* Telephony Rate & Call Duration Limits Card */}
+      <div className="card" style={{ padding: '18px 22px', marginBottom: 24, background: 'linear-gradient(135deg, #ffffff 0%, #faf5ff 100%)', border: '1px solid #e9d5ff' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1e1b4b' }}>
+                Telephony Billing & Call Duration Limits
+              </h3>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>
+                ₹{account?.rate_per_minute || 6.0}/min Direct Wallet Deduction
+              </span>
+            </div>
+            <p style={{ margin: '2px 0 0', fontSize: 12, color: '#6b7280' }}>
+              Enforces a strict per-minute calling rate of ₹6.00 with configurable 5–10 minute auto-cutoff.
+            </p>
+          </div>
+
+          {limitSavedMsg && (
+            <div style={{ padding: '6px 14px', borderRadius: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', fontSize: 12, fontWeight: 700 }}>
+              ✓ {limitSavedMsg}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 16, alignItems: 'center' }}>
+          <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid #ede9fe' }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Available Calling Minutes
+            </div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#7c3aed', marginTop: 2 }}>
+              {Math.floor((account?.balance || 0) / (account?.rate_per_minute || 6.0))} <span style={{ fontSize: 13, fontWeight: 600, color: '#6b7280' }}>mins</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 2 }}>
+              Calculated as ₹{Number(account?.balance || 0).toLocaleString('en-IN')} ÷ ₹{account?.rate_per_minute || 6}/min (min ₹6 required per call)
+            </div>
+          </div>
+
+          <div style={{ background: '#fff', padding: '12px 16px', borderRadius: 10, border: '1px solid #ede9fe' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Max Call Duration Setting
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>
+                Current: {callLimitMinutes} min {updatingLimit && '(Saving...)'}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[5, 6, 7, 8, 9, 10].map((m) => {
+                const isActive = callLimitMinutes === m;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={updatingLimit}
+                    onClick={() => handleUpdateCallLimit(m)}
+                    style={{
+                      flex: 1,
+                      minWidth: 42,
+                      padding: '6px 8px',
+                      borderRadius: 6,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease',
+                      border: isActive ? '1px solid #7c3aed' : '1px solid #e5e7eb',
+                      background: isActive ? '#7c3aed' : '#f9fafb',
+                      color: isActive ? '#fff' : '#374151',
+                      boxShadow: isActive ? '0 2px 6px rgba(124,58,237,0.25)' : 'none',
+                    }}
+                  >
+                    {m}m
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 24 }}>
@@ -320,7 +427,10 @@ export default function Billing({ onNavigate }) {
               </div>
 
               <div style={{ padding: 12, background: 'var(--surface-soft)', borderRadius: 8, fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
-                Credits are debited in real-time for voice call minutes, Twilio phone number provisioning, and AI employee task operations.
+                Voice calls are billed directly at <strong>₹6.00 / minute</strong> with a configurable <strong>5–10 minute</strong> duration limit and 30s auto-warning.
+                <div style={{ marginTop: 4, color: '#059669', fontWeight: 600 }}>
+                  This top-up will provide approximately <strong>{Math.floor(topupAmount / 6)}</strong> calling minutes.
+                </div>
               </div>
 
               <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>

@@ -228,7 +228,7 @@ export default function AdminPanel({ onNavigate }) {
     total_credits_balance: 0,
     total_minutes_available: 0,
     total_credits_purchased: 0,
-    rate_per_minute: 2.5,
+    rate_per_minute: 6.0,
   };
 
   return (
@@ -609,7 +609,7 @@ export default function AdminPanel({ onNavigate }) {
                           {u.minutes_balance} <span style={{ fontSize: 11, fontWeight: 600 }}>min</span>
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                          Consumed: {round((u.total_credits_consumed || 0) / 2.5, 1)}m
+                          Consumed: {round((u.total_credits_consumed || 0) / (m.rate_per_minute || 6.0), 1)}m
                         </div>
                       </td>
 
@@ -744,7 +744,7 @@ export default function AdminPanel({ onNavigate }) {
                         {t.amount >= 0 ? '+' : ''}₹{t.amount?.toLocaleString()}
                       </td>
                       <td style={{ padding: '12px 16px', fontWeight: 600 }}>
-                        ₹{t.balance_after?.toLocaleString()} ({round(t.balance_after / 2.5, 1)}m)
+                        ₹{t.balance_after?.toLocaleString()} ({round(t.balance_after / (m.rate_per_minute || 6.0), 1)}m)
                       </td>
                       <td style={{ padding: '12px 16px', color: 'var(--text-secondary)', maxWidth: 280 }}>
                         {t.description}
@@ -1067,7 +1067,7 @@ export default function AdminPanel({ onNavigate }) {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#7c3aed', marginTop: 4 }}>
                   <span>Converted Rate:</span>
-                  <span>1 Minute = ₹2.5 Credits</span>
+                  <span>1 Minute = ₹{m.rate_per_minute || 6} Credits</span>
                 </div>
                 <div
                   style={{
@@ -1084,10 +1084,10 @@ export default function AdminPanel({ onNavigate }) {
                   <span>
                     {isMinutesMode
                       ? `${selectedUserForCredit.minutes_balance + (parseFloat(creditAmount) || 0)} min (₹${
-                          selectedUserForCredit.credits_balance + (parseFloat(creditAmount) || 0) * 2.5
+                          selectedUserForCredit.credits_balance + (parseFloat(creditAmount) || 0) * (m.rate_per_minute || 6.0)
                         })`
                       : `${round(
-                          (selectedUserForCredit.credits_balance + (parseFloat(creditAmount) || 0)) / 2.5,
+                          (selectedUserForCredit.credits_balance + (parseFloat(creditAmount) || 0)) / (m.rate_per_minute || 6.0),
                           1
                         )} min (₹${selectedUserForCredit.credits_balance + (parseFloat(creditAmount) || 0)})`}
                   </span>
@@ -1165,7 +1165,7 @@ export default function AdminPanel({ onNavigate }) {
                   required
                 />
                 <div style={{ fontSize: 11, color: '#059669', marginTop: 4 }}>
-                  Will grant <strong>{round(parseFloat(paymentAmount || 0) / 2.5, 1)}</strong> calling minutes immediately.
+                  Will grant <strong>{round(parseFloat(paymentAmount || 0) / (m.rate_per_minute || 6.0), 1)}</strong> calling minutes immediately (@₹{m.rate_per_minute || 6}/min).
                 </div>
               </div>
 
