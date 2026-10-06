@@ -21,6 +21,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   const [activeMode, setActiveMode] = useState('mic');
   const [employees, setEmployees] = useState([]);
   const [activeEmployee, setActiveEmployee] = useState(agent || null);
+  const [employeesLoaded, setEmployeesLoaded] = useState(Boolean(agent));
 
   // Audio Streamer & State Machine
   const [streamer, setStreamer] = useState(null);
@@ -70,9 +71,12 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
 
   // Fetch employees and provider health
   useEffect(() => {
+    let cancelled = false;
+
     fetch('/api/v1/employees')
       .then(r => r.json())
       .then(d => {
+        if (cancelled) return;
         const list = d.data || [];
         setEmployees(list);
         if (!activeEmployee && list.length > 0) {
@@ -81,7 +85,10 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           if (list[0].voice_language) setSelectedLanguage(list[0].voice_language);
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setEmployeesLoaded(true);
+      });
 
     fetch('/api/v1/voice/providers/health')
       .then(r => r.json())
@@ -96,10 +103,16 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         if (b) setBillingInfo(b);
       })
       .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Initialize AudioStreamer
   useEffect(() => {
+    if (!employeesLoaded) return;
+
     const agentId = activeEmployee?.id || 'agent_sara_default';
     const s = new AudioStreamer({
       agentId,
@@ -135,13 +148,9 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
     setStreamer(s);
 
     return () => {
-      s.stopPlayback();
-      s.stopMic();
-      if (s.ws) {
-        try { s.ws.close(); } catch {}
-      }
+      s.disconnect('voice screen cleanup');
     };
-  }, [activeEmployee?.id]);
+  }, [employeesLoaded, activeEmployee?.id]);
 
   // Connect streamer to agent
   const handleToggleMic = async () => {

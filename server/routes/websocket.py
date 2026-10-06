@@ -194,7 +194,7 @@ async def voice_websocket_endpoint(
             system_prompt=system_prompt,
             greeting_prompt=greeting_prompt,
             faqs=faq_list,
-            voice_id=getattr(agent, 'voice_id', 'sarvam-te-pooja'),
+            voice_id=getattr(agent, 'voice_id', None) or "330c4fa0-1da3-4c55-8e97-951bfd724e20",
             llm_provider=llm_provider,
             tts_provider=tts_provider,
             stt_provider=stt_provider,

@@ -107,11 +107,11 @@ export class AudioStreamer {
     this.dataArray = null;
     this.agentState = 'idle';
 
-    // Ultra-Fast Responsive VAD (280ms pause for instant response) and Speaker-Echo-Protected Barge-In
+    // Ultra-Fast Responsive VAD (240ms pause for instant response) and Speaker-Echo-Protected Barge-In
     this.speechDetected = false;
     this.speechStartTime = null;
     this.silenceStartTime = null;
-    this.silenceThresholdMs = 280; // 280ms pause triggers ultra-low latency response
+    this.silenceThresholdMs = 240; // 240ms pause triggers ultra-low latency response
     this.noiseFloor = 0.003; // Dynamic adaptive noise floor baseline
     this.bargeInRmsThreshold = 0.075; // Elevated threshold during speaker playback to eliminate self-interruption echo
     this.bargeInHits = 0;
@@ -121,6 +121,7 @@ export class AudioStreamer {
     this.lastTextSentTime = 0;
     this.lastAudioSentTime = 0;
     this.micSource = null;
+    this.reconnectAttempts = 0;
   }
 
 
@@ -147,9 +148,10 @@ export class AudioStreamer {
     if (this.ws) {
       const oldWs = this.ws;
       this.ws = null;
+      oldWs.__saraIntentionalClose = true;
       try {
-        if (oldWs.readyState === WebSocket.OPEN) {
-          oldWs.close();
+        if (oldWs.readyState === WebSocket.OPEN || oldWs.readyState === WebSocket.CONNECTING) {
+          oldWs.close(1000, 'reconnecting');
         }
       } catch {}
     }
@@ -173,15 +175,18 @@ export class AudioStreamer {
         resolve(false);
         return;
       }
+      const ws = this.ws;
 
-      this.ws.onopen = () => {
+      ws.onopen = () => {
+        if (this.ws !== ws) return;
         this.reconnectAttempts = 0;
         this.updateState('connected');
         this.onEvent({ type: 'connected', message: 'WebSocket Connected' });
         resolve(true);
       };
 
-      this.ws.onmessage = async (event) => {
+      ws.onmessage = async (event) => {
+        if (this.ws !== ws) return;
         try {
           const data = JSON.parse(event.data);
           this.handleServerMessage(data);
@@ -190,13 +195,18 @@ export class AudioStreamer {
         }
       };
 
-      this.ws.onerror = (err) => {
+      ws.onerror = (err) => {
+        if (this.ws !== ws || ws.__saraIntentionalClose) {
+          resolve(false);
+          return;
+        }
         console.warn('WebSocket connection note:', err?.message || 'Handshake failed or host unreachable');
         this.updateState('error');
         resolve(false);
       };
 
-      this.ws.onclose = (event) => {
+      ws.onclose = (event) => {
+        if (this.ws !== ws || ws.__saraIntentionalClose) return;
         if (event.code === 1000 || event.code === 1005) {
           console.debug('WebSocket closed normally:', event.code);
         } else {
@@ -225,6 +235,21 @@ export class AudioStreamer {
 
       this.initAudioContext();
     });
+  }
+
+  disconnect(reason = 'client disconnect') {
+    this.stopPlayback();
+    this.stopMic();
+    if (this.ws) {
+      const ws = this.ws;
+      this.ws = null;
+      ws.__saraIntentionalClose = true;
+      try {
+        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+          ws.close(1000, reason);
+        }
+      } catch {}
+    }
   }
 
   updateState(newState) {
@@ -300,8 +325,8 @@ export class AudioStreamer {
         window.__sara_micSource = this.micSource;
       } catch {}
 
-      // ScriptProcessor for collecting PCM samples
-      this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
+      // ScriptProcessor for collecting PCM samples (2048 buffer for ultra-low latency capture)
+      this.processor = this.audioContext.createScriptProcessor(2048, 1, 1);
       try {
         window.__sara_processor = this.processor;
       } catch {}
@@ -365,9 +390,9 @@ export class AudioStreamer {
           this.recordedSamples.push(inputData[i]);
         }
 
-        // Rolling Pre-Speech Ring Buffer: Keep only last 350ms of audio before speech starts
-        // Prevents accumulating multi-second dead silence that confuses STT models
-        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.35);
+        // Rolling Pre-Speech Ring Buffer: Keep only last 180ms of audio before speech starts
+        // Prevents accumulating multi-second dead silence that adds lag to STT models
+        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.18);
         if (!this.speechDetected && this.recordedSamples.length > preSpeechMaxSamples) {
           this.recordedSamples = this.recordedSamples.slice(-preSpeechMaxSamples);
         }
@@ -439,8 +464,8 @@ export class AudioStreamer {
     const samplesToSend = [...this.recordedSamples];
     this.resetVAD();
 
-    // Minimum 0.12 seconds of speech so even short commands ("Stop", "Yes", "హలో", "ధర ఎంత") trigger immediately
-    const minSampleCount = Math.round((this.audioContext?.sampleRate || 16000) * 0.12);
+    // Minimum 0.08 seconds of speech so short commands ("Stop", "Yes", "హలో", "ధర ఎంత") trigger immediately
+    const minSampleCount = Math.round((this.audioContext?.sampleRate || 16000) * 0.08);
     if (samplesToSend.length >= minSampleCount) {
 
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
