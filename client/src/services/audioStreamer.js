@@ -239,16 +239,29 @@ export class AudioStreamer {
 
   disconnect(reason = 'client disconnect') {
     this.stopPlayback();
-    this.stopMic();
+    this.stopMic({ flushPendingAudio: false });
+    if (this.animFrameId) {
+      cancelAnimationFrame(this.animFrameId);
+      this.animFrameId = null;
+    }
     if (this.ws) {
       const ws = this.ws;
       this.ws = null;
       ws.__saraIntentionalClose = true;
       try {
-        if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
+        if (ws.readyState === WebSocket.OPEN) {
           ws.close(1000, reason);
+        } else if (ws.readyState === WebSocket.CONNECTING) {
+          ws.onerror = () => {};
+          ws.onopen = () => {
+            try { ws.close(1000, reason); } catch {}
+          };
         }
       } catch {}
+    }
+    if (this.audioContext) {
+      try { this.audioContext.close(); } catch {}
+      this.audioContext = null;
     }
   }
 
@@ -515,12 +528,12 @@ export class AudioStreamer {
     }
   }
 
-  stopMic() {
+  stopMic({ flushPendingAudio = true } = {}) {
     this.continuousMode = false;
     if (!this.isRecording) return;
     this.isRecording = false;
 
-    if (this.speechDetected && this.recordedSamples.length > 2000) {
+    if (flushPendingAudio && this.speechDetected && this.recordedSamples.length > 2000) {
       this.finalizeAndSendAudio();
     } else {
       this.resetVAD();
@@ -784,28 +797,4 @@ export class AudioStreamer {
     }
   }
 
-  disconnect() {
-    this.stopMic();
-    this.stopPlayback();
-    if (this.animFrameId) {
-      cancelAnimationFrame(this.animFrameId);
-    }
-    if (this.ws) {
-      const ws = this.ws;
-      this.ws = null;
-      try {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, "Normal Closure");
-        } else if (ws.readyState === WebSocket.CONNECTING) {
-          ws.onopen = () => {
-            try { ws.close(1000, "Normal Closure"); } catch {}
-          };
-        }
-      } catch {}
-    }
-    if (this.audioContext) {
-      try { this.audioContext.close(); } catch {}
-      this.audioContext = null;
-    }
-  }
 }

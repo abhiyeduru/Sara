@@ -144,13 +144,15 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
       }
     });
 
-    s.connect(agentId);
+    if (activeMode !== 'phone') {
+      s.connect(agentId);
+    }
     setStreamer(s);
 
     return () => {
       s.disconnect('voice screen cleanup');
     };
-  }, [employeesLoaded, activeEmployee?.id]);
+  }, [employeesLoaded, activeEmployee?.id, activeMode]);
 
   // Connect streamer to agent
   const handleToggleMic = async () => {

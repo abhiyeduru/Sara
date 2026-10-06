@@ -10,12 +10,6 @@ import {
 
 // Firebase Web App Configuration
 const envApiKey = typeof import.meta !== 'undefined' ? import.meta.env?.VITE_FIREBASE_API_KEY : null;
-const isRealConfig = Boolean(
-  envApiKey && 
-  envApiKey.length > 20 && 
-  !envApiKey.includes("AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU")
-);
-
 const firebaseConfig = {
   apiKey: envApiKey || "",
   authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || "",
@@ -24,6 +18,18 @@ const firebaseConfig = {
   messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "",
   appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || ""
 };
+
+const PLACEHOLDER_FIREBASE_API_KEY = "AIzaSyDhycimimNkKKmgeSPXe6XxlO7VBR91YsU";
+const isRealConfig = Boolean(
+  firebaseConfig.apiKey &&
+  firebaseConfig.apiKey.length > 20 &&
+  firebaseConfig.authDomain &&
+  firebaseConfig.projectId &&
+  firebaseConfig.appId &&
+  firebaseConfig.apiKey !== PLACEHOLDER_FIREBASE_API_KEY &&
+  firebaseConfig.messagingSenderId !== "1234567890" &&
+  !firebaseConfig.appId.includes("abcdef")
+);
 
 let app = null;
 let auth = null;

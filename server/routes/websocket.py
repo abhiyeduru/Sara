@@ -104,6 +104,7 @@ async def voice_websocket_endpoint(
     await websocket.accept()
     db: Session = SessionLocal()
     session_record: Optional[ConversationSession] = None
+    conv_state: Optional[ConversationState] = None
     manager: Optional[ConversationManager] = None
 
     try:
@@ -187,6 +188,7 @@ async def voice_websocket_endpoint(
             logger.warning(f"Session record persistence bypassed: {db_err}")
             db.rollback()
             session_record = None
+            conv_state = None
 
         # 4. Initialize ConversationManager
         manager = ConversationManager(
@@ -204,7 +206,7 @@ async def voice_websocket_endpoint(
         # Notify frontend that session has started
         await websocket.send_json({
             "type": "session.started",
-            "session_id": session_record.id,
+            "session_id": session_record.id if session_record else session_id,
             "agent_name": agent.name,
             "greeting": greeting_prompt,
             "voice_id": agent.voice_id,
@@ -233,15 +235,16 @@ async def voice_websocket_endpoint(
             })
 
             # Record greeting message
-            msg = SessionMessage(
-                session_id=session_record.id,
-                role="agent",
-                content=greeting_prompt,
-                detected_language="en",
-                detected_intent="greeting"
-            )
-            db.add(msg)
-            db.commit()
+            if session_record:
+                msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="agent",
+                    content=greeting_prompt,
+                    detected_language="en",
+                    detected_intent="greeting"
+                )
+                db.add(msg)
+                db.commit()
 
         turn_index = 1
         last_activity_time = time.time()
@@ -429,15 +432,16 @@ async def voice_websocket_endpoint(
             })
 
             # Save User Message to Database
-            user_msg = SessionMessage(
-                session_id=session_record.id,
-                role="user",
-                content=user_text,
-                detected_language=detected_lang,
-                detected_intent=detected_intent
-            )
-            db.add(user_msg)
-            db.commit()
+            if session_record:
+                user_msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="user",
+                    content=user_text,
+                    detected_language=detected_lang,
+                    detected_intent=detected_intent
+                )
+                db.add(user_msg)
+                db.commit()
 
             # Add to conversation history for LLM
             manager.messages.append({"role": "user", "content": user_text})
@@ -544,36 +548,38 @@ async def voice_websocket_endpoint(
             time_to_first_audio_ms = (first_audio_time - turn_start_time) * 1000 if first_audio_time else total_response_ms
 
             # Save Latency Metric to Neon Database
-            metric = LatencyMetric(
-                session_id=session_record.id,
-                turn_index=turn_index,
-                stt_ms=round(stt_latency, 2),
-                llm_first_token_ms=round(llm_first_token_ms, 2),
-                llm_total_ms=round(total_response_ms - stt_latency, 2),
-                tts_first_audio_ms=round(tts_first_audio_ms, 2),
-                time_to_first_audio_ms=round(time_to_first_audio_ms, 2),
-                total_response_ms=round(total_response_ms, 2)
-            )
-            db.add(metric)
+            if session_record:
+                metric = LatencyMetric(
+                    session_id=session_record.id,
+                    turn_index=turn_index,
+                    stt_ms=round(stt_latency, 2),
+                    llm_first_token_ms=round(llm_first_token_ms, 2),
+                    llm_total_ms=round(total_response_ms - stt_latency, 2),
+                    tts_first_audio_ms=round(tts_first_audio_ms, 2),
+                    time_to_first_audio_ms=round(time_to_first_audio_ms, 2),
+                    total_response_ms=round(total_response_ms, 2)
+                )
+                db.add(metric)
 
-            # Save Agent Message
-            agent_msg = SessionMessage(
-                session_id=session_record.id,
-                role="agent",
-                content=complete_agent_reply,
-                detected_language=detected_lang,
-                detected_intent=detected_intent
-            )
-            db.add(agent_msg)
+                # Save Agent Message
+                agent_msg = SessionMessage(
+                    session_id=session_record.id,
+                    role="agent",
+                    content=complete_agent_reply,
+                    detected_language=detected_lang,
+                    detected_intent=detected_intent
+                )
+                db.add(agent_msg)
 
-            # Update session state in DB
-            conv_state.conversation_stage = manager.stage
-            conv_state.current_intent = manager.current_intent
-            conv_state.collected_fields = manager.collected_fields
-            conv_state.escalation_required = manager.escalation_required
-            conv_state.last_user_message = user_text
-            conv_state.last_agent_message = complete_agent_reply
-            db.commit()
+                # Update session state in DB
+                if conv_state:
+                    conv_state.conversation_stage = manager.stage
+                    conv_state.current_intent = manager.current_intent
+                    conv_state.collected_fields = manager.collected_fields
+                    conv_state.escalation_required = manager.escalation_required
+                    conv_state.last_user_message = user_text
+                    conv_state.last_agent_message = complete_agent_reply
+                db.commit()
 
             # Broadcast comprehensive turn metrics to Test Console
             await websocket.send_json({

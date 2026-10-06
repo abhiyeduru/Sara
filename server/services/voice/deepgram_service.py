@@ -90,43 +90,62 @@ class DeepgramSTTService:
             "interim_results=true",
             "vad_events=true",
             "endpointing=250",
-            "utterance_end_ms=600",
+            "utterance_end_ms=1000",
             f"language={lang_param}",
         ]
         return f"{base}?{'&'.join(params)}"
 
     async def connect(self) -> bool:
-        """Establish authenticated WebSocket connection to Deepgram."""
+        """Establish authenticated WebSocket connection to Deepgram with fallback."""
         if not self.api_key:
             logger.error("Deepgram API key not configured")
             if self.on_error:
                 self.on_error("Deepgram API key not configured")
             return False
 
-        url = self._build_ws_url()
         headers = {"Authorization": f"Token {self.api_key}"}
+        primary_url = self._build_ws_url()
 
-        try:
-            self.ws = await websockets.connect(
-                url,
-                additional_headers=headers,
-                ssl=self.ssl_context,
-                ping_interval=20,
-                ping_timeout=10,
-            )
-            self.is_connected = True
-            logger.info("Deepgram Streaming STT connected successfully.")
+        # Resilient fallback URL omitting optional tuning parameters
+        lang = "te" if self.language in ["te", "telugu"] else ("hi" if self.language in ["hi", "hindi"] else "en")
+        fallback_url = (
+            f"wss://api.deepgram.com/v1/listen?model=nova-3&encoding={self.encoding}"
+            f"&sample_rate={self.sample_rate}&channels={self.channels}&smart_format=true"
+            f"&interim_results=true&vad_events=true&endpointing=250&language={lang}"
+        )
 
-            # Launch background receive and keepalive tasks
-            self._receive_task = asyncio.create_task(self._receive_loop())
-            self._keepalive_task = asyncio.create_task(self._keepalive_loop())
-            return True
-        except Exception as e:
-            logger.error(f"Failed to connect to Deepgram STT: {e}")
-            self.is_connected = False
-            if self.on_error:
-                self.on_error(str(e))
-            return False
+        urls = [primary_url]
+        if fallback_url != primary_url:
+            urls.append(fallback_url)
+
+        last_error = None
+        for attempt, url in enumerate(urls):
+            try:
+                self.ws = await websockets.connect(
+                    url,
+                    additional_headers=headers,
+                    ssl=self.ssl_context,
+                    ping_interval=20,
+                    ping_timeout=10,
+                )
+                self.is_connected = True
+                logger.info(f"Deepgram Streaming STT connected successfully (attempt {attempt + 1}).")
+
+                # Launch background receive and keepalive tasks
+                self._receive_task = asyncio.create_task(self._receive_loop())
+                self._keepalive_task = asyncio.create_task(self._keepalive_loop())
+                return True
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Deepgram connect attempt {attempt + 1} failed ({url}): {e}")
+                if attempt == 0 and len(urls) > 1:
+                    await asyncio.sleep(0.2)
+
+        logger.error(f"Failed to connect to Deepgram STT after {len(urls)} attempts: {last_error}")
+        self.is_connected = False
+        if self.on_error:
+            self.on_error(str(last_error))
+        return False
 
     async def send_audio(self, audio_chunk: bytes) -> None:
         """Send raw audio bytes to Deepgram streaming pipeline."""
