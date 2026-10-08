@@ -56,8 +56,8 @@ class SentenceChunker:
                     ready_chunks.append(potential_chunk)
                     self.buffer = self.buffer[end_pos:].lstrip()
                     continue
-                # Pause boundaries (, ; :) emit if enough words gathered (>= 3 words)
-                elif not is_strong and word_count >= 3:
+                # Pause boundaries (, ; :) emit only if substantive phrase (>= 8 words) to prevent chopping short clauses
+                elif not is_strong and word_count >= 8:
                     ready_chunks.append(potential_chunk)
                     self.buffer = self.buffer[end_pos:].lstrip()
                     continue

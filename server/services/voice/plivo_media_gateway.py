@@ -292,23 +292,35 @@ class PlivoMediaGateway:
         if is_greeting:
             return
 
-        # 2. Acoustic echo prevention: ignore if caller words match what assistant is currently speaking
-        if self.orchestrator.is_speaking and getattr(self.orchestrator, "current_speaking_text", ""):
-            curr_words = set(re.findall(r"\w+", self.orchestrator.current_speaking_text.lower()))
-            trans_words = set(re.findall(r"\w+", clean.lower()))
+        # 2. Acoustic echo prevention: ignore if caller words match what assistant is speaking or just spoke
+        curr_text = getattr(self.orchestrator, "current_speaking_text", "")
+        last_text = getattr(self.orchestrator, "last_assistant_speech_text", "")
+        time_since_speech = time.perf_counter() - getattr(self.orchestrator, "last_assistant_speech_end_time", 0.0)
+
+        clean_lower = clean.lower()
+        trans_words = set(re.findall(r"\w+", clean_lower))
+
+        # Echo check against current speaking
+        if self.orchestrator.is_speaking and curr_text:
+            curr_words = set(re.findall(r"\w+", curr_text.lower()))
             if trans_words and trans_words.issubset(curr_words):
-                logger.debug(f"[Call {self.call_id}] Ignored acoustic echo of assistant speech: '{clean}'")
+                logger.debug(f"[Call {self.call_id}] Ignored acoustic echo of current speech: '{clean}'")
                 return
 
-        # 3. If assistant is actively speaking, only allow barge-in on substantive, non-echo caller speech
+        # Echo check against recently completed speech (within 1.5s post-speech window)
+        if last_text and time_since_speech < 1.5:
+            last_words = set(re.findall(r"\w+", last_text.lower()))
+            if trans_words and (trans_words.issubset(last_words) or (len(trans_words) <= 3 and len(trans_words & last_words) >= 1)):
+                logger.debug(f"[Call {self.call_id}] Ignored post-speech acoustic echo: '{clean}'")
+                return
+
+        # 3. If assistant is actively speaking, allow barge-in when caller genuinely speaks
         if self.orchestrator.is_speaking:
             spoken_duration = time.perf_counter() - self.orchestrator.speaking_start_time
-            words = [w for w in clean.split() if len(w) > 1]
-            if len(words) >= 2 and spoken_duration >= 1.0:
+            if spoken_duration >= 0.6 and len(clean.strip()) >= 2:
                 logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{clean}' during assistant speech ({spoken_duration:.2f}s) -> halting assistant immediately!")
                 await self.orchestrator.handle_barge_in()
             else:
-                # Do not schedule utterance flushes while assistant is actively speaking without genuine barge-in
                 return
 
         # 4. Update latest cumulative transcript for this turn
@@ -352,20 +364,29 @@ class PlivoMediaGateway:
             return
 
         import re
-        # If assistant is currently speaking, ensure genuine barge-in before cancelling
-        if self.orchestrator.is_speaking:
-            spoken_duration = time.perf_counter() - self.orchestrator.speaking_start_time
-            curr_words = set(re.findall(r"\w+", getattr(self.orchestrator, "current_speaking_text", "").lower()))
-            trans_words = set(re.findall(r"\w+", utterance.lower()))
+        curr_text = getattr(self.orchestrator, "current_speaking_text", "")
+        last_text = getattr(self.orchestrator, "last_assistant_speech_text", "")
+        time_since_speech = time.perf_counter() - getattr(self.orchestrator, "last_assistant_speech_end_time", 0.0)
+        trans_words = set(re.findall(r"\w+", utterance.lower()))
+
+        # Check echo during active speech
+        if self.orchestrator.is_speaking and curr_text:
+            curr_words = set(re.findall(r"\w+", curr_text.lower()))
             if trans_words and trans_words.issubset(curr_words):
                 logger.info(f"[Call {self.call_id}] Suppressed acoustic echo while speaking: '{utterance}'")
                 return
-            words = [w for w in utterance.split() if len(w) > 1]
-            if len(words) < 2 or spoken_duration < 1.0:
-                logger.info(f"[Call {self.call_id}] Suppressed minor utterance while speaking ({spoken_duration:.2f}s): '{utterance}'")
+            spoken_duration = time.perf_counter() - self.orchestrator.speaking_start_time
+            if spoken_duration < 0.6:
                 return
             logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{utterance}' during playback -> barge-in confirmed")
             await self.orchestrator.handle_barge_in()
+
+        # Check echo in post-speech window (within 1.5s after assistant finished)
+        if last_text and time_since_speech < 1.5:
+            last_words = set(re.findall(r"\w+", last_text.lower()))
+            if trans_words and (trans_words.issubset(last_words) or (len(trans_words) <= 3 and len(trans_words & last_words) >= 1)):
+                logger.info(f"[Call {self.call_id}] Suppressed post-speech acoustic echo ({time_since_speech:.2f}s): '{utterance}'")
+                return
 
         import re
         # Filter carrier automated announcements (e.g. call forwarding / voicemail greetings)
@@ -428,7 +449,7 @@ class PlivoMediaGateway:
         # 1280 bytes = 160ms of 8kHz μ-law audio
         chunks = AudioCodecService.chunk_mulaw(mulaw_audio, chunk_size=1280)
         logger.info(f"Streaming {len(chunks)} audio frames to Plivo for: '{text[:40]}...'")
-        for chunk in chunks:
+        for idx, chunk in enumerate(chunks):
             if not self.is_running or self._playback_counter != playback_id:
                 logger.debug(f"Audio playback halted (current gen: {self._playback_counter}, playback id: {playback_id})")
                 break
@@ -443,7 +464,9 @@ class PlivoMediaGateway:
             }
             try:
                 await self.ws.send_text(json.dumps(play_msg))
-                await asyncio.sleep(0.150)  # 150ms sleep for 160ms audio chunk
+                # Burst first 2 frames immediately to seed Plivo RTP jitter buffer, then stream at 140ms
+                if idx >= 1:
+                    await asyncio.sleep(0.140)
             except Exception as e:
                 logger.warning(f"Error streaming audio to Plivo: {e}")
                 break

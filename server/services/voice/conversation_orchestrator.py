@@ -103,6 +103,8 @@ class ConversationOrchestrator:
         self.is_speaking: bool = False
         self.greeting_in_progress: bool = False
         self.current_speaking_text: str = ""
+        self.last_assistant_speech_text: str = ""
+        self.last_assistant_speech_end_time: float = 0.0
         self.use_groq_primary: bool = (getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq")
         self._system_prompt = self._compile_system_prompt()
 
@@ -274,6 +276,7 @@ CRITICAL PHONE CALL RULES:
 - 100% HMDA/RERA clear titles, up to 80% bank loan, free weekend site visit with cab pickup.
 7. OBJECTIONS: If expensive: "Mee budget chepthe suitable option suggest chesthanu." If not interested: "Okay, no problem. Thank you!"
 8. TRUTHFULNESS: Never invent prices or details. If unsure say: "Adi confirm chesi chepthanu."
+9. ANTI-ECHO: If caller input is just an echo of your words or static noise, DO NOT apologize or say "Sorry I can't hear". Simply ask: "Mee requirement cheppandi andi."
 {knowledge_context[:400] if knowledge_context else ""}"""
         return base_prompt
 
@@ -323,8 +326,16 @@ CRITICAL PHONE CALL RULES:
         if not clean_text:
             return
 
-        # Deduplication guard: ignore immediate echo within 1.0s
+        # Deduplication & acoustic echo guard: ignore if text matches what assistant just spoke within 1.5s
         now = time.time()
+        import re
+        if self.last_assistant_speech_text and (time.perf_counter() - self.last_assistant_speech_end_time < 1.5):
+            curr_words = set(re.findall(r"\w+", self.last_assistant_speech_text.lower()))
+            user_words = set(re.findall(r"\w+", clean_text.lower()))
+            if user_words and (user_words.issubset(curr_words) or (len(user_words) <= 3 and len(user_words & curr_words) >= 1)):
+                logger.info(f"[Call {self.call_id}] Discarded post-speech acoustic echo of assistant: '{clean_text}'")
+                return
+
         if (now - self.last_user_time < 1.0) and (clean_text.lower() == self.last_user_text.lower()):
             logger.debug(f"[Call {self.call_id}] Discarding duplicate utterance: '{clean_text}'")
             return
@@ -598,11 +609,17 @@ CRITICAL PHONE CALL RULES:
                     logger.debug(f"Could not persist LatencyMetric: {e}")
 
             if self.state not in [ConversationState.ENDING, ConversationState.ENDED]:
+                self.last_assistant_speech_text = complete_text or self.current_speaking_text
+                self.last_assistant_speech_end_time = time.perf_counter()
                 self.is_speaking = False
+                self.current_speaking_text = ""
                 self.set_state(ConversationState.LISTENING)
 
         except asyncio.CancelledError:
+            self.last_assistant_speech_text = self.current_speaking_text
+            self.last_assistant_speech_end_time = time.perf_counter()
             self.is_speaking = False
+            self.current_speaking_text = ""
             logger.info(f"[Call {self.call_id}] Turn task cancelled due to barge-in.")
         except Exception as e:
             self.is_speaking = False
