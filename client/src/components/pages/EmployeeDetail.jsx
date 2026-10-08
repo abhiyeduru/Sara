@@ -141,33 +141,37 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         const res = await fetch('/api/v1/employees');
         if (res.ok) {
           const list = await res.json();
-            // Prioritize Sara AI Employee, then Farhan,           if (cScript.opening_line) {
+          const empList = Array.isArray(list) ? list : (list.data || []);
+          const foundSara = empList.find(e => e.name?.toLowerCase().trim() === 'sara');
+          const foundFarhan = empList.find(e => e.name?.toLowerCase().includes('farhan'));
+          const foundYash = empList.find(e => e.name?.toLowerCase().includes('yashwanth') || e.name?.toLowerCase().includes('karthik'));
+          targetId = foundSara ? foundSara.id : (foundFarhan ? foundFarhan.id : (foundYash ? foundYash.id : (empList[0]?.id)));
+        }
+      }
+
+      if (targetId) {
+        const res = await fetch(`/api/v1/employees/${targetId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEmployee(data);
+          setSelectedVoiceId(data.voice_id || 'sarvam-te-kavitha');
+          setVoiceSpeed(data.voice_speed || 1.0);
+          setVoiceTone(data.voice_tone || 'respectful');
+
+          // Initialize script from universal_spec
+          const uSpec = data.universal_spec || {};
+          const cScript = data.call_script || uSpec.call_script || {};
+
+          if (cScript.opening_line) {
             setOpeningLine(cScript.opening_line);
           } else {
-            setOpeningLine('హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను సారా ని.');
+            setOpeningLine(LANGUAGE_SCRIPTS.telugu.opening_line);
           }
 
           if (cScript.steps && cScript.steps.length > 0) {
             setSteps(cScript.steps);
           } else {
             setSteps(LANGUAGE_SCRIPTS.telugu.steps);
-          }: '3. Qualify: Purpose (Living vs Investment)',
-                badge: null,
-                content: "Ask if they're looking for living purpose or investment. Respond to their answer, then move to budget. For example you might say: 'మీరు living కోసం చూస్తున్నారా, లేక investment కోసమా అండీ?'"
-              },
-              {
-                id: 'step_4',
-                title: '4. Qualify: Budget',
-                badge: null,
-                content: "Ask their budget range, one question at a time. If {Budget Range} is already known, acknowledge it and skip. If their budget is much lower than your options, politely inform them and check if they want to know about higher-priced options. For example you might say: 'మీ budget range ఎంత ఉండొచ్చు అండీ?'"
-              },
-              {
-                id: 'step_5',
-                title: '5. Book Site Visit',
-                badge: null,
-                content: "If their budget fits your projects, encourage them to visit the site. Ask when they're available for a visit, confirm date and time, and offer to send location/details on WhatsApp. If they're not ready, ask if you can share more info or follow up later. For example you might say: 'మీరు site visit కి ఎప్పుడు time ఇవ్వగలరో చెప్తారా అండీ? date, time confirm చేద్దాం.'"
-              }
-            ]);
           }
 
           if (uSpec.pre_call_variables && uSpec.pre_call_variables.length > 0) {
