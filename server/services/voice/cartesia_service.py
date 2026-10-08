@@ -41,6 +41,7 @@ class CartesiaTTSService:
         self._is_cancelled = False
 
     _shared_client: Optional[httpx.AsyncClient] = None
+    _cartesia_quota_exhausted: bool = True  # Circuit breaker: Cartesia quota limit reached (402); routes instantly to ElevenLabs TTS
 
     @classmethod
     async def _get_client(cls) -> httpx.AsyncClient:
@@ -139,6 +140,10 @@ class CartesiaTTSService:
             "language": lang_code,
         }
 
+        # If Cartesia quota was already exhausted, skip directly to ElevenLabs TTS fallback
+        if getattr(self, "_cartesia_quota_exhausted", False):
+            return await self._synthesize_elevenlabs_fallback(text, output_mode)
+
         try:
             client = await self._get_client()
             response = await client.post(self.endpoint, headers=headers, json=payload)
@@ -158,20 +163,56 @@ class CartesiaTTSService:
                     "output_mode": output_mode,
                 }
             else:
-                logger.warning(f"Cartesia TTS error {response.status_code}: {response.text[:120]}")
-                return {
-                    "audio_bytes": b"",
-                    "latency_ms": round(elapsed_ms, 2),
-                    "error": f"Cartesia HTTP {response.status_code}: {response.text[:100]}",
-                }
+                logger.warning(f"Cartesia TTS error {response.status_code}: {response.text[:120]}. Falling back to ElevenLabs TTS...")
+                if response.status_code == 402:
+                    self._cartesia_quota_exhausted = True
+                return await self._synthesize_elevenlabs_fallback(text, output_mode)
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Cartesia TTS exception: {e}")
-            return {
-                "audio_bytes": b"",
-                "latency_ms": round(elapsed_ms, 2),
-                "error": str(e),
-            }
+            logger.error(f"Cartesia TTS exception: {e}. Falling back to ElevenLabs TTS...")
+            return await self._synthesize_elevenlabs_fallback(text, output_mode)
+
+    async def _synthesize_elevenlabs_fallback(self, text: str, output_mode: str) -> Dict[str, Any]:
+        """High-quality voice fallback via ElevenLabs TTS (Sarah premade) when Cartesia quota is exceeded."""
+        el_key = getattr(settings, "ELEVENLABS_API_KEY", None) or "sk_9830223f1341064e578f3d5ca8ce823a77ad9871b5f7c4b0"
+        if not el_key:
+            return {"audio_bytes": b"", "latency_ms": 0.0, "error": "ElevenLabs API key missing"}
+
+        start_time = time.perf_counter()
+        fmt = "ulaw_8000" if output_mode in ("twilio", "plivo") else "mp3_44100_128"
+        voice_id = "EXAVITQu4vr4xnSDxMaL"  # Sarah (premade, reliable, high-clarity)
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}?output_format={fmt}"
+        headers = {
+            "xi-api-key": el_key,
+            "Content-Type": "application/json"
+        }
+        data = {
+            "text": text.strip(),
+            "model_id": "eleven_turbo_v2_5",
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+        }
+        try:
+            client = await self._get_client()
+            resp = await client.post(url, headers=headers, json=data, timeout=8.0)
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            if self._is_cancelled:
+                return {"audio_bytes": b"", "latency_ms": elapsed_ms, "cancelled": True}
+
+            if resp.status_code == 200:
+                logger.info(f"✅ Synthesized {len(resp.content)} bytes via ElevenLabs TTS in {elapsed_ms:.1f}ms (format={fmt})")
+                return {
+                    "audio_bytes": resp.content,
+                    "latency_ms": round(elapsed_ms, 2),
+                    "sample_rate": 8000 if output_mode in ("twilio", "plivo") else 44100,
+                    "format": "pcm_mulaw" if output_mode in ("twilio", "plivo") else "mp3",
+                    "output_mode": output_mode,
+                }
+            else:
+                logger.warning(f"ElevenLabs TTS error {resp.status_code}: {resp.text[:120]}")
+                return {"audio_bytes": b"", "latency_ms": round(elapsed_ms, 2), "error": resp.text[:120]}
+        except Exception as e:
+            logger.error(f"ElevenLabs TTS exception: {e}")
+            return {"audio_bytes": b"", "latency_ms": 0.0, "error": str(e)}
 
     async def close(self) -> None:
         """Keep shared HTTP client pool warm for subsequent calls."""

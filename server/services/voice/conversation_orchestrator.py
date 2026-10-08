@@ -355,14 +355,19 @@ CRITICAL PHONE CALL RULES:
 
         logger.info(f"[Call {self.call_id}] Customer (Turn {self.turn_index}): {clean_text}")
 
-        # Record customer message - only consolidate if user continued speaking within 2.5s
+        # Record customer message - only consolidate if user continued short phrase within 1.8s
         is_consolidated = False
-        if self.messages and self.messages[-1]["role"] == "user" and (now - prev_user_time < 2.5):
+        if self.messages and self.messages[-1]["role"] == "user" and (now - prev_user_time < 1.8):
             prev_content = self.messages[-1]["content"]
-            if clean_text.lower() not in prev_content.lower():
+            # Only append if previous fragment was short (< 6 words) and not duplicate
+            if len(prev_content.split()) <= 6 and clean_text.lower() not in prev_content.lower():
                 self.messages[-1]["content"] = f"{prev_content} {clean_text}".strip()
-            clean_text = self.messages[-1]["content"]
-            is_consolidated = True
+                clean_text = self.messages[-1]["content"]
+                is_consolidated = True
+            else:
+                # Replace with the fresh complete utterance instead of infinite accumulation
+                self.messages[-1]["content"] = clean_text
+                is_consolidated = True
             logger.info(f"[Call {self.call_id}] Consolidated user utterance into: '{clean_text}'")
         else:
             self.messages.append({"role": "user", "content": clean_text})

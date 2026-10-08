@@ -91,6 +91,9 @@ class ElevenLabsSTTService:
         params = {
             "model_id": "scribe_v2_realtime",
             "audio_format": self.audio_format,
+            "commit_strategy": "vad",
+            "filter_background_audio": "true",
+            "vad_silence_threshold_secs": "0.8",
         }
         lang = (self.language or "te").lower()
         if lang in ["te", "telugu"]:
@@ -186,13 +189,17 @@ class ElevenLabsSTTService:
                     continue
 
                 if msg_type == "partial_transcript":
-                    text = data.get("text", "").strip()
+                    raw_text = data.get("text", "").strip()
+                    import re
+                    # Strip model artifact prefix e.g. "Bein .", "Being ."
+                    text = re.sub(r"^(Bein\s*\.?|Being\s*\.?)\s*", "", raw_text, flags=re.IGNORECASE).strip()
                     if text:
                         if not self._turn_start_time:
                             self._turn_start_time = time.perf_counter()
 
-                        # Instant barge-in trigger on real caller words
-                        if self.on_speech_started:
+                        # Only trigger speech-started if substantive words (at least 2 words)
+                        words = [w for w in text.split() if len(w) > 1]
+                        if len(words) >= 2 and self.on_speech_started:
                             if asyncio.iscoroutinefunction(self.on_speech_started):
                                 await self.on_speech_started()
                             else:
@@ -210,7 +217,9 @@ class ElevenLabsSTTService:
                                 self.on_transcript(text, False, self.language, latency_ms)
 
                 elif msg_type == "committed_transcript":
-                    text = data.get("text", "").strip()
+                    raw_text = data.get("text", "").strip()
+                    import re
+                    text = re.sub(r"^(Bein\s*\.?|Being\s*\.?)\s*", "", raw_text, flags=re.IGNORECASE).strip()
                     if text:
                         latency_ms = (
                             round((time.perf_counter() - self._turn_start_time) * 1000, 1)

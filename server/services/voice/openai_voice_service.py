@@ -258,6 +258,32 @@ class OpenAIVoiceService:
             f"Transcript:\n{convo_text}"
         )
 
+        from server.config import settings
+        use_groq = getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq"
+
+        if use_groq:
+            try:
+                from server.providers.groq_llm import GroqLLM
+                groq_llm = GroqLLM()
+                if groq_llm.client:
+                    loop = asyncio.get_running_loop()
+                    def run_groq():
+                        return groq_llm.client.chat.completions.create(
+                            model=groq_llm.model,
+                            messages=[
+                                {"role": "system", "content": "You are a professional call intelligence analyzer. Output valid JSON only with keys: summary, sentiment, intent, outcome, lead_quality, extracted_requirements, action_items."},
+                                {"role": "user", "content": prompt}
+                            ],
+                            temperature=0.2,
+                            max_tokens=400,
+                            response_format={"type": "json_object"}
+                        )
+                    g_resp = await loop.run_in_executor(None, run_groq)
+                    g_text = g_resp.choices[0].message.content or "{}"
+                    return json.loads(g_text)
+            except Exception as ge:
+                logger.warning(f"Groq summary failed: {ge}")
+
         try:
             resp = await self.client.chat.completions.create(
                 model=self.model,

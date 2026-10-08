@@ -300,13 +300,16 @@ class PlivoMediaGateway:
                 logger.debug(f"[Call {self.call_id}] Ignored acoustic echo of assistant speech: '{clean}'")
                 return
 
-        # 3. Instant Barge-In on substantive caller speech (>= 2 words and >= 0.8s into speech)
+        # 3. If assistant is actively speaking, only allow barge-in on substantive, non-echo caller speech
         if self.orchestrator.is_speaking:
             spoken_duration = time.perf_counter() - self.orchestrator.speaking_start_time
             words = [w for w in clean.split() if len(w) > 1]
-            if len(words) >= 2 and spoken_duration >= 0.8:
-                logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{clean}' during assistant speech -> halting assistant immediately!")
+            if len(words) >= 2 and spoken_duration >= 1.0:
+                logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{clean}' during assistant speech ({spoken_duration:.2f}s) -> halting assistant immediately!")
                 await self.orchestrator.handle_barge_in()
+            else:
+                # Do not schedule utterance flushes while assistant is actively speaking without genuine barge-in
+                return
 
         # 4. Update latest cumulative transcript for this turn
         self._latest_turn_transcript = clean
@@ -347,6 +350,22 @@ class PlivoMediaGateway:
         if getattr(self, "_greeting_in_progress", False) or getattr(self.orchestrator, "greeting_in_progress", False):
             logger.info(f"[Call {self.call_id}] Greeting in progress; ignoring utterance: '{utterance}'")
             return
+
+        import re
+        # If assistant is currently speaking, ensure genuine barge-in before cancelling
+        if self.orchestrator.is_speaking:
+            spoken_duration = time.perf_counter() - self.orchestrator.speaking_start_time
+            curr_words = set(re.findall(r"\w+", getattr(self.orchestrator, "current_speaking_text", "").lower()))
+            trans_words = set(re.findall(r"\w+", utterance.lower()))
+            if trans_words and trans_words.issubset(curr_words):
+                logger.info(f"[Call {self.call_id}] Suppressed acoustic echo while speaking: '{utterance}'")
+                return
+            words = [w for w in utterance.split() if len(w) > 1]
+            if len(words) < 2 or spoken_duration < 1.0:
+                logger.info(f"[Call {self.call_id}] Suppressed minor utterance while speaking ({spoken_duration:.2f}s): '{utterance}'")
+                return
+            logger.info(f"[Call {self.call_id}] 🛑 Caller spoke '{utterance}' during playback -> barge-in confirmed")
+            await self.orchestrator.handle_barge_in()
 
         import re
         # Filter carrier automated announcements (e.g. call forwarding / voicemail greetings)
