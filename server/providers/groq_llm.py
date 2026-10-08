@@ -9,53 +9,23 @@ from server.providers.base import LLMProvider
 logger = logging.getLogger(__name__)
 
 def generate_grounded_offline_reply(user_query: str, system_prompt: Optional[str] = None) -> str:
-    """Generate grounded, zero-hallucination responses based on verified business context when offline"""
+    """Generate concise (5-15 words) grounded responses when LLM is temporarily unavailable"""
     q = (user_query or "").lower().strip()
     sp = (system_prompt or "").lower()
-
-    # Zero-hallucination guardrail for unverified/absurd requests
-    hallucination_triggers = [
-        "helicopter", "10 bhk", "penthouse", "astronaut", "free direct admission",
-        "without any test", "free diamond", "90% discount", "90 percent"
-    ]
-    if any(trigger in q for trigger in hallucination_triggers):
-        return "I apologize, but we do not have that unlisted inventory or service available. I cannot promise unverified options. Let me offer our human representative to assist you."
-
-    # Telugu responses
-    if any(term in q for term in ["lo", "unda", "unnara", "cheyyagalara", "cheyandi", "namaskaram"]):
-        if "site visit" in q or "visit" in q or "tomorrow" in q:
-            return "Kanditanga site visit arrange cheyagalanu. We organize site visits every day between 10 AM and 6 PM."
-        if "2 bhk" in q or "price" in q or "available" in q or "bhk" in q or "hyderabad" in q:
-            return "Avunu andi, Hyderabad lo premium 2 BHK apartments available unnayyi, starting price ₹85 Lakhs nundi."
-        return "Namaskaram! SARA voice assistant ki swagatham. Meeku ela sahayam cheyagalanu?"
-
-    # Hindi responses
-    if any(term in q for term in ["hai", "kitni", "shuru", "kya", "namaste"]):
-        if "2 bhk" in q or "price" in q or "lakh" in q:
-            return "Namaste! Hamare 2 BHK apartments ki starting price ₹85 Lakhs se shuru hoti hai."
-        return "Namaste! SARA AI assistant mein aapka swagat hai. Main aapki kya sahayata kar sakti hoon?"
-
-    # Real estate pricing and details
-    if "starting price" in q or "price" in q or "cost" in q or "2 bhk" in q or "3 bhk" in q:
-        if "college" in sp or "university" in sp or "fee" in q or "b.tech" in q:
-            return "Tuition fee for B.Tech CSE is ₹1.5 Lakhs per year with merit scholarship options available."
-        return "The starting price for a 2 BHK apartment is ₹85 Lakhs in Gachibowli and Kondapur."
-
-    # College / University fees and courses
-    if "fee" in q or "tuition" in q or "b.tech" in q or "eligibility" in q:
-        return "Tuition fee for B.Tech CSE is ₹1.5 Lakhs per year with merit scholarship options available."
-
-    # Product Sales / Warranty
-    if "warranty" in q or "guarantee" in q or "support" in q:
-        return "All systems and products include a 1-year comprehensive manufacturer warranty."
-
-    if "laptop" in q or "gaming" in q:
-        return "The Apex Gaming series starts at ₹75,000 with a 1-year warranty."
+    is_telugu = any(ch in q for ch in ["హ", "ల", "న", "ద", "ర", "మ", "క", "య", "ం", "ు", "ి"]) or any(t in q for t in ["andi", "garu", "cheppandi", "enti", "unda", "unnara", "namaste", "namaskaram", "hello"]) or ("telugu" in sp or "te" in sp)
 
     if "site visit" in q or "visit" in q:
-        return "Yes, absolutely! We organize site visits every day between 10 AM and 6 PM. I can arrange one for you."
+        return "తప్పకుండా, ఈ weekend ఉచిత site visit ప్లాన్ చేద్దామా?" if is_telugu else "Sure! We can arrange a free site visit this weekend."
 
-    return "Thank you for asking! I am here to help with all details about our verified services, pricing, and availability. How else can I assist you?"
+    if any(t in q for t in ["price", "cost", "budget", "entha", "rate"]):
+        return "Shankarpally villa plots ₹20 లక్షల నుండి ఉన్నాయి. మీ బడ్జెట్ ఎంతండి?" if is_telugu else "Shankarpally plots start from ₹20 Lakhs. What is your budget?"
+
+    if any(t in q for t in ["hello", "hi", "హలో", "who", "evaru", "cheppandi"]):
+        return "హలో అండి! ABC Properties నుండి మాట్లాడుతున్నాను. మీ requirement చెప్పండి." if is_telugu else "Hello! Calling from ABC Properties. What property are you looking for?"
+
+    if is_telugu:
+        return "అవునండి, నేను వింటున్నాను. మీ requirement గురించి చెప్పండి."
+    return "Yes, I am listening. What type of property are you looking for?"
 
 class GroqLLM(LLMProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):

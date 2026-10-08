@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from server.config import settings
 from server.models import (
-    Call, AIEmployee, KnowledgeSource, KnowledgeDocument, Lead,
+    Call, AIEmployee, KnowledgeSource, KnowledgeDocument, Lead, Customer,
     ConversationSession, SessionMessage, LatencyMetric, CallEvent,
     Workspace, BusinessProfile
 )
@@ -101,32 +101,62 @@ class ConversationOrchestrator:
         self.active_turn_task: Optional[asyncio.Task] = None
         self.speaking_start_time: float = 0.0
         self.is_speaking: bool = False
+        self.greeting_in_progress: bool = False
+        self.current_speaking_text: str = ""
         self.use_groq_primary: bool = (getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq")
         self._system_prompt = self._compile_system_prompt()
 
     def get_initial_greeting(self) -> str:
-        """Construct warm, respectful, business-tailored initial greeting."""
-        emp_name = self.employee.name if self.employee else "Sara"
+        """Construct warm, respectful, concise initial greeting (under 4 seconds, 8-12 words)."""
+        emp_name = self.employee.name if self.employee else "Priya"
         lang = (self.language or "te").lower()
-        biz_name = "మా సంస్థ"
+        biz_name = "ABC Properties"
+        lead_name = ""
 
-        if self.db and self.employee:
+        if self.db:
             try:
-                ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
-                if ws and ws.name:
-                    biz_name = ws.name
-                bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
-                if bp and bp.business_name:
-                    biz_name = bp.business_name
+                # 1. Fetch lead name from call if available
+                if self.call_id:
+                    call = self.db.query(Call).filter(Call.id == self.call_id).first()
+                    if call:
+                        if call.lead_id:
+                            lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
+                            if lead and lead.name:
+                                lead_name = lead.name.strip()
+                        if not lead_name and call.customer_id:
+                            cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
+                            if cust and cust.name and not cust.name.lower().startswith("customer"):
+                                lead_name = cust.name.strip()
+                        if not lead_name and (call.to_number or call.phone_number):
+                            num = call.to_number or call.phone_number
+                            lead = self.db.query(Lead).filter((Lead.phone == num) | (Lead.phone.endswith(num[-10:]))).first()
+                            if lead and lead.name:
+                                lead_name = lead.name.strip()
+
+                # 2. Fetch business name
+                if self.employee:
+                    ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
+                    if ws and ws.name:
+                        biz_name = ws.name
+                    bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
+                    if bp and bp.business_name:
+                        biz_name = bp.business_name
             except Exception:
                 pass
 
+        # Ultra-concise greeting under 4 seconds (8-12 words) so caller can comfortably reply
         if lang in ["te", "telugu"]:
-            return f"నమస్కారం అండి! నేను {biz_name} నుంచి {emp_name} మాట్లాడుతున్నాను. మీకు ఎలా సహాయం చేయగలను అండి?"
+            if lead_name:
+                return f"హలో {lead_name} గారండి! {biz_name} నుండి కాల్ చేస్తున్నాను, మాట్లాడటానికి టైమ్ ఉందా?"
+            return f"హలో అండి! {biz_name} నుండి కాల్ చేస్తున్నాను, మాట్లాడటానికి ఇది మంచి సమయమేనా?"
         elif lang in ["hi", "hindi"]:
-            return f"नमस्ते जी! मैं {biz_name} से {emp_name} बात कर रही हूँ। मैं आपकी क्या सहायता कर सकती हूँ?"
+            if lead_name:
+                return f"नमस्ते {lead_name} जी! {biz_name} से बात कर रही हूँ, क्या बात करने का सही समय है?"
+            return f"नमस्ते जी! {biz_name} से {emp_name} बात कर रही हूँ, क्या बात करने का सही समय है?"
         else:
-            return f"Hello! This is {emp_name} from {biz_name}. How can I assist you today?"
+            if lead_name:
+                return f"Hello {lead_name}! Calling from {biz_name}. Is this a good time to speak?"
+            return f"Hello! This is {emp_name} from {biz_name}. Is this a good time to speak?"
 
     def set_state(self, new_state: str) -> None:
         """Explicit state transition with event logging."""
@@ -151,7 +181,7 @@ class ConversationOrchestrator:
         emp_name = self.employee.name if self.employee else "Priya"
         role = self.employee.role if self.employee else "Senior Real Estate Advisor"
         dept = self.employee.department if self.employee else "Client Advisory"
-        mission = self.employee.mission if self.employee else "Deeply understand customer requirements (budget, BHK, location), answer all questions politely and directly, and recommend the best tailored solutions."
+        mission = self.employee.mission if self.employee else "Qualify the lead, collect property requirement, understand budget and location, and book a site visit or follow-up."
 
         # Fetch verified business profile & knowledge
         biz_name = "ABC Properties"
@@ -161,62 +191,90 @@ class ConversationOrchestrator:
         services_str = "1, 2 & 3 BHK Flats, Luxury High-rise Apartments, Gated Villa Plots, Bank Loan Assistance (SBI/HDFC), Free Weekend Site Visits"
         policies_str = "All projects HMDA & RERA approved. 100% clear titles. Up to 80% bank loan assistance."
         knowledge_context = ""
+        lead_name = "Customer"
+        lead_phone = ""
+        lead_area = "Hyderabad"
+        lead_budget = "Flexible"
+        lead_topic = "Apartments & Gated Plots"
+        lead_req_type = "Buy / Investment"
+        lead_visit_date = "This Weekend"
+        lead_notes = "Inquired via online property enquiry"
 
-        if self.db and self.employee:
+        if self.db:
             try:
-                # 1. Fetch Workspace
-                ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
-                if ws and ws.name:
-                    biz_name = ws.name
+                if self.call_id:
+                    call = self.db.query(Call).filter(Call.id == self.call_id).first()
+                    if call:
+                        lead_phone = call.to_number or call.phone_number or ""
+                        if call.lead_id:
+                            lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
+                            if lead:
+                                lead_name = lead.name or lead_name
+                                lead_area = lead.location or lead_area
+                                lead_budget = lead.budget or lead_budget
+                                lead_topic = lead.intent or lead_topic
+                        if lead_name == "Customer" and call.customer_id:
+                            cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
+                            if cust and cust.name and not cust.name.lower().startswith("customer"):
+                                lead_name = cust.name
 
-                # 2. Fetch BusinessProfile table if present
-                bp = self.db.query(BusinessProfile).filter(
-                    (BusinessProfile.user_id == self.employee.workspace_id) |
-                    (BusinessProfile.user_id == getattr(self.employee, "created_by", None))
-                ).first()
-                if bp:
-                    biz_name = bp.business_name or biz_name
-                    biz_desc = bp.description or biz_desc
-                    biz_industry = bp.industry or biz_industry
-                    if bp.locations:
-                        locations_str = ", ".join(bp.locations) if isinstance(bp.locations, list) else str(bp.locations)
-                    if bp.services_offered:
-                        services_str = ", ".join(bp.services_offered) if isinstance(bp.services_offered, list) else str(bp.services_offered)
-                    if bp.important_policies:
-                        policies_str = bp.important_policies
+                if self.employee:
+                    # 1. Fetch Workspace
+                    ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
+                    if ws and ws.name:
+                        biz_name = ws.name
 
-                # 3. Fetch Knowledge Sources
-                ks_list = self.db.query(KnowledgeSource).filter(
-                    (KnowledgeSource.workspace_id == self.employee.workspace_id) |
-                    (KnowledgeSource.employee_id == self.employee.id)
-                ).limit(5).all()
-                if ks_list:
-                    snippets = []
-                    for ks in ks_list:
-                        if ks.extracted_text:
-                            snippets.append(f"[{ks.name}]:\n{ks.extracted_text.strip()}")
-                    if snippets:
-                        knowledge_context = "\nVERIFIED REAL ESTATE OFFERINGS & PRICING:\n" + "\n\n".join(snippets)
+                    # 2. Fetch BusinessProfile table if present
+                    bp = self.db.query(BusinessProfile).filter(
+                        (BusinessProfile.user_id == self.employee.workspace_id) |
+                        (BusinessProfile.user_id == getattr(self.employee, "created_by", None))
+                    ).first()
+                    if bp:
+                        biz_name = bp.business_name or biz_name
+                        biz_desc = bp.description or biz_desc
+                        biz_industry = bp.industry or biz_industry
+                        if bp.locations:
+                            locations_str = ", ".join(bp.locations) if isinstance(bp.locations, list) else str(bp.locations)
+                        if bp.services_offered:
+                            services_str = ", ".join(bp.services_offered) if isinstance(bp.services_offered, list) else str(bp.services_offered)
+                        if bp.important_policies:
+                            policies_str = bp.important_policies
+
+                    # 3. Fetch Knowledge Sources
+                    ks_list = self.db.query(KnowledgeSource).filter(
+                        (KnowledgeSource.workspace_id == self.employee.workspace_id) |
+                        (KnowledgeSource.employee_id == self.employee.id)
+                    ).limit(5).all()
+                    if ks_list:
+                        snippets = []
+                        for ks in ks_list:
+                            if ks.extracted_text:
+                                snippets.append(f"[{ks.name}]:\n{ks.extracted_text.strip()}")
+                        if snippets:
+                            knowledge_context = "\nVERIFIED REAL ESTATE OFFERINGS & PRICING:\n" + "\n\n".join(snippets)
             except Exception as e:
                 logger.warning(f"Error compiling business context: {e}")
 
-        base_prompt = f"""You are {emp_name}, representing {biz_name} ({biz_industry}) as a {role}.
-Mission: {mission}
-Catalog & Inventory:
-- Budget 18L - 35L: Shankarpally gated villa plots (from ₹20L) & Patancheru 2 BHK flats (from ₹28L).
-- Budget 36L - 50L: Bachupally 2 BHK flats (from ₹36L).
-- Budget 55L - 90L: Miyapur & Chandanagar 2 & 3 BHK flats.
-- Luxury 1.5 Cr+: Gachibowli & Kokapet 3/4 BHK luxury residences (ABC Heights).
-Approvals: 100% HMDA/RERA clear titles. 80% bank loan from SBI/HDFC. Free weekend site visit with cab pickup.
+        base_prompt = f"""You are {emp_name}, real-time AI voice representative for {biz_name} ({biz_industry}).
+Role: {role}. Mission: {mission}.
+Caller: {lead_name} | Location: {lead_area} | Budget: {lead_budget}
 
-RULES:
-1. Directly answer what the customer asks or stated budget first.
-2. In 20-30L budget: immediately suggest Shankarpally villa plots or Patancheru 2 BHK flats.
-3. If customer asks "Why did you call?" / "ఎందుకు కాల్ చేశారు?": reply you called from {biz_name} to share best property deals and understand their needs.
-4. Speak ONLY 1-2 sweet, short sentences in natural conversational Telugu/English (maximum 15-20 words).
-5. Never repeat company intro or say "నమస్కారం అండి" after turn 1. Use "ఖచ్చితంగా అండి", "చెప్పండి అండి", "అవునండి".
-6. If customer says "Hello" or "హలో": say "చెప్పండి అండి, నేను వింటున్నాను. మీకు ఎలాంటి ప్రాపర్టీ వివరాలు కావాలి?".
-"""
+CRITICAL PHONE CALL RULES:
+1. RESPONSE LENGTH: 5–15 words only! Maximum 1–2 short sentences. Never give long explanations or reasonings.
+2. LANGUAGE: Natural conversational Telugu-English mix (or caller's spoken language). Match the caller.
+3. QUESTIONS: Ask only 1 question at a time.
+4. GREETINGS: If caller says "హలో" / "Hello" / "Who is this?", introduce politely in 1 short sentence and ask their requirement.
+5. FLOW: 1) Understand property type -> 2) Preferred location/budget -> 3) Suggest matching project -> 4) Offer free weekend site visit.
+6. PROJECTS ({locations_str}):
+- Shankarpally villa plots: from ₹20 Lakhs
+- Patancheru 2 BHK flats: from ₹28 Lakhs
+- Bachupally 2 BHK flats: from ₹36 Lakhs
+- Miyapur & Chandanagar 2/3 BHK flats: from ₹55 Lakhs
+- Kokapet luxury flats: from ₹1.5 Cr
+- 100% HMDA/RERA clear titles, up to 80% bank loan, free weekend site visit with cab pickup.
+7. OBJECTIONS: If expensive: "Mee budget chepthe suitable option suggest chesthanu." If not interested: "Okay, no problem. Thank you!"
+8. TRUTHFULNESS: Never invent prices or details. If unsure say: "Adi confirm chesi chepthanu."
+{knowledge_context[:400] if knowledge_context else ""}"""
         return base_prompt
 
     async def handle_barge_in(self) -> None:
@@ -224,6 +282,10 @@ RULES:
         Executed when caller speech is detected during assistant playback or turn generation.
         Stops current speaking turn, cancels ongoing generation/synthesis, flushes audio queue, and transitions to LISTENING.
         """
+        if getattr(self, "greeting_in_progress", False):
+            logger.info(f"[Call {self.call_id}] Greeting in progress; ignoring barge-in")
+            return
+
         is_active = self.is_speaking or (self.state == ConversationState.SPEAKING) or (self.active_turn_task and not self.active_turn_task.done())
         if not is_active:
             return
@@ -231,6 +293,7 @@ RULES:
         logger.info(f"[Call {self.call_id}] 🛑 Barge-in confirmed -> interrupting assistant turn immediately")
         self.set_state(ConversationState.INTERRUPTED)
         self.is_speaking = False
+        self.current_speaking_text = ""
 
         # Cancel active turn task
         if self.active_turn_task and not self.active_turn_task.done():
@@ -264,6 +327,11 @@ RULES:
         now = time.time()
         if (now - self.last_user_time < 1.0) and (clean_text.lower() == self.last_user_text.lower()):
             logger.debug(f"[Call {self.call_id}] Discarding duplicate utterance: '{clean_text}'")
+            return
+
+        # If greeting is currently streaming to Plivo, do not cut it off
+        if getattr(self, "greeting_in_progress", False):
+            logger.info(f"[Call {self.call_id}] Greeting in progress; deferring customer turn: '{clean_text}'")
             return
 
         # Cancel any previous speaking turn that might still be active
@@ -353,11 +421,11 @@ RULES:
             if use_groq:
                 # Use sliding context window (last 6 messages) to prevent token bloat & TPM rate limit
                 recent_messages = self.messages[-6:] if len(self.messages) > 6 else self.messages
-                # Ultra-low latency (~150ms) direct streaming via Groq (80 tokens max for crisp turns)
+                # Ultra-low latency (~120ms) direct streaming via Groq (60 tokens max for 5-15 word responses)
                 async for gchunk in self.fallback_groq.stream_chat(
                     messages=recent_messages,
                     system_prompt=self._system_prompt,
-                    max_tokens=80
+                    max_tokens=60
                 ):
                     if self.state == ConversationState.INTERRUPTED:
                         break
@@ -445,7 +513,7 @@ RULES:
                         async for gchunk in self.fallback_groq.stream_chat(
                             messages=self.messages,
                             system_prompt=self._system_prompt,
-                            max_tokens=150
+                            max_tokens=60
                         ):
                             tok = gchunk.get("token", "")
                             if tok:
@@ -549,6 +617,7 @@ RULES:
         self.set_state(ConversationState.SPEAKING)
         self.speaking_start_time = time.perf_counter()
         self.is_speaking = True
+        self.current_speaking_text = normalized
 
         synth_res = await self.cartesia_service.synthesize(
             text=normalized,
