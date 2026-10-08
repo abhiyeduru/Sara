@@ -37,9 +37,12 @@ class Settings:
     SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")
     SARVAM_STT_MODEL: str = os.getenv("SARVAM_STT_MODEL", "saarika:v2.5")
 
-    # AssemblyAI STT (Primary)
+    # ElevenLabs STT (Primary Scribe v2 Realtime)
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "sk_9830223f1341064e578f3d5ca8ce823a77ad9871b5f7c4b0")
+    PRIMARY_STT: str = os.getenv("PRIMARY_STT", "elevenlabs")
+
+    # AssemblyAI STT
     ASSEMBLYAI_API_KEY: str = os.getenv("ASSEMBLYAI_API_KEY", "f56b193cb1a44855b2a88243ba044b8e")
-    PRIMARY_STT: str = os.getenv("PRIMARY_STT", "assemblyai")
 
     # Deepgram STT
     DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY", "")

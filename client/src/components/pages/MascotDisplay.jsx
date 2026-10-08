@@ -19,12 +19,18 @@ export default function MascotDisplay({ mascotKey = 'glasses', size = 88, label,
         overflow: 'visible'
       }}
     >
-      <Mascot
-        directions={directions}
-        reactions={reactions}
-        size={size}
-        label={label || key}
-      />
+      {Mascot ? (
+        <Mascot
+          directions={directions}
+          reactions={reactions}
+          size={size}
+          label={label || key}
+        />
+      ) : (
+        <div className="w-full h-full rounded-2xl bg-gradient-to-tr from-sara-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+          {fallbackLetter}
+        </div>
+      )}
     </div>
   );
 }

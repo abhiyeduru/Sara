@@ -16,8 +16,9 @@ from sqlalchemy.orm import Session
 
 from server.database import SessionLocal
 from server.models import Call, AIEmployee
-from server.services.voice.deepgram_service import DeepgramSTTService
+from server.services.voice.elevenlabs_service import ElevenLabsSTTService
 from server.services.voice.assemblyai_service import AssemblyAISTTService
+from server.services.voice.deepgram_service import DeepgramSTTService
 from server.config import settings
 from server.services.voice.conversation_orchestrator import ConversationOrchestrator, ConversationState
 from server.services.voice.audio_codec_service import AudioCodecService
@@ -133,11 +134,29 @@ class PlivoMediaGateway:
             flush_audio_callback=self._send_clear_to_plivo,
         )
 
-        # 2. Initialize Streaming STT (AssemblyAI Primary with Deepgram Fallback)
+        # 2. Initialize Streaming STT (ElevenLabs Primary with AssemblyAI and Deepgram Fallback)
         lang = (self.orchestrator.language if self.orchestrator else None) or (employee.voice_language if employee else None) or "te"
         stt_connected = False
+        primary_stt = getattr(settings, "PRIMARY_STT", "elevenlabs").lower()
 
-        if getattr(settings, "PRIMARY_STT", "assemblyai") == "assemblyai" and settings.ASSEMBLYAI_API_KEY:
+        if primary_stt == "elevenlabs" and getattr(settings, "ELEVENLABS_API_KEY", None):
+            try:
+                self.deepgram_service = ElevenLabsSTTService(
+                    sample_rate=8000,
+                    encoding="mulaw",  # Plivo sends native 8kHz mulaw
+                    channels=1,
+                    language=lang,
+                    on_transcript=self._on_deepgram_transcript,
+                    on_speech_started=self._on_deepgram_speech_started,
+                    on_utterance_end=self._on_deepgram_utterance_end,
+                )
+                stt_connected = await self.deepgram_service.connect()
+                if stt_connected:
+                    logger.info(f"🎙️ [Call {self.call_id}] Connected to ElevenLabs Scribe v2 Realtime STT for Plivo call")
+            except Exception as e:
+                logger.warning(f"ElevenLabs streaming init notice: {e}")
+
+        if not stt_connected and settings.ASSEMBLYAI_API_KEY:
             try:
                 self.deepgram_service = AssemblyAISTTService(
                     sample_rate=8000,
@@ -150,7 +169,7 @@ class PlivoMediaGateway:
                 )
                 stt_connected = await self.deepgram_service.connect()
                 if stt_connected:
-                    logger.info(f"🎙️ [Call {self.call_id}] Connected to AssemblyAI Universal-3-6-Pro Streaming STT for Plivo call")
+                    logger.info(f"🎙️ [Call {self.call_id}] Connected to AssemblyAI Universal-3-6-Pro Streaming STT fallback for Plivo call")
             except Exception as e:
                 logger.warning(f"AssemblyAI streaming init notice: {e}")
 
