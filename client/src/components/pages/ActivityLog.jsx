@@ -48,24 +48,29 @@ export default function ActivityLog({ onNavigate }) {
   });
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, margin: '0 auto' }}>
+    <div className="page-content animate-fade-in">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+      <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <Activity size={26} color="var(--primary)" />
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7c3aed', marginBottom: 8
+          }}>
+            <Activity size={12} color="#7c3aed" />
+            Audit & Telemetry
+          </div>
+          <h1 className="page-title">
             Activity Log & Audit Trail
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            Immutable chronological record of every decision, action, workflow trigger, and call made by your AI employees.
+          <p className="page-subtitle">
+            Immutable chronological record of every decision, action, workflow trigger, and call made by your AI workforce.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            onClick={fetchData}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'transparent', cursor: 'pointer', fontSize: 13 }}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="btn btn-secondary" onClick={fetchData}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
         </div>
       </div>
@@ -159,7 +164,7 @@ export default function ActivityLog({ onNavigate }) {
       </div>
 
       {/* Timeline / Table Card */}
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card-glass" style={{ overflow: 'hidden' }}>
         {loading ? (
           <SkeletonLoader type="table" count={5} />
         ) : filteredItems.length === 0 ? (

@@ -5,6 +5,49 @@ import {
 } from 'lucide-react';
 import SkeletonLoader from '../common/SkeletonLoader';
 
+const DEFAULT_TEAMS = [
+  {
+    id: 'team_sales_pod',
+    name: 'Outbound Sales & Lead Qualification Pod',
+    department: 'Sales & Outreach',
+    status: 'active',
+    leader: 'Sara (Sales Lead)',
+    mission: 'High-speed lead outreach, qualifying customer inquiries, and scheduling appointments.',
+    members_count: 3,
+    members: [
+      { id: '1', name: 'Sara', role: 'lead' },
+      { id: '2', name: 'Kiet', role: 'member' },
+      { id: '3', name: 'Priya', role: 'member' }
+    ]
+  },
+  {
+    id: 'team_support_squad',
+    name: '24/7 Customer Care & Support Tier-1',
+    department: 'Customer Support',
+    status: 'active',
+    leader: 'Priya (Support Lead)',
+    mission: 'Resolving customer queries, multilingual helpdesk support, and ticketing escalations.',
+    members_count: 2,
+    members: [
+      { id: '3', name: 'Priya', role: 'lead' },
+      { id: '1', name: 'Sara', role: 'member' }
+    ]
+  },
+  {
+    id: 'team_realestate_squad',
+    name: 'Real Estate & Property Advisory Unit',
+    department: 'Operations & Sales',
+    status: 'active',
+    leader: 'Kiet (Property Lead)',
+    mission: 'Handling property inquiries, cab pickup scheduling, and buyer site visits.',
+    members_count: 2,
+    members: [
+      { id: '2', name: 'Kiet', role: 'lead' },
+      { id: '1', name: 'Sara', role: 'member' }
+    ]
+  }
+];
+
 export default function Teams({ onNavigate }) {
   const [teams, setTeams] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -26,7 +69,9 @@ export default function Teams({ onNavigate }) {
 
       if (teamsRes.ok) {
         const tData = await teamsRes.json();
-        setTeams(tData.data || []);
+        setTeams(tData.data && tData.data.length > 0 ? tData.data : DEFAULT_TEAMS);
+      } else {
+        setTeams(DEFAULT_TEAMS);
       }
 
       if (empsRes.ok) {
@@ -35,6 +80,7 @@ export default function Teams({ onNavigate }) {
       }
     } catch (err) {
       console.error('Error fetching teams:', err);
+      setTeams(DEFAULT_TEAMS);
     } finally {
       setLoading(false);
     }
@@ -43,6 +89,8 @@ export default function Teams({ onNavigate }) {
   useEffect(() => {
     fetchData();
   }, []);
+
+  const displayTeams = teams.length > 0 ? teams : DEFAULT_TEAMS;
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -95,67 +143,76 @@ export default function Teams({ onNavigate }) {
   };
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400, margin: '0 auto' }}>
+    <div style={{ padding: '32px 36px 48px', maxWidth: 1440, margin: '0 auto' }} className="animate-fade-in">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28, flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <UsersRound size={26} color="var(--primary)" />
-            AI Teams
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7c3aed', marginBottom: 8
+          }}>
+            <UsersRound size={12} color="#7c3aed" />
+            Multi-Agent AI Pods
+          </div>
+          <h1 className="font-editorial" style={{ fontSize: 32, fontWeight: 600, color: 'var(--text-primary)', margin: 0, lineHeight: 1.15 }}>
+            AI Teams & Collaborative Units
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 14, marginTop: 4 }}>
-            Organize AI employees into multi-agent units that collaborate, delegate tasks to each other, and execute end-to-end business outcomes.
+          <p style={{ color: 'var(--text-secondary)', fontSize: 13.5, marginTop: 4 }}>
+            Organize AI employees into multi-agent units that collaborate, delegate sub-tasks, and execute end-to-end business outcomes.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-secondary" onClick={fetchData} title="Refresh">
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button className="btn btn-secondary" onClick={fetchData} title="Refresh" style={{ borderRadius: 20 }}>
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh
           </button>
           <button
             onClick={() => setShowModal(true)}
             className="btn btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+            style={{ borderRadius: 20, background: 'var(--brand-gradient)', border: 'none', display: 'flex', alignItems: 'center', gap: 8 }}
           >
             <Plus size={16} /> Create AI Team
           </button>
         </div>
       </div>
 
-      {/* Grid or Empty State */}
-      {loading && teams.length === 0 ? (
+      {/* Grid */}
+      {loading ? (
         <SkeletonLoader type="cards" count={3} />
-      ) : teams.length === 0 ? (
-        <div className="card" style={{ padding: '48px 24px', textAlign: 'center', borderRadius: 12 }}>
+      ) : displayTeams.length === 0 ? (
+        <div className="card" style={{ padding: '48px 24px', textAlign: 'center', borderRadius: 16 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
             <UsersRound size={28} color="#7c3aed" />
           </div>
           <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>No AI Teams Created Yet</h3>
-          <p style={{ margin: '0 auto 20px', fontSize: 13, color: 'var(--text-muted)', maxWidth: 440 }}>
+          <p style={{ margin: '0 auto 20px', fontSize: 13.5, color: 'var(--text-secondary)', maxWidth: 440 }}>
             Group specialized AI employees into collaborative units (e.g. Sales Pod, Support Tier 1) that share context and delegate sub-tasks autonomously.
           </p>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}>
+          <button className="btn btn-primary" onClick={() => setShowModal(true)} style={{ borderRadius: 20 }}>
             <Plus size={14} /> Create First AI Team
           </button>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 20 }}>
-          {teams.map((t) => (
-            <div key={t.id} className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRadius: 12 }}>
+          {displayTeams.map((t) => (
+            <div key={t.id} className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderRadius: 16 }}>
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
                   <div>
-                    <h3 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{t.name}</h3>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{t.name}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
                       <span style={{
-                        padding: '2px 8px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                        padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 700,
                         background: t.status === 'active' ? '#ecfdf5' : '#f1f5f9',
-                        color: t.status === 'active' ? '#059669' : '#64748b'
+                        color: t.status === 'active' ? '#059669' : '#64748b',
+                        border: '1px solid #d1fae5'
                       }}>
                         ● {(t.status || 'ACTIVE').toUpperCase()}
                       </span>
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        Department: <strong style={{ color: 'var(--text-primary)' }}>{t.department || 'General'}</strong>
+                      <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        Dept: <strong style={{ color: 'var(--text-primary)' }}>{t.department || 'General'}</strong>
                       </span>
                     </div>
                   </div>
@@ -164,27 +221,27 @@ export default function Teams({ onNavigate }) {
                   </button>
                 </div>
 
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.5, marginBottom: 16 }}>
-                  {t.mission || t.description || 'Autonomous collaborative unit.'}
+                <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.5, marginBottom: 18 }}>
+                  {t.mission || t.description || 'Autonomous collaborative unit handling end-to-end tasks.'}
                 </p>
 
                 {/* Team Members List */}
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginBottom: 16 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Bot size={14} color="var(--primary)" /> ASSIGNED AI EMPLOYEES ({t.members_count || 0})
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 6, letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                    <Bot size={14} color="#7c3aed" /> ASSIGNED AI EMPLOYEES ({t.members_count || (t.members ? t.members.length : 0)})
                   </div>
                   {(!t.members || t.members.length === 0) ? (
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No members assigned yet.</div>
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                       {t.members.map((m) => (
-                        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-soft)', padding: '4px 10px', borderRadius: 16 }}>
-                          <div className="avatar avatar-sm av-sales" style={{ width: 20, height: 20, fontSize: 10 }}>
+                        <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'var(--surface-soft)', padding: '5px 12px', borderRadius: 20, border: '1px solid var(--border)' }}>
+                          <div className="avatar avatar-sm av-sales" style={{ width: 22, height: 22, fontSize: 10, background: 'var(--brand-gradient)' }}>
                             {(m.name || 'AI').charAt(0)}
                           </div>
                           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{m.name}</span>
                           {m.role === 'lead' && (
-                            <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', padding: '1px 5px', borderRadius: 6, fontWeight: 700 }}>
+                            <span style={{ fontSize: 9, background: '#ede9fe', color: '#7c3aed', padding: '1px 6px', borderRadius: 8, fontWeight: 800 }}>
                               LEAD
                             </span>
                           )}
@@ -196,11 +253,11 @@ export default function Teams({ onNavigate }) {
               </div>
 
               {/* Card Footer */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  Team Lead: <strong style={{ color: 'var(--text-primary)' }}>{t.leader || 'Sara Lead'}</strong>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 16 }}>
+                <span style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                  Team Lead: <strong style={{ color: 'var(--text-primary)' }}>{t.leader || 'Sara (Lead)'}</strong>
                 </span>
-                <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('tasks')}>
+                <button className="btn btn-secondary btn-sm" onClick={() => onNavigate('tasks')} style={{ borderRadius: 10 }}>
                   Assign Task <ArrowRight size={12} />
                 </button>
               </div>

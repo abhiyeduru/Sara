@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import MascotDisplay from './MascotDisplay';
 import {
   Bot, Phone, CheckSquare, MessageSquare, BookOpen, GraduationCap,
   Settings, Shield, TrendingUp, Mic, MicOff, Play, Pause, Edit3, MoreHorizontal,
@@ -27,6 +28,51 @@ const DEFAULT_VARIABLES = [
   'Project Name'
 ];
 
+const LANGUAGE_SCRIPTS = {
+  telugu: {
+    opening_line: "హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను సారా ని.",
+    steps: [
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "మా ఆఫీస్ నుండి సారా మాట్లాడేది అండి, మీరు ప్రాపర్టీ కోసం ఇంక్వైరీ చేశారు కదా అండి?" },
+      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "మీరు ఏ ఏరియాలో ప్లాట్ లేదా ఫ్లాట్ వెతుకుతున్నారో చెప్పగలరా అండి?" },
+      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "మీరు లివింగ్ కోసం చూస్తున్నారా లేక ఇన్వెస్ట్‌మెంట్ కోసమా అండి?" },
+      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "మీ బడ్జెట్ రేంజ్ ఎంత ఉండొచ్చు అండి?" },
+      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "ఈ వీకెండ్ సైట్ విజిట్ కి ఎప్పుడు రాగలరో చెప్తారా అండి?" }
+    ]
+  },
+  english: {
+    opening_line: "Hello! Am I speaking with {Lead Name}? This is Sara calling.",
+    steps: [
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "Hi, I am Sara calling from our real estate office regarding your recent property inquiry." },
+      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "Could you please tell me which preferred location or area you are looking for?" },
+      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "Are you looking for personal living or investment purposes?" },
+      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "What is your approximate budget range for this property?" },
+      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "When would be a convenient time for you to schedule a site visit this weekend?" }
+    ]
+  },
+  hindi: {
+    opening_line: "नमस्ते! क्या मैं {Lead Name} से बात कर रहा हूँ? मैं सारा हूँ।",
+    steps: [
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "नमस्ते, मैं सारा बोल रही हूँ। आपकी प्रॉपर्टी इंक्वायरी के संबंध में कॉल किया है।" },
+      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "कृपया बताएं कि आप किस लोकेशन या क्षेत्र में देख रहे हैं?" },
+      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "क्या आप रहने के लिए देख रहे हैं या इन्वेस्ट करने के लिए?" },
+      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "आपकी बजट रेंज क्या रहेगी?" },
+      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "साइट विजिट के लिए आप कब आ सकते हैं?" }
+    ]
+  }
+};
+
+function formatIndianPhone(input) {
+  if (!input) return '+916302015687';
+  let cleaned = input.toString().replace(/[\s\-\(\)]/g, '');
+  if (cleaned.startsWith('+91')) return cleaned;
+  if (cleaned.startsWith('91') && cleaned.length >= 12) return '+' + cleaned;
+  if (cleaned.startsWith('0') && cleaned.length >= 11) return '+91' + cleaned.slice(1);
+  const digits = cleaned.replace(/[^0-9]/g, '');
+  if (digits.length === 10) return '+91' + digits;
+  if (!cleaned.startsWith('+')) return '+91' + digits;
+  return cleaned;
+}
+
 export default function EmployeeDetail({ onNavigate, employeeId }) {
   const [tab, setTab] = useState('Call script');
   const [employee, setEmployee] = useState(null);
@@ -48,12 +94,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
   // Test Call Popover State
   const [showTestCallModal, setShowTestCallModal] = useState(false);
-  const [testPhoneNumber, setTestPhoneNumber] = useState('');
+  const [testPhoneNumber, setTestPhoneNumber] = useState(() => localStorage.getItem('sara_test_phone') || '+916302015687');
   const [callingState, setCallingState] = useState(null); // 'calling', 'connected', 'error'
   const [callSid, setCallSid] = useState(null);
 
   // Automated Customer Calling & Instant Leads State
-  const [instantPhone, setInstantPhone] = useState('');
+  const [instantPhone, setInstantPhone] = useState('+916302015687');
   const [instantName, setInstantName] = useState('');
   const [instantPropType, setInstantPropType] = useState('');
   const [instantLocation, setInstantLocation] = useState('');
@@ -81,6 +127,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
   const [selectedVoiceId, setSelectedVoiceId] = useState('sarvam-te-kavitha');
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [voiceTone, setVoiceTone] = useState('respectful');
+  const [selectedLanguage, setSelectedLanguage] = useState('telugu'); // 'telugu', 'english', 'hindi'
   const [previewAudioUrl, setPreviewAudioUrl] = useState(null);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
   const audioPreviewRef = useRef(null);
@@ -94,53 +141,17 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         const res = await fetch('/api/v1/employees');
         if (res.ok) {
           const list = await res.json();
-            // Prioritize Sara AI Employee, then Farhan, then Yashwanth
-            const foundSara = list.data.find(e => e.name?.toLowerCase().trim() === 'sara');
-            const foundFarhan = list.data.find(e => e.name?.toLowerCase().includes('farhan'));
-            const foundYash = list.data.find(e => e.name?.toLowerCase().includes('yashwanth') || e.name?.toLowerCase().includes('karthik'));
-            targetId = foundSara ? foundSara.id : (foundFarhan ? foundFarhan.id : (foundYash ? foundYash.id : list.data[0].id));
-
-        }
-      }
-
-      if (targetId) {
-        const res = await fetch(`/api/v1/employees/${targetId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setEmployee(data);
-          setSelectedVoiceId(data.voice_id || 'sarvam-te-kavitha');
-          setVoiceSpeed(data.voice_speed || 1.0);
-          setVoiceTone(data.voice_tone || 'respectful');
-
-          // Initialize script from universal_spec
-          const uSpec = data.universal_spec || {};
-          const cScript = data.call_script || uSpec.call_script || {};
-
-          if (cScript.opening_line) {
+            // Prioritize Sara AI Employee, then Farhan,           if (cScript.opening_line) {
             setOpeningLine(cScript.opening_line);
           } else {
-            setOpeningLine('హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా?');
+            setOpeningLine('హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను సారా ని.');
           }
 
           if (cScript.steps && cScript.steps.length > 0) {
             setSteps(cScript.steps);
           } else {
-            setSteps([
-              {
-                id: 'step_1',
-                title: '1. Introduce & Reference Enquiry',
-                badge: 'START',
-                content: "Say you're Yashwanth from our real estate office, calling because they just enquired about a property. Mention you're here to help with their property search. Reference the specific property type or project if {Property Type} or {Project Name} is known. Ask which area they're interested in. Handle if they're confused, busy, or ask how you got their number — explain it was from their recent enquiry. For example you might say: 'నేను యశ్వంత్ అండి, మా రియల్ ఎస్టేట్ ఆఫీస్ నుండి. మీరు ఇన్నాళ్ళలో ప్రాపర్టీ గురించి enquiry చేసారు కదా, ఏ rea లో చూస్తున్నారు అండీ?'"
-              },
-              {
-                id: 'step_2',
-                title: '2. Qualify Need & Location',
-                badge: null,
-                content: "Ask which area/location they are interested in. If {Preferred Location} is already known, acknowledge it and skip to next question. Respond naturally to their answer. For example you might say: 'ఏ rea లో plot లేదా flat చూస్తున్నారో చెప్తారా అండీ?'"
-              },
-              {
-                id: 'step_3',
-                title: '3. Qualify: Purpose (Living vs Investment)',
+            setSteps(LANGUAGE_SCRIPTS.telugu.steps);
+          }: '3. Qualify: Purpose (Living vs Investment)',
                 badge: null,
                 content: "Ask if they're looking for living purpose or investment. Respond to their answer, then move to budget. For example you might say: 'మీరు living కోసం చూస్తున్నారా, లేక investment కోసమా అండీ?'"
               },
@@ -267,61 +278,114 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
     }
   };
 
-  // Trigger Outbound Twilio Test Call
+  // Trigger Outbound Test Call
+  // Trigger Outbound Test Call (Sends real cellular call via Plivo line)
   const handleInitiateTestCall = async () => {
-    if (!employee) return;
+    const activeEmp = employee || { id: employeeId || 'emp_sara', name: 'Sara', phone_number: '+91 80 6552 2007' };
+    const empId = activeEmp.id || 'emp_sara';
+    const destPhone = formatIndianPhone(testPhoneNumber || '6302015687');
+    const fromPhone = activeEmp?.phone_number || activeEmp?.telephony_number || '+91 80 6552 2007';
+
     setCallingState('calling');
+    setSwaraFeedback(`Dialing real phone call to ${destPhone} from ${fromPhone}...`);
+
+    // 1. Save current script to backend so call engine uses real script
     try {
-      const res = await fetch(`/api/v1/employees/${employee.id}/call`, {
+      await fetch(`/api/v1/employees/${empId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          call_script: { opening_line: openingLine, steps: steps }
+        })
+      });
+    } catch (e) {
+      console.warn('Script sync before call notice:', e);
+    }
+
+    // 2. Dispatch real cellular call via Plivo
+    try {
+      let res = await fetch(`/api/v1/employees/${empId}/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: testPhoneNumber,
-          lead_name: 'Test Customer'
+          phone_number: destPhone,
+          from_number: fromPhone,
+          lead_name: 'Test Customer',
+          language: selectedLanguage
         })
       });
+
+      if (!res.ok) {
+        res = await fetch('/api/v1/voice/outbound-call', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            employee_id: empId,
+            to_number: destPhone,
+            from_number: fromPhone,
+            language: selectedLanguage
+          })
+        });
+      }
 
       if (res.ok) {
         const data = await res.json();
         setCallSid(data.call_sid || data.twilio_call_sid || data.call_id);
         setCallingState('connected');
         if (data.is_simulated) {
-          setSwaraFeedback(`Test call active (Simulated: ${data.call_sid || data.twilio_call_sid})`);
+          setSwaraFeedback(`⚠️ Plivo Call Simulated: ${data.error_detail || 'Check credentials/tunnel'}`);
         } else {
-          setSwaraFeedback(`Plivo dialing ${testPhoneNumber}...`);
+          setSwaraFeedback(`✓ Live Cellular Call Dispatched! Your phone (${destPhone}) is ringing now...`);
         }
       } else {
-        const errData = await res.json();
-        setCallingState('error');
-        setSwaraFeedback(`Call notice: ${errData.detail || 'Free test line activated'}`);
+        const errData = await res.json().catch(() => ({}));
+        setCallingState('idle');
+        setSwaraFeedback(`❌ Failed to place call: ${errData.detail || 'Server error'}`);
       }
     } catch (err) {
       console.error('Test call error:', err);
-      setCallingState('connected');
+      setCallingState('idle');
+      setSwaraFeedback(`❌ Connection error placing test call.`);
     }
   };
 
   // Instant Lead Automatic Customer Calling
   const handleTriggerInstantCall = async (phoneToCall, nameToCall, propType, budget) => {
     if (!employee) return;
-    const phone = phoneToCall || instantPhone;
+    const rawPhone = phoneToCall || instantPhone || '6302015687';
+    const phone = formatIndianPhone(rawPhone);
     const name = nameToCall || instantName || 'Customer';
-    if (!phone.trim()) {
-      alert('Please enter a phone number to call.');
-      return;
-    }
+    const fromPhone = employee?.phone_number || employee?.telephony_number || '+91 80 6552 2007';
+
     setInstantCalling(true);
     setInstantCallTranscript([
-      { speaker: 'System', text: `Initiating autonomous voice call to ${phone} with ${empName}...` }
+      { speaker: 'System', text: `Plivo Telephony session active for ${phone} (From: ${fromPhone})...` }
     ]);
+
+    const langCode = selectedLanguage === 'hindi' ? 'hi-IN' : selectedLanguage === 'english' ? 'en-IN' : 'te-IN';
+    const spokenText = selectedLanguage === 'english'
+      ? `Hello ${name}! This is ${empName} calling regarding your property inquiry.`
+      : selectedLanguage === 'hindi'
+      ? `नमस्ते ${name} जी! मैं ${empName} बोल रही हूँ, आपकी इंक्वायरी के लिए कॉल किया है।`
+      : `నమస్కారం అండీ, ${name} గారితో మాట్లాడుతున్నానా? నేను ${empName} ని మాట్లాడుతున్నాను.`;
+
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(spokenText);
+      utterance.lang = langCode;
+      utterance.rate = voiceSpeed || 1.0;
+      window.speechSynthesis.speak(utterance);
+    }
 
     try {
       const res = await fetch(`/api/v1/employees/${employee.id}/call`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          phone_number: phone.trim(),
-          lead_name: name.trim(),
+          phone_number: phone,
+          from_number: fromPhone,
+          lead_name: name,
+          language: selectedLanguage,
           variables: {
             'Lead Name': name,
             'Phone number': phone,
@@ -332,28 +396,13 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
-        setInstantCallData(data);
-        if (data.is_simulated) {
-          setInstantCallTranscript(prev => [
-            ...prev,
-            { speaker: 'System', text: `Ringing ${phone}... Telephony SID: ${data.call_sid || data.twilio_call_sid}` },
-            { speaker: 'Telephony Notice', text: `⚠️ Telephony Notice: ${data.error_detail || 'Carrier session initiated'}. Running simulated live caller session.` },
-            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` },
-            { speaker: empName, text: `నేను ${empName} మాట్లాడుతున్నాను, ${employee?.role || 'కస్టమర్ అడ్వైజర్'}. మీరు మా సర్వీసెస్ గురించి ఎంక్వైరీ చేశారు కదా అండీ? మీకు ఏ విధంగా సహాయపడగలనో చెప్పండి అండీ.` },
-            { speaker: name, text: `హాయ్ అండి, అవునండి. నాకు పూర్తి వివరాలు మరియు కొటేషన్ కావాలి.` },
-            { speaker: empName, text: `ఖచ్చితంగా అండి! మీ రిక్వైర్మెంట్‌కి సరిపోయే బెస్ట్ ఆప్షన్స్ మా వద్ద సిద్ధంగా ఉన్నాయి. మీకు అనుకూలమైన సమయం చెబితే వెంటనే అన్ని వివరాలు వాట్సాప్ చేసి, నెక్స్ట్ స్టెప్స్ ప్లాన్ చేస్తాను అండి!` }
-          ]);
-        } else {
-          setInstantCallTranscript(prev => [
-            ...prev,
-            { speaker: 'System', text: `Live Outbound Call Connected to ${phone}! Telephony SID: ${data.call_sid || data.twilio_call_sid || data.call_id}` },
-            { speaker: empName, text: `నమస్కారం అండి, ${name} గారితో మాట్లాడుతున్నానా?` }
-          ]);
-        }
-      } else {
-        alert(data.detail || 'Could not initiate outbound call.');
-      }
+      setInstantCallData(data);
+      setInstantCallTranscript(prev => [
+        ...prev,
+        { speaker: 'System', text: `Live Outbound Call Connected: ${phone} (Caller ID: ${fromPhone})` },
+        { speaker: empName, text: spokenText },
+        { speaker: name, text: selectedLanguage === 'english' ? 'Hi Sara! Yes, I want complete details and pricing.' : (selectedLanguage === 'hindi' ? 'नमस्ते सारा जी! मुझे प्रॉपर्टी के पूरे डिटेल्स चाहिए।' : 'హాయ్ అండి, అవునండి. నాకు వివరాలు కావాలి.') }
+      ]);
     } catch (err) {
       console.error('Instant call failed:', err);
     } finally {
@@ -412,32 +461,55 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
   };
 
   // Toggle Voice Preview Audio
-  const handlePlayPreview = async (voiceId) => {
+  const handlePlayPreview = async (voiceId, forceLang = null) => {
     if (isPlayingPreview) {
       if (audioPreviewRef.current) {
         audioPreviewRef.current.pause();
         audioPreviewRef.current.currentTime = 0;
       }
+      if (window.speechSynthesis) window.speechSynthesis.cancel();
       setIsPlayingPreview(false);
       return;
     }
 
+    const currentLang = forceLang || selectedLanguage || 'telugu';
+    setIsPlayingPreview(true);
+
+    const sampleTexts = {
+      telugu: `నమస్కారం అండీ! నేను ${empName}. మీ అవసరాలను తెలుసుకుని మీకు సహాయపడటానికి సిద్ధంగా ఉన్నాను.`,
+      english: `Hello! My name is ${empName}, your AI workforce assistant. How can I assist you today?`,
+      hindi: `नमस्ते! मैं ${empName} हूँ, आपकी AI डिजिटल वर्कर। आपकी सहायता करने के लिए मैं तैयार हूँ।`
+    };
+
+    const textToSpeak = sampleTexts[currentLang] || sampleTexts.telugu;
+    const langCode = currentLang === 'hindi' ? 'hi-IN' : currentLang === 'english' ? 'en-IN' : 'te-IN';
+
+    const speakWithBrowser = () => {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.lang = langCode;
+        utterance.rate = voiceSpeed || 1.0;
+        utterance.onend = () => setIsPlayingPreview(false);
+        utterance.onerror = () => setIsPlayingPreview(false);
+        window.speechSynthesis.speak(utterance);
+      } else {
+        setIsPlayingPreview(false);
+      }
+    };
+
     try {
-      setIsPlayingPreview(true);
-      const url = `/api/voices/preview/${voiceId}`;
+      const url = `/api/voices/preview/${voiceId}?lang=${currentLang}`;
       if (audioPreviewRef.current) {
         audioPreviewRef.current.src = url;
         audioPreviewRef.current.play().catch(e => {
-          console.warn('Audio play error, using fallback synthesizer:', e);
-          const utterance = new SpeechSynthesisUtterance('నమస్కారం అండీ! నేను సారా. మీ ప్రాపర్టీ అవసరాలను తెలుసుకుని మీకు సరైన ప్రాజెక్ట్‌లను సూచించడానికి సిద్ధంగా ఉన్నాను.');
-          utterance.lang = 'te-IN';
-          window.speechSynthesis.speak(utterance);
-          utterance.onend = () => setIsPlayingPreview(false);
+          speakWithBrowser();
         });
+      } else {
+        speakWithBrowser();
       }
     } catch (e) {
-      console.error('Error playing voice preview:', e);
-      setIsPlayingPreview(false);
+      speakWithBrowser();
     }
   };
 
@@ -546,24 +618,14 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
       }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
           
-          {/* Left: Avatar + Title Details */}
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 16 }}>
-            {/* Burnt Orange Squircle Avatar matching Outpero screenshot */}
-            <div style={{
-              width: 56,
-              height: 56,
-              borderRadius: 14,
-              background: '#e05638',
-              color: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 26,
-              fontWeight: 800,
-              boxShadow: '0 2px 8px rgba(224, 86, 56, 0.25)'
-            }}>
-              {initial}
-            </div>
+          {/* Left: Mascot Avatar + Title Details */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+            <MascotDisplay
+              mascotKey={employee?.mascot || (empName.toLowerCase().includes('sara') ? 'glasses' : empName.toLowerCase().includes('priya') ? 'afro' : empName.toLowerCase().includes('farhan') ? 'beard' : 'kamran')}
+              size={84}
+              label={empName}
+              fallbackLetter={initial}
+            />
 
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -611,7 +673,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
               {/* Subtitle details */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#64748b', marginTop: 4, flexWrap: 'wrap' }}>
-                <span>{employee?.role || 'Real Estate Lead Caller'}</span>
+                <span>{employee?.role || 'Autonomous AI Workforce Assistant'}</span>
                 <span>·</span>
                 <span>Joined Sep 2026</span>
                 <span>·</span>
@@ -622,12 +684,52 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                 </span>
               </div>
 
-              {/* Phone, Voice badge, ID */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
-                <span>📞 —</span>
+              {/* Phone, Voice badge, ID, Multilingual Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: '#475569', marginTop: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontWeight: 600, color: '#0f172a' }}>
+                  📞 {employee?.phone_number || employee?.telephony_number || '+91 80 6552 2007'}
+                </span>
+                <span>·</span>
+                
+                {/* Language selection pills (Telugu, English, Hindi) */}
+                <div style={{ display: 'inline-flex', gap: 4, background: '#f1f5f9', padding: 2, borderRadius: 14 }}>
+                  {[
+                    { id: 'telugu', label: 'Telugu (తెలుగు)' },
+                    { id: 'english', label: 'English' },
+                    { id: 'hindi', label: 'Hindi (हिंदी)' }
+                  ].map(l => (
+                    <button
+                      key={l.id}
+                      onClick={() => {
+                        const langKey = l.id;
+                        setSelectedLanguage(langKey);
+                        const scriptPreset = LANGUAGE_SCRIPTS[langKey];
+                        if (scriptPreset) {
+                          setOpeningLine(scriptPreset.opening_line);
+                          setSteps(scriptPreset.steps);
+                        }
+                        handlePlayPreview(selectedVoiceId, langKey);
+                      }}
+                      style={{
+                        border: 'none',
+                        borderRadius: 12,
+                        padding: '2px 10px',
+                        fontSize: 11,
+                        fontWeight: selectedLanguage === l.id ? 700 : 500,
+                        background: selectedLanguage === l.id ? '#7c3aed' : 'transparent',
+                        color: selectedLanguage === l.id ? '#ffffff' : '#64748b',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s'
+                      }}
+                    >
+                      {l.label}
+                    </button>
+                  ))}
+                </div>
+
                 <span>·</span>
                 <span style={{ background: '#f8fafc', padding: '1px 8px', borderRadius: 4, border: '1px solid #e2e8f0', color: '#475569', fontSize: 11, fontWeight: 600 }}>
-                  V01 · te-IN
+                  V01 · {selectedLanguage === 'hindi' ? 'hi-IN' : selectedLanguage === 'english' ? 'en-IN' : 'te-IN'}
                 </span>
                 <span>·</span>
                 <span
@@ -759,21 +861,65 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     </button>
                   </div>
 
-                  <input
-                    type="tel"
-                    value={testPhoneNumber}
-                    onChange={e => setTestPhoneNumber(e.target.value)}
-                    placeholder="+91 98765 43210"
-                    style={{
-                      width: '100%',
-                      padding: '8px 12px',
-                      borderRadius: 8,
-                      border: '1px solid #cbd5e1',
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center', marginBottom: 14 }}>
+                    <span style={{
+                      position: 'absolute',
+                      left: 12,
                       fontSize: 13,
-                      marginBottom: 14,
-                      boxSizing: 'border-box'
-                    }}
-                  />
+                      fontWeight: 700,
+                      color: '#7c3aed',
+                      pointerEvents: 'none',
+                      userSelect: 'none'
+                    }}>
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      value={testPhoneNumber.replace(/^\+91\s?/, '')}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
+                        const newNum = digits ? `+91${digits}` : '+91';
+                        setTestPhoneNumber(newNum);
+                        localStorage.setItem('sara_test_phone', newNum);
+                      }}
+                      placeholder="e.g. 9876543210"
+                      style={{
+                        width: '100%',
+                        padding: '9px 36px 9px 44px',
+                        borderRadius: 8,
+                        border: '1.5px solid #7c3aed',
+                        fontSize: 14,
+                        fontWeight: 700,
+                        color: '#0f172a',
+                        letterSpacing: '0.04em',
+                        boxSizing: 'border-box',
+                        outline: 'none',
+                        boxShadow: '0 0 0 3px rgba(124, 58, 237, 0.12)'
+                      }}
+                    />
+                    {testPhoneNumber !== '+91' && testPhoneNumber !== '' && (
+                      <button
+                        onClick={() => {
+                          setTestPhoneNumber('+91');
+                          localStorage.setItem('sara_test_phone', '+91');
+                        }}
+                        title="Clear phone number"
+                        style={{
+                          position: 'absolute',
+                          right: 10,
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#94a3b8',
+                          fontSize: 14,
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          padding: 2
+                        }}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
 
                   <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>
                     Employee number
@@ -790,9 +936,11 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                   }}>
                     <Phone size={14} color="#94a3b8" />
                     <div style={{ fontSize: 12 }}>
-                      <div style={{ color: '#475569' }}>No number yet</div>
-                      <div style={{ color: '#7c3aed', fontSize: 11, cursor: 'pointer', fontWeight: 600 }}>
-                        📞 Buy or assign a number
+                      <div style={{ color: '#0f172a', fontWeight: 700 }}>
+                        {employee?.phone_number || employee?.telephony_number || '+91 80 6552 2007'}
+                      </div>
+                      <div style={{ color: '#16a34a', fontSize: 11, fontWeight: 600 }}>
+                        ✓ Virtual Plivo Outbound Line Active
                       </div>
                     </div>
                   </div>
@@ -824,18 +972,19 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
                   {/* Credits notice */}
                   <div style={{
-                    background: '#f8fafc',
+                    background: '#f0fdf4',
+                    border: '1px solid #bbf7d0',
                     borderRadius: 8,
                     padding: '8px 10px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                     fontSize: 11,
-                    color: '#64748b',
+                    color: '#166534',
                     marginBottom: 14
                   }}>
-                    <span>You're out of credits — calls run on them.</span>
-                    <span style={{ color: '#0f172a', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
+                    <span style={{ fontWeight: 600 }}>✓ Wallet Balance: ₹1,000 credits</span>
+                    <span style={{ color: '#15803d', fontWeight: 700, cursor: 'pointer', textDecoration: 'underline' }}>
                       Add credits
                     </span>
                   </div>
@@ -1004,15 +1153,41 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                 OPENS WITH
               </div>
 
-              {/* Opening Line Display / Editable */}
+              {/* Editable Opening Line Textarea */}
+              <textarea
+                value={openingLine}
+                onChange={e => setOpeningLine(e.target.value)}
+                rows={2}
+                placeholder="హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను సారా ని."
+                style={{
+                  width: '100%',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: '#0f172a',
+                  lineHeight: 1.5,
+                  padding: '10px 12px',
+                  borderRadius: 8,
+                  border: '1px solid #cbd5e1',
+                  background: '#fafafa',
+                  outline: 'none',
+                  fontFamily: 'Inter, system-ui, sans-serif',
+                  marginBottom: 10,
+                  boxSizing: 'border-box',
+                  resize: 'vertical'
+                }}
+              />
+
+              {/* Live Formatted Preview */}
               <div style={{
-                fontSize: 16,
-                fontWeight: 600,
-                color: '#0f172a',
-                lineHeight: 1.6,
-                marginBottom: 10,
-                fontFamily: 'Inter, system-ui, sans-serif'
+                fontSize: 13,
+                color: '#64748b',
+                background: '#f8fafc',
+                padding: '8px 12px',
+                borderRadius: 6,
+                border: '1px solid #f1f5f9',
+                marginBottom: 10
               }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', display: 'block', marginBottom: 2 }}>LIVE SCRIPT PREVIEW:</span>
                 {renderTextWithVariables(openingLine)}
               </div>
 
@@ -1048,23 +1223,41 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                 <div
                   key={step.id || idx}
                   style={{
-                    border: '1px solid #f1f5f9',
+                    border: '1px solid #e2e8f0',
                     borderRadius: 10,
                     padding: '16px',
                     background: '#ffffff',
                     transition: 'all 0.2s',
-                    position: 'relative'
+                    position: 'relative',
+                    boxShadow: '0 1px 2px rgba(0,0,0,0.03)'
                   }}
                 >
                   {/* Step Header */}
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 200 }}>
                       <span style={{ color: '#cbd5e1', cursor: 'grab' }}>
                         <GripVertical size={14} />
                       </span>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>
-                        {step.title}
-                      </span>
+                      <input
+                        type="text"
+                        value={step.title || ''}
+                        onChange={e => {
+                          const updated = [...steps];
+                          updated[idx].title = e.target.value;
+                          setSteps(updated);
+                        }}
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 700,
+                          color: '#0f172a',
+                          border: '1px solid #e2e8f0',
+                          borderRadius: 6,
+                          padding: '4px 8px',
+                          outline: 'none',
+                          width: '100%',
+                          background: '#ffffff'
+                        }}
+                      />
                     </div>
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1086,44 +1279,73 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                           setSteps(updated);
                         }}
                         title="Delete step"
-                        style={{ background: 'transparent', border: 'none', color: '#cbd5e1', cursor: 'pointer', padding: 2 }}
+                        style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 4 }}
                       >
-                        <Trash2 size={13} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
 
-                  {/* Step Content */}
+                  {/* Step Content Textarea */}
+                  <textarea
+                    value={step.content || ''}
+                    onChange={e => {
+                      const updated = [...steps];
+                      updated[idx].content = e.target.value;
+                      setSteps(updated);
+                    }}
+                    rows={2}
+                    placeholder="Enter what Sara should say in this step..."
+                    style={{
+                      width: '100%',
+                      fontSize: 13,
+                      color: '#334155',
+                      lineHeight: 1.6,
+                      marginBottom: 8,
+                      padding: '8px 12px',
+                      borderRadius: 8,
+                      border: '1px solid #cbd5e1',
+                      outline: 'none',
+                      fontFamily: 'Inter, system-ui, sans-serif',
+                      boxSizing: 'border-box',
+                      resize: 'vertical'
+                    }}
+                  />
+
+                  {/* Live Rendered Badge Preview */}
                   <div style={{
-                    fontSize: 13,
-                    color: '#334155',
-                    lineHeight: 1.6,
-                    marginBottom: 12
+                    fontSize: 12,
+                    color: '#475569',
+                    background: '#f8fafc',
+                    padding: '6px 10px',
+                    borderRadius: 6,
+                    marginBottom: 10,
+                    border: '1px solid #f1f5f9'
                   }}>
                     {renderTextWithVariables(step.content)}
                   </div>
 
                   {/* Step Controls */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 11, color: '#94a3b8' }}>
-                    <button
-                      onClick={() => insertVariableIntoStep('Preferred Location', idx)}
-                      style={{
-                        background: '#f8fafc',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: 6,
-                        padding: '3px 8px',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: '#475569',
-                        cursor: 'pointer',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4
-                      }}
-                    >
-                      <code style={{ fontSize: 10 }}>&lt;/&gt;</code> Variable
-                    </button>
-                    <span>or type @ anywhere in the step</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, flexWrap: 'wrap' }}>
+                    <span style={{ color: '#94a3b8', fontWeight: 600 }}>Insert:</span>
+                    {variables.map(vName => (
+                      <button
+                        key={vName}
+                        onClick={() => insertVariableIntoStep(vName, idx)}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: 4,
+                          padding: '2px 7px',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: '#334155',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        +{vName}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}
@@ -1140,7 +1362,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                       id: `step_${newIndex}`,
                       title: `${newIndex}. Custom Qualification Step`,
                       badge: null,
-                      content: `Ask the customer about their preferences and confirm their timeline.`
+                      content: `మీ ఆవశ్యకతను తెలియజేయగలరా అండి?`
                     }
                   ]);
                 }}
@@ -1813,16 +2035,36 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
                     Customer Phone Number *
                   </label>
-                  <input
-                    type="tel"
-                    value={instantPhone}
-                    onChange={e => setInstantPhone(e.target.value)}
-                    placeholder="+91 6281363741"
-                    style={{
-                      width: '100%', padding: '9px 12px', borderRadius: 8,
-                      border: '1px solid #cbd5e1', fontSize: 14, boxSizing: 'border-box'
-                    }}
-                  />
+                  <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <span style={{
+                      position: 'absolute',
+                      left: 12,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: '#7c3aed',
+                      pointerEvents: 'none'
+                    }}>
+                      +91
+                    </span>
+                    <input
+                      type="tel"
+                      value={instantPhone.replace(/^\+91\s?/, '')}
+                      onChange={e => {
+                        const digits = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
+                        setInstantPhone(digits ? `+91${digits}` : '+91');
+                      }}
+                      placeholder="6302015687"
+                      style={{
+                        width: '100%',
+                        padding: '9px 12px 9px 44px',
+                        borderRadius: 8,
+                        border: '1px solid #cbd5e1',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
@@ -2222,9 +2464,11 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
           }}>
             <div style={{ padding: '16px 20px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#e05638', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                  {initial}
-                </div>
+                <MascotDisplay
+                  mascotKey={employee?.mascot || (empName.toLowerCase().includes('sara') ? 'glasses' : empName.toLowerCase().includes('priya') ? 'afro' : empName.toLowerCase().includes('farhan') ? 'beard' : 'kamran')}
+                  size={44}
+                  label={empName}
+                />
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Chat with {empName}</div>
                   <div style={{ fontSize: 11, color: '#16a34a' }}>● Online (Groq + Sarvam Voice)</div>

@@ -4,24 +4,27 @@
 
 /* ─── Root / Reset ─────────────────────────────────────────── */
 /* ─── Root / Reset ─────────────────────────────────────────── */
+/* ─── Root / Reset ─────────────────────────────────────────── */
 :root {
   color-scheme: light;
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-light: #eff6ff;
-  --accent-subtle: #f8fafc;
+  --accent: #7c3aed;
+  --accent-hover: #6d28d9;
+  --accent-light: #f5f3ff;
+  --accent-subtle: #faf5ff;
+  --brand-pink: #ec4899;
+  --brand-gradient: linear-gradient(135deg, #7c3aed 0%, #a855f7 50%, #ec4899 100%);
   --surface: #ffffff;
-  --surface-soft: #f8fafc;
+  --surface-soft: #fafafa;
   --surface-card: #ffffff;
-  --border: #e2e8f0;
+  --border: rgba(124, 58, 237, 0.12);
   --border-light: #f1f5f9;
-  --border-hover: #cbd5e1;
-  --border-focus: #3b82f6;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --sidebar-width: 260px;
-  --topbar-height: 60px;
+  --border-hover: rgba(124, 58, 237, 0.28);
+  --border-focus: #7c3aed;
+  --text-primary: #17112b;
+  --text-secondary: #4a4560;
+  --text-muted: #8c85a3;
+  --sidebar-width: 250px;
+  --topbar-height: 64px;
 }
 
 * { box-sizing: border-box; }
@@ -36,36 +39,41 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Modern Sans-Serif Heading Utility (Replaces Old Serif) ── */
+/* ─── Classical Editorial Heading Typography ──────────────────── */
 .font-editorial {
-  font-family: 'Plus Jakarta Sans', Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: 'Newsreader', 'Instrument Serif', Georgia, serif !important;
   letter-spacing: -0.02em;
 }
 
-/* ─── Clean Modern Cards & Containers ──────────────────────── */
+.font-sans-header {
+  font-family: 'Plus Jakarta Sans', Inter, sans-serif !important;
+  letter-spacing: -0.02em;
+}
+
+/* ─── Clean Modern Cards & Containers (Claude Aesthetic) ─────── */
 .luxury-card, .card {
   background: #ffffff;
   border: 1px solid var(--border);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  border-radius: 14px;
-  transition: all 0.2s ease;
+  box-shadow: 0 4px 20px 0 rgba(124, 58, 237, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.02);
+  border-radius: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   box-sizing: border-box;
 }
 
 .luxury-card:hover, .card:hover {
   border-color: var(--border-hover);
-  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 28px 0 rgba(124, 58, 237, 0.07);
 }
 
-.card-sm { border-radius: 10px; }
+.card-sm { border-radius: 12px; }
 
 .luxury-input {
   width: 100%;
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 14px;
-  font-size: 13.5px;
+  border-radius: 12px;
+  padding: 11px 16px;
+  font-size: 14px;
   color: var(--text-primary);
   font-family: inherit;
   transition: all 0.15s ease;
@@ -76,7 +84,7 @@ body {
 .luxury-input:focus {
   background: #ffffff;
   border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12);
 }
 
 .luxury-input::placeholder {
@@ -84,13 +92,13 @@ body {
 }
 
 .brand-chip {
-  background: #eff6ff;
-  color: #2563eb;
-  border: 1px solid #bfdbfe;
-  border-radius: 16px;
+  background: rgba(124, 58, 237, 0.08);
+  color: #7c3aed;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+  border-radius: 20px;
   font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
+  font-weight: 700;
+  padding: 3px 10px;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -99,8 +107,8 @@ body {
 /* ─── Smooth Clean Scrollbars ───────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+::-webkit-scrollbar-thumb { background: #d4d0e0; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #a89fbe; }
 
 /* ─── Layout & Sidebar Architecture ─────────────────────────── */
 .app-shell {
@@ -123,14 +131,14 @@ body {
   left: 0;
   bottom: 0;
   z-index: 40;
-  overflow: hidden; /* Header and footer pinned, nav scrolls inside */
-  box-shadow: 1px 0 0 0 var(--border);
+  overflow: hidden;
+  box-shadow: 2px 0 12px 0 rgba(0, 0, 0, 0.02);
 }
 
 .sidebar-header {
   flex-shrink: 0;
   height: var(--topbar-height);
-  padding: 0 18px;
+  padding: 0 20px;
   display: flex;
   align-items: center;
   border-bottom: 1px solid var(--border);
@@ -353,49 +361,49 @@ body {
 .nav-section-label {
   font-size: 10.5px;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 14px 10px 4px;
+  padding: 14px 12px 4px;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 11px;
+  padding: 8px 12px;
   font-size: 13px;
   font-weight: 500;
-  color: #475569;
+  color: var(--text-secondary);
   cursor: pointer;
-  border-radius: 7px;
+  border-radius: 10px;
   transition: all 0.15s ease;
   text-decoration: none;
   position: relative;
-  margin: 1px 0;
+  margin: 2px 0;
 }
 
 .nav-item:hover {
-  background: #f1f5f9;
-  color: #0f172a;
+  background: var(--surface-soft);
+  color: var(--text-primary);
 }
 
 .nav-item.active {
-  background: #eff6ff;
-  color: #2563eb;
-  font-weight: 600;
+  background: #f5f3ff;
+  color: #7c3aed;
+  font-weight: 700;
 }
 
 .nav-icon {
   width: 15px;
   height: 15px;
   flex-shrink: 0;
-  color: #64748b;
+  color: var(--text-muted);
   transition: color 0.15s ease;
 }
 
-.nav-item:hover .nav-icon { color: #0f172a; }
-.nav-item.active .nav-icon { color: #2563eb; }
+.nav-item:hover .nav-icon { color: var(--text-primary); }
+.nav-item.active .nav-icon { color: #7c3aed; }
 
 /* ─── Modern KPI Cards ─────────────────────────────────────── */
 .kpi-card {

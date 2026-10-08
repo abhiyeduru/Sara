@@ -75,16 +75,27 @@ export default function Workflows({ onNavigate }) {
   return (
     <div className="page-content animate-fade-in">
       {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
+      <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>Workflows</h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>
-            {workflows.filter(w=>w.status==='active').length} active · {workflows.length} total autonomous workflows
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7c3aed', marginBottom: 8
+          }}>
+            <GitBranch size={12} color="#7c3aed" />
+            Autonomous Automation
+          </div>
+          <h1 className="page-title">
+            Workflow Studio
+          </h1>
+          <p className="page-subtitle">
+            Orchestrate multi-step event triggers, webhooks, and AI task sequences with precision.
           </p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchWorkflows}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={() => setShowModal(true)}>
             <Plus size={14} /> New Workflow
@@ -109,7 +120,7 @@ export default function Workflows({ onNavigate }) {
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(360px, 1fr))', gap:16 }}>
           {workflows.map(w => (
-            <div key={w.id} className="card" style={{ padding:20, display:'flex', flexDirection:'column', justifyContent:'space-between' }}>
+            <div key={w.id} className="card-glass" style={{ padding: 20, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
                 <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
                   <div style={{ display:'flex', alignItems:'center', gap:10 }}>

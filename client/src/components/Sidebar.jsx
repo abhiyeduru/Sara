@@ -14,7 +14,6 @@ const NAV = [
     items: [
       { id: 'dashboard',   label: 'Dashboard',   icon: LayoutDashboard },
       { id: 'talk-sara',    label: 'Talk with Sara', icon: Mic },
-      { id: 'ask',         label: 'Ask Sara',     icon: Sparkles },
     ]
   },
   {
@@ -22,7 +21,6 @@ const NAV = [
     items: [
       { id: 'employees',        label: 'My AI Employees',     icon: Bot },
       { id: 'teams',            label: 'AI Teams',            icon: UsersRound },
-      { id: 'employees/new',    label: 'Create AI Employee',  icon: PlusCircle },
       { id: 'tasks',            label: 'Tasks',               icon: CheckSquare },
       { id: 'workflows',        label: 'Workflows',           icon: GitBranch },
       { id: 'training',         label: 'Training',            icon: GraduationCap },
@@ -91,11 +89,12 @@ export default function Sidebar({ activePage, onNavigate }) {
           />
           <span
             style={{
-              fontSize: 18,
+              fontSize: 19,
               fontWeight: 700,
               letterSpacing: '-0.02em',
               color: 'var(--text-primary)',
               lineHeight: 1,
+              fontFamily: 'Newsreader, serif',
             }}
           >
             Saadhyam
@@ -156,8 +155,8 @@ export default function Sidebar({ activePage, onNavigate }) {
             style={{
               width: 28,
               height: 28,
-              borderRadius: 7,
-              background: '#2563eb',
+              borderRadius: 8,
+              background: 'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',

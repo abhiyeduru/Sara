@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
+import { GooeyOrb } from './components/voice/GooeyOrb';
 
 // Pages
 import Dashboard from './components/pages/Dashboard';
@@ -145,6 +146,16 @@ function AskSaraPanel({ onClose, currentPage }) {
 }
 
 export default function App() {
+  const getInitialPage = () => {
+    try {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      if (hash && PAGE_META[hash]) return hash;
+      const path = window.location.pathname.replace(/^\//, '');
+      if (path && PAGE_META[path]) return path;
+    } catch (e) {}
+    return 'dashboard';
+  };
+
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem('sara_user');
@@ -155,10 +166,30 @@ export default function App() {
   });
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [page, setPage] = useState('dashboard');
+  const [page, setPage] = useState(getInitialPage);
   const [pageParams, setPageParams] = useState({});
   const [showAskSara, setShowAskSara] = useState(false);
   const meta = PAGE_META[page] || {};
+
+  // Sync state with browser Hash & Back/Forward buttons
+  useEffect(() => {
+    const handleHashOrPopState = () => {
+      const hash = window.location.hash.replace(/^#\/?/, '');
+      if (hash && PAGE_META[hash]) {
+        setPage(hash);
+      } else if (!hash) {
+        setPage('dashboard');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashOrPopState);
+    window.addEventListener('popstate', handleHashOrPopState);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashOrPopState);
+      window.removeEventListener('popstate', handleHashOrPopState);
+    };
+  }, []);
 
   // Check URL params & hash fragment for Google OAuth redirect callback
   useEffect(() => {
@@ -209,7 +240,7 @@ export default function App() {
         if (needsSetup) {
           setShowOnboarding(true);
         }
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, window.location.pathname + `#${page}`);
       } else if (hashParams.get('id_token') || hashParams.get('access_token')) {
         const rawToken = hashParams.get('id_token') || hashParams.get('access_token');
         const jwtPayload = parseJwt(rawToken);
@@ -225,7 +256,7 @@ export default function App() {
           localStorage.setItem('sara_user', JSON.stringify(userObj));
           setCurrentUser(userObj);
           setNeedsOnboarding(false);
-          window.history.replaceState({}, document.title, window.location.pathname);
+          window.history.replaceState({}, document.title, window.location.pathname + `#${page}`);
         }
       } else if (currentUser) {
         fetch('/api/v1/auth/me')
@@ -246,6 +277,11 @@ export default function App() {
   const handleNavigate = (newPage, params = {}) => {
     setPage(newPage);
     setPageParams(params || {});
+
+    // Update browser URL Hash & History State so refreshing F5 stays on the active page!
+    if (window.location.hash !== `#${newPage}`) {
+      window.history.pushState({ page: newPage, params }, '', `#${newPage}`);
+    }
   };
 
   const handleLogout = () => {
@@ -256,8 +292,8 @@ export default function App() {
     setShowOnboarding(false);
   };
 
-  // Ask and Voice Assistant are full-screen without standard topbar
-  const isFullPage = page === 'ask' || page === 'talk-sara';
+  // Ask Sara & Create Employee are full-screen workspace pages without sidebar/topbar
+  const isFullPage = page === 'ask' || page === 'employees/new';
 
   // 1. If not logged in, show Google Login screen
   if (!currentUser) {
@@ -274,6 +310,25 @@ export default function App() {
     );
   }
 
+  if (isFullPage) {
+    return (
+      <div className="app-shell full-page-mode" style={{ width: '100vw', height: '100vh', overflow: 'hidden', background: '#f8fafc' }}>
+        {showOnboarding && (
+          <BusinessOnboardingModal
+            user={currentUser}
+            onBack={handleLogout}
+            onComplete={(bizData) => {
+              setShowOnboarding(false);
+              setNeedsOnboarding(false);
+              handleNavigate('dashboard');
+            }}
+          />
+        )}
+        {renderPage(page, handleNavigate, pageParams)}
+      </div>
+    );
+  }
+
   return (
     <div className="app-shell">
       {/* Step 2: Post-Login Business Details Onboarding Modal */}
@@ -284,7 +339,7 @@ export default function App() {
           onComplete={(bizData) => {
             setShowOnboarding(false);
             setNeedsOnboarding(false);
-            handleNavigate('campaigns');
+            handleNavigate('dashboard');
           }}
         />
       )}
@@ -295,17 +350,17 @@ export default function App() {
       {/* Main */}
       <div className="main-content">
         {/* Topbar */}
-        {!isFullPage && (
-          <Topbar
-            title={meta.title}
-            subtitle={meta.subtitle}
-            onAskSara={() => setShowAskSara(s => !s)}
-            onTalkWithSara={() => handleNavigate('talk-sara')}
-            currentUser={currentUser}
-            onLogout={handleLogout}
-            onOpenOnboarding={() => setShowOnboarding(true)}
-          />
-        )}
+        <Topbar
+          title={meta.title}
+          subtitle={meta.subtitle}
+          activePage={page}
+          onNavigate={handleNavigate}
+          onAskSara={() => handleNavigate('ask')}
+          onTalkWithSara={() => handleNavigate('talk-sara')}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+          onOpenOnboarding={() => setShowOnboarding(true)}
+        />
 
         {/* Page */}
         <div style={{ flex: 1, overflow: 'auto' }}>
@@ -315,14 +370,46 @@ export default function App() {
 
       {/* Floating Ask Sara Button */}
       {!isFullPage && (
-        <button className="ask-sara-fab" onClick={() => setShowAskSara(s => !s)} title="Ask Sara">
-          <Sparkles size={18} />
+        <button
+          onClick={() => handleNavigate('ask')}
+          title="Ask Sara (Full Screen Workspace)"
+          style={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            zIndex: 99,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '6px 18px 6px 8px',
+            background: '#ffffff',
+            border: '1.5px solid rgba(124, 58, 237, 0.22)',
+            borderRadius: 30,
+            boxShadow: '0 10px 32px rgba(124, 58, 237, 0.18), 0 2px 10px rgba(0, 0, 0, 0.05)',
+            cursor: 'pointer',
+            transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.transform = 'translateY(-3px) scale(1.03)';
+            e.currentTarget.style.borderColor = '#7c3aed';
+            e.currentTarget.style.boxShadow = '0 14px 40px rgba(124, 58, 237, 0.28), 0 4px 14px rgba(0, 0, 0, 0.08)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.transform = 'none';
+            e.currentTarget.style.borderColor = 'rgba(124, 58, 237, 0.22)';
+            e.currentTarget.style.boxShadow = '0 10px 32px rgba(124, 58, 237, 0.18), 0 2px 10px rgba(0, 0, 0, 0.05)';
+          }}
+        >
+          <div style={{ width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <GooeyOrb state="speaking" size={40} speed={1} colorFrom="#7c3aed" colorTo="#ec4899" />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-primary)', lineHeight: 1.1 }}>Ask Sara</span>
+            <span style={{ fontSize: 10.5, fontWeight: 600, color: '#7c3aed', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="live-dot" style={{ width: 4, height: 4 }} /> AI Assistant
+            </span>
+          </div>
         </button>
-      )}
-
-      {/* Ask Sara Panel */}
-      {showAskSara && !isFullPage && (
-        <AskSaraPanel onClose={() => setShowAskSara(false)} currentPage={page} />
       )}
     </div>
   );

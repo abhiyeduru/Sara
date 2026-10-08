@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Bell, Zap, ChevronDown, Command, Sparkles, Mic } from 'lucide-react';
 
-export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onSearch, currentUser, onLogout, onOpenOnboarding }) {
+export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, currentUser, onLogout, onOpenOnboarding, onNavigate }) {
   const [searchVal, setSearchVal] = useState('');
   const [credits, setCredits] = useState('...');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -18,50 +18,69 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
   }, []);
 
   return (
-    <header className="topbar">
-      {/* Search */}
+    <header className="topbar" style={{
+      height: 'var(--topbar-height, 60px)',
+      padding: '0 24px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 16,
+      background: '#ffffff',
+      borderBottom: '1px solid var(--border)',
+      position: 'sticky',
+      top: 0,
+      zIndex: 30,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+    }}>
+      {/* Search Bar */}
       <div className="search-input" style={{
-        flex: '0 0 280px',
-        background: '#f8fafc',
+        flex: '0 0 240px',
+        background: 'var(--surface-soft)',
         border: '1px solid var(--border)',
-        borderRadius: 8
+        borderRadius: 10,
+        padding: '6px 12px'
       }}>
-        <Search size={14} color="#94a3b8" />
+        <Search size={14} color="var(--text-muted)" />
         <input
           placeholder="Search anything..."
           value={searchVal}
           onChange={e => setSearchVal(e.target.value)}
           style={{ fontSize: 13, background: 'transparent' }}
         />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 11, background: '#e2e8f0', padding: '1px 5px', borderRadius: 4, color: '#475569', fontWeight: 600 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, fontSize: 10, background: '#f1f5f9', padding: '1px 5px', borderRadius: 4, color: 'var(--text-secondary)', fontWeight: 700 }}>
           <Command size={10} />
           <span>K</span>
         </div>
       </div>
 
-      {/* Title */}
-      <div style={{ flex: 1, paddingLeft: 16 }}>
+      {/* Dynamic Page Title */}
+      <div style={{ flex: 1, paddingLeft: 12 }}>
         {title && (
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
               {title}
             </div>
-            {subtitle && <div style={{ fontSize: 12, color: '#64748b', marginTop: 1 }}>{subtitle}</div>}
+            {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1 }}>{subtitle}</div>}
           </div>
         )}
       </div>
 
-      {/* Right */}
+      {/* Right Action Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {/* Credits */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
-          background: '#f8fafc',
-          border: '1px solid var(--border)', borderRadius: 20, cursor: 'pointer'
-        }}>
-          <Zap size={13} color="#2563eb" />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>₹{credits}</span>
-          <span style={{ fontSize: 11, color: '#64748b' }}>credits</span>
+        {/* Billing Balance */}
+        <div
+          onClick={() => onNavigate && onNavigate('billing')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+            background: 'var(--accent-light)',
+            border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: 20, cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+          title="View Billing & Add Credits"
+        >
+          <Zap size={13} color="#7c3aed" />
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#7c3aed' }}>₹{credits}</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>credits</span>
         </div>
 
         {/* Talk with Sara Button */}
@@ -69,35 +88,37 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           className="btn btn-primary btn-sm"
           onClick={onTalkWithSara}
           style={{
-            background: '#10b981',
+            background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             border: 'none',
-            boxShadow: '0 1px 3px rgba(16, 185, 129, 0.3)',
+            boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
             gap: 6,
-            fontWeight: 600,
-            padding: '6px 14px'
+            fontWeight: 700,
+            padding: '6px 14px',
+            borderRadius: 20
           }}
-          title="Start live conversational speech with SARA"
+          title="Start live voice assistant with SARA"
         >
           <Mic size={14} />
           Talk with Sara
         </button>
 
-        {/* Ask Sara */}
+        {/* Ask Sara Button */}
         <button
           className="btn btn-secondary btn-sm"
           onClick={onAskSara}
+          style={{ borderRadius: 20 }}
         >
-          <Sparkles size={13} color="#2563eb" />
+          <Sparkles size={13} color="#7c3aed" />
           Ask Sara
         </button>
 
         {/* Notifications */}
         <button className="btn-ghost btn btn-icon" style={{ position: 'relative' }}>
-          <Bell size={16} />
+          <Bell size={16} color="var(--text-secondary)" />
           <div style={{
             position: 'absolute', top: 6, right: 6,
             width: 7, height: 7, borderRadius: '50%',
-            background: '#2563eb', border: '2px solid #fff'
+            background: '#7c3aed', border: '2px solid #fff'
           }} />
         </button>
 
@@ -108,7 +129,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
             style={{
               display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
               padding: '4px 10px', borderRadius: 20, border: '1px solid var(--border)',
-              background: 'var(--bg-secondary, #f8fafc)', transition: 'background 0.15s'
+              background: '#ffffff', transition: 'background 0.15s'
             }}
           >
             {currentUser?.avatar_url ? (
@@ -116,7 +137,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
             ) : (
               <div style={{
                 width: 24, height: 24, borderRadius: '50%',
-                background: 'linear-gradient(135deg,#7c3aed,#a78bfa)',
+                background: 'linear-gradient(135deg,#7c3aed,#ec4899)',
                 color: '#fff', fontWeight: 700, fontSize: 11,
                 display: 'flex', alignItems: 'center', justifyContent: 'center'
               }}>
@@ -132,7 +153,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
           {showUserMenu && (
             <div style={{
               position: 'absolute', right: 0, top: 38, width: 220, background: '#fff',
-              borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.15)', border: '1px solid var(--border)',
+              borderRadius: 12, boxShadow: '0 10px 30px rgba(0,0,0,0.12)', border: '1px solid var(--border)',
               zIndex: 100, padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 6
             }}>
               <div style={{ padding: '4px 8px 8px', borderBottom: '1px solid var(--border)' }}>
@@ -148,7 +169,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
                     borderRadius: 6, fontSize: 12, fontWeight: 600, color: 'var(--text-primary)',
                     cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-secondary, #f8fafc)'}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface-soft)'}
                   onMouseLeave={e => e.currentTarget.style.background = 'none'}
                 >
                   🏢 Edit Business Details
@@ -176,3 +197,5 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, onS
     </header>
   );
 }
+
+

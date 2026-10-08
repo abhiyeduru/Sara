@@ -69,18 +69,26 @@ export default function Approvals({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 24 }}>
-        <div style={{
-          width: 44, height: 44, borderRadius: 12, background: '#f5f3ff', border: '1px solid #ddd6fe',
-          display: 'flex', alignItems: 'center', justifyContent: 'center'
-        }}>
-          <ShieldCheck size={22} color="#7c3aed" />
-        </div>
+      {/* Header */}
+      <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'Plus Jakarta Sans' }}>Approval Center</h1>
-          <p style={{ margin: 0, fontSize: 14, color: 'var(--text-muted)' }}>Review and authorize high-impact AI actions before autonomous execution</p>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7c3aed', marginBottom: 8
+          }}>
+            <ShieldCheck size={12} color="#7c3aed" />
+            Human-in-the-Loop Governance
+          </div>
+          <h1 className="page-title">
+            Approval Center
+          </h1>
+          <p className="page-subtitle">
+            Review and authorize high-impact AI actions before autonomous execution.
+          </p>
         </div>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchApprovals} title="Refresh">
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             Refresh

@@ -27,5 +27,8 @@
     "sarvam"
   ],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "page-mascot": "^0.1.0"
+  }
 }

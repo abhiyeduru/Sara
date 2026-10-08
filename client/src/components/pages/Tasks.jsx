@@ -99,16 +99,28 @@ export default function Tasks({ onNavigate }) {
 
   return (
     <div className="page-content animate-fade-in">
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
+      {/* Header */}
+      <div className="page-header" style={{ marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin:0, fontSize:22, fontWeight:800, color:'var(--text-primary)', fontFamily:'Plus Jakarta Sans' }}>Task Center</h1>
-          <p style={{ margin:'4px 0 0', fontSize:14, color:'var(--text-muted)' }}>
-            {tasks.filter(t => t.status === 'running' || t.status === 'in_progress').length} active · {tasks.length} total tasks
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 12px',
+            borderRadius: 20, background: 'rgba(124, 58, 237, 0.08)', border: '1px solid rgba(124, 58, 237, 0.18)',
+            fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: '#7c3aed', marginBottom: 8
+          }}>
+            <CheckSquare size={12} color="#7c3aed" />
+            Execution Engine
+          </div>
+          <h1 className="page-title">
+            Task Center
+          </h1>
+          <p className="page-subtitle">
+            Delegate, track, and monitor real-time task execution across your autonomous AI workforce.
           </p>
         </div>
-        <div style={{ display:'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <button className="btn btn-secondary" onClick={fetchTasks}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} /> Refresh
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
           </button>
           <button className="btn btn-primary" onClick={() => setShowCreateModal(true)}>
             <Plus size={14} /> New Task
@@ -117,29 +129,46 @@ export default function Tasks({ onNavigate }) {
       </div>
 
       {/* Stats Row */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, marginBottom:20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12, marginBottom: 20 }}>
         {[
-          { label:'Total Tasks', value: tasks.length, color:'#64748b' },
-          { label:'Running / In Progress', value: tasks.filter(t => t.status === 'running' || t.status === 'in_progress').length, color:'#0284c7' },
-          { label:'Pending', value: tasks.filter(t => t.status === 'pending').length, color:'#ca8a04' },
-          { label:'Completed', value: tasks.filter(t => t.status === 'completed').length, color:'#16a34a' },
+          { label: 'Total Tasks', value: tasks.length, color: '#64748b' },
+          { label: 'Running / Active', value: tasks.filter(t => t.status === 'running' || t.status === 'in_progress').length, color: '#0284c7' },
+          { label: 'Pending Queue', value: tasks.filter(t => t.status === 'pending').length, color: '#ca8a04' },
+          { label: 'Completed', value: tasks.filter(t => t.status === 'completed').length, color: '#16a34a' },
         ].map(s => (
-          <div key={s.label} className="kpi-card" style={{ padding:14, textAlign:'center' }}>
-            <div style={{ fontSize:26, fontWeight:800, color:s.color }}>{s.value}</div>
-            <div style={{ fontSize:11, color:'var(--text-muted)' }}>{s.label}</div>
+          <div key={s.label} className="card-glass" style={{ padding: '16px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 28, fontWeight: 800, color: s.color, fontFamily: 'Newsreader, serif' }}>{s.value}</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)', marginTop: 2 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
       {/* Tabs */}
-      <div style={{ display:'flex', gap:6, marginBottom:16 }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         {TABS.map(t => (
-          <button key={t} className={`chip ${tab===t?'active':''}`} onClick={() => setTab(t)}>{t}</button>
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            style={{
+              padding: '6px 14px',
+              borderRadius: 20,
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              border: '1px solid',
+              borderColor: tab === t ? 'rgba(124,58,237,0.3)' : 'rgba(0,0,0,0.06)',
+              background: tab === t ? '#f5f3ff' : 'transparent',
+              color: tab === t ? '#7c3aed' : 'var(--text-muted)',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {t}
+          </button>
         ))}
       </div>
 
       {/* Task List */}
-      <div className="card" style={{ overflow: 'hidden' }}>
+      <div className="card-glass" style={{ overflow: 'hidden' }}>
         {loading && tasks.length === 0 ? (
           <SkeletonLoader type="table" count={5} />
         ) : filtered.length === 0 ? (

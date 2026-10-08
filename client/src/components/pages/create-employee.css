@@ -1,0 +1,155 @@
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Telugu:wght@400;500;600;700&display=swap');
+
+:root {
+  --bg-app: #FAFAFB;
+  --surface-card: #FFFFFF;
+  --border-subtle: rgba(17, 24, 39, 0.08);
+  --border-focus: rgba(124, 58, 237, 0.4);
+  
+  --purple-primary: #7C3AED;
+  --purple-hover: #6D28D9;
+  --purple-tint: #F5F0FF;
+  --purple-glow: 0 0 0 4px rgba(124, 58, 237, 0.12);
+
+  --text-heading: #111827;
+  --text-body: #4B5563;
+  --text-label: #9CA3AF;
+  --text-success: #10B981;
+
+  --shadow-soft: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px rgba(16, 24, 40, 0.06);
+  --shadow-hover: 0 4px 6px rgba(16, 24, 40, 0.04), 0 12px 32px rgba(16, 24, 40, 0.08);
+}
+
+.create-employee-root {
+  background-color: var(--bg-app);
+  background-image: radial-gradient(circle at 50% 0%, rgba(124, 58, 237, 0.06) 0%, transparent 60%);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-body);
+}
+
+/* Telugu Typography formatting */
+.telugu-text {
+  font-family: 'Noto Sans Telugu', 'Inter', sans-serif;
+  line-height: 1.7 !important;
+}
+
+/* Preset Cards */
+.preset-card-item {
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 12px 14px;
+  cursor: pointer;
+  transition: all 200ms ease-out;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  position: relative;
+}
+
+.preset-card-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+  border-color: rgba(124, 58, 237, 0.3);
+}
+
+.preset-card-item.selected {
+  background: var(--purple-tint);
+  border-color: var(--purple-primary);
+  box-shadow: var(--purple-glow), var(--shadow-soft);
+}
+
+/* Inputs styling */
+.premium-input {
+  height: 44px;
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 0 14px;
+  font-size: 14px;
+  color: var(--text-heading);
+  transition: all 200ms ease-out;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.premium-input:focus {
+  outline: none;
+  border-color: var(--purple-primary);
+  box-shadow: var(--purple-glow);
+}
+
+.premium-textarea {
+  background: #FFFFFF;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 10px 14px;
+  font-size: 13.5px;
+  color: var(--text-heading);
+  transition: all 200ms ease-out;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+}
+
+.premium-textarea:focus {
+  outline: none;
+  border-color: var(--purple-primary);
+  box-shadow: var(--purple-glow);
+}
+
+/* Hero Script Panel Container */
+.hero-script-panel {
+  background: #FFFFFF;
+  border-radius: 16px;
+  position: relative;
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+}
+
+.hero-script-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 16px;
+  padding: 1.5px;
+  background: linear-gradient(135deg, #7C3AED 0%, #6366F1 50%, #EC4899 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* Thin Custom Scrollbar */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.3);
+  border-radius: 10px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.5);
+}
+
+/* Frosted glass footer */
+.frosted-footer {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* Shimmer animation */
+@keyframes shimmerPulse {
+  0% { opacity: 0.5; }
+  50% { opacity: 1; }
+  100% { opacity: 0.5; }
+}
+
+.shimmer-row {
+  animation: shimmerPulse 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+}

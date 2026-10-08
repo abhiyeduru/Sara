@@ -1,167 +1,171 @@
-import React, { useState } from 'react';
-import {
-  Sparkles, Bot, Zap, HeartHandshake, GraduationCap, Building2, Stethoscope,
-  ShoppingCart, Factory, ChevronRight, Loader2, CheckCircle2, Phone, Volume2,
-  ArrowLeft, Plus, Check, Sliders, MessageSquare, Play
-} from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { ArrowLeft, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import { CHARACTERS, EXTRA_MASCOTS } from '../../config/characters.config';
+import CharacterCard from './CharacterCard';
+import CharacterHero from './CharacterHero';
+import LanguagePicker from './LanguagePicker';
+import ScriptPanel from './ScriptPanel';
+import SuccessScreen from './SuccessScreen';
+import './create-employee.css';
 
-const PRESET_TEMPLATES = [
-  {
-    id: 'farhan',
-    name: 'Farhan',
-    role: 'Real Estate Lead Caller',
-    department: 'Sales',
-    color: '#e05638',
-    avatar: 'F',
-    language: 'Telugu & English (te-IN)',
-    voice_id: 'sarvam-te-kavitha',
-    voice_name: 'Kavitha (Telugu)',
-    desc: 'Calls property inquiry leads, qualifies living vs investment, budget, and books site visits in Telugu & English.',
-    opening_line: 'హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా?',
-    variables: ['Phone number', 'Lead Name', 'Property Type', 'Preferred Location', 'Budget Range'],
-    steps: [
-      {
-        id: 'step_1',
-        title: '1. Orient & Context',
-        badge: 'START',
-        content: "Once they confirm their identity, briefly say you're Farhan calling about their recent property enquiry, and mention you're here to help with their search. Reference the enquiry (e.g. 'మీరు ప్రాపర్టీ గురించి ఇంక్వైరీ చేశారు'). Start by asking which area they're interested in. For example you might say: 'నేను ఫర్హాన్ మాట్లాడుతున్నాను, మీరు ప్రాపర్టీ కోసం ఇంక్వైరీ చేశారు కదా అండి? ఏ ఏరియా లో చూస్తున్నారు చెప్పగలరా?'"
-      },
-      {
-        id: 'step_2',
-        title: '2. Qualify Need',
-        badge: null,
-        content: "Qualify their requirement ONE question at a time: first ask if it's for living or investment; once they answer, ask their budget range; then, if not already clear, ask when they could come for a site visit. React to each answer before moving to the next. If their budget is much lower than your properties, gently inform them and check if they're open to higher options or want to wait. For example, start with: 'మీరు లివింగ్ కి చూస్తున్నారా లేక ఇన్వెస్ట్మెంట్ కి వెతుకుతున్నారా అండి?'"
-      },
-      {
-        id: 'step_3',
-        title: '3. Book Site Visit',
-        badge: null,
-        content: "If their budget fits, offer to book a site visit and suggest a couple of date/time options. If they're interested, confirm the slot. If they're not ready, ask if they'd like more info over వాట్సాప్ or a follow-up call. For example: 'మీ బడ్జెట్ లో మంచి ఆప్షన్స్ ఉన్నాయి అండి. సైట్ విజిట్ కి ఎప్పుడు రాగలరు? ఈ వీకెండ్ లేదా ఇంకో టైం?'"
-      },
-      {
-        id: 'step_4',
-        title: '4. Confirm & Close',
-        badge: null,
-        content: "Confirm the agreed next step (site visit details or info sharing). Thank them warmly and let them know you'll send the location/details on వాట్సాప్. Offer to answer any last questions before ending. For example: 'సరే అండి, మీకు డీటెయిల్స్ వాట్సాప్ చేస్తాను. ఇంకేమైనా అడగాలనిపిస్తే చెప్పొచ్చు.'"
-      },
-      {
-        id: 'step_5',
-        title: '5. FAQs',
-        badge: null,
-        content: "Common questions callers ask, and how to answer them. Add one per line as 'Q: ... A: ...'. Answer ONLY from what's written here; if a question isn't listed, use your don't-know response.\n\ne.g.\nQ: What are your timings?\nA: We're open 9am to 6pm, Monday to Saturday."
-      }
-    ]
-  },
-  {
-    id: 'priya',
-    name: 'Priya',
-    role: 'Clinic & Healthcare Coordinator',
-    department: 'Customer Care',
-    color: '#059669',
-    avatar: 'P',
-    language: 'Telugu & English (te-IN)',
-    voice_id: 'sarvam-te-kavitha',
-    voice_name: 'Kavitha (Telugu)',
-    desc: 'Confirms patient consultation slots, asks about symptoms politely, and shares clinic directions.',
-    opening_line: 'నమస్కారం అండి, {Lead Name} గారేనా మాట్లాడేది?',
-    variables: ['Phone number', 'Lead Name', 'Doctor Name', 'Preferred Slot', 'Clinic Location'],
-    steps: [
-      {
-        id: 'step_1',
-        title: '1. Greet & Reference Booking',
-        badge: 'START',
-        content: "Introduce yourself as Priya from the healthcare clinic. Say: 'నమస్కారం అండి, డాక్టర్ కన్సల్టేషన్ కోసం మీరు అడిగిన వివరాల గురించి కాల్ చేస్తున్నాను.'"
-      },
-      {
-        id: 'step_2',
-        title: '2. Check Symptoms & Urgency',
-        badge: null,
-        content: "Ask what consultation or symptoms they are looking to discuss. Listen carefully and confirm: 'మీరు ఏ సమస్య కోసం చెకప్ అనుకుంటున్నారు అండి?'"
-      },
-      {
-        id: 'step_3',
-        title: '3. Schedule & Confirm Slot',
-        badge: null,
-        content: "Offer available morning or evening slots: 'రేపు ఉదయం 11 గంటలకు లేదా సాయంత్రం 5 గంటలకు స్లాట్ ఖాళీగా ఉంది, ఏది మీకు వీలవుతుంది?'"
-      },
-      {
-        id: 'step_4',
-        title: '4. Send WhatsApp Confirmation',
-        badge: null,
-        content: "Confirm appointment and send clinic address and token on WhatsApp: 'మీ అపాయింట్మెంట్ కన్ఫర్మ్ చేశాను అండి. లొకేషన్ వివరాలు వాట్సాప్ చేస్తాను. ధన్యవాదాలు!'"
-      }
-    ]
-  },
-  {
-    id: 'rahul',
-    name: 'Rahul',
-    role: 'Fitness & Gym Sales Advisor',
-    department: 'Sales',
-    color: '#7c3aed',
-    avatar: 'R',
-    language: 'Telugu & English (te-IN)',
-    voice_id: 'sarvam-te-kavitha',
-    voice_name: 'Kavitha (Telugu)',
-    desc: 'Qualifies fitness goals (weight loss, muscle gain), invites for free trial sessions, and sells gym memberships.',
-    opening_line: 'హలో అండి, {Lead Name} గారితో మాట్లాడుతున్నానా? ఫిట్నెస్ సెంటర్ నుండి రాహుల్ ని.',
-    variables: ['Phone number', 'Lead Name', 'Fitness Goal', 'Trial Date', 'Branch Location'],
-    steps: [
-      {
-        id: 'step_1',
-        title: '1. Connect & Acknowledge Inquiry',
-        badge: 'START',
-        content: "Briefly reference their inquiry about gym membership or personal training. 'మా జిమ్ మెంబర్షిప్ గురించి మీరు ఎంక్వైరీ చేశారు కదా అండి?'"
-      },
-      {
-        id: 'step_2',
-        title: '2. Understand Fitness Goal',
-        badge: null,
-        content: "Ask what their primary fitness goal is: weight loss, muscle building, or general fitness. 'మీ మెయిన్ గోల్ వెయిట్ లాస్ ఆ లేక ఫిట్నెస్ కోసమా అండి?'"
-      },
-      {
-        id: 'step_3',
-        title: '3. Offer Free Trial Workout',
-        badge: null,
-        content: "Invite them for a free 1-day pass with a certified trainer. 'ఈ శనివారం లేదా ఆదివారం ఫ్రీ ట్రయల్ వర్కౌట్ కి రండి, మా ట్రైనర్స్ మీకు ప్లాన్ ఎక్స్ప్లెయిన్ చేస్తారు.'"
-      },
-      {
-        id: 'step_4',
-        title: '4. WhatsApp Pass & Closure',
-        badge: null,
-        content: "Confirm their visit and send VIP pass on WhatsApp. 'మీరు వచ్చే సమయానికి పాస్ వాట్సాప్ చేస్తాను అండి. సీ యూ అట్ ద జిమ్!'"
-      }
-    ]
+// Script generator helper
+const generateAIScript = (roleTitle, languagesArray) => {
+  const roleLower = (roleTitle || '').toLowerCase();
+  const langText = (languagesArray || []).join(' & ') || 'Telugu & English';
+  const isTelugu = languagesArray.includes('Telugu');
+  const isHindi = languagesArray.includes('Hindi');
+
+  let opening = isTelugu
+    ? 'హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను మీ AI వర్క్‌ఫోర్స్ అసిస్టెంట్ ని.'
+    : isHindi
+    ? 'नमस्ते {Lead Name} जी, मैं आपकी AI असिस्टेंट बोल रही हूँ।'
+    : 'Hello {Lead Name}, I am your AI assistant following up on your request.';
+
+  let stepsList = [];
+
+  if (roleLower.includes('real estate') || roleLower.includes('property') || roleLower.includes('caller')) {
+    opening = isTelugu
+      ? 'హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను ప్రాపర్టీ గైడ్ నుండి ఫర్హాన్ ని.'
+      : isHindi
+      ? 'नमस्ते {Lead Name} जी, मैं प्रॉपर्टी एडवाइजर की तरफ से बात कर रहा हूँ।'
+      : 'Hello {Lead Name}, this is your Property Advisor following up on your inquiry.';
+
+    stepsList = [
+      { id: 's1', shortTitle: 'Introduce & Context', content: isTelugu ? 'హలో అండి, నేను ప్రాపర్టీ గైడ్ నుండి మాట్లాడుతున్నాను. మీరు ప్రాపర్టీ కోసం ఇంక్వైరీ చేశారు కదా అండి?' : 'Introduce yourself and reference their recent property inquiry.' },
+      { id: 's2', shortTitle: 'Ask Living vs Investment', content: isTelugu ? 'మీరు లివింగ్ కి చూస్తున్నారా లేక ఇన్‌వెస్ట్‌మెంట్ కి వెతుకుతున్నారా అండి?' : 'Qualify if they want personal residence or investment property.' },
+      { id: 's3', shortTitle: 'Ask Budget & Location', content: isTelugu ? 'మీ బడ్జెట్ రేంజ్ మరియు ఏ లొకేషన్ లో చూస్తున్నారో చెప్పగలరా?' : 'Inquire about their target budget and preferred location.' },
+      { id: 's4', shortTitle: 'Book Site Visit', content: isTelugu ? 'ఈ వీకెండ్ సైట్ విజిట్ కి ఎప్పుడు రాగలరు అండి?' : 'Offer site visit slots for this weekend.' },
+      { id: 's5', shortTitle: 'Confirm & WhatsApp', content: isTelugu ? 'సరే అండి, వివరాలన్నీ వాట్సాప్ చేస్తాను. ధన్యవాదాలు!' : 'Confirm details and send brochure on WhatsApp.' }
+    ];
+  } else if (roleLower.includes('health') || roleLower.includes('clinic') || roleLower.includes('doctor')) {
+    opening = isTelugu
+      ? 'నమస్కారం అండి, {Lead Name} గారేనా మాట్లాడేది? హెల్త్‌కేర్ క్లినిక్ నుండి ప్రియ ని.'
+      : 'Hello {Lead Name}, calling from the Healthcare Clinic regarding your booking.';
+
+    stepsList = [
+      { id: 's1', shortTitle: 'Greet & Booking', content: isTelugu ? 'నమస్కారం అండి, డాక్టర్ కన్సల్టేషన్ కోసం మీరు అడిగిన వివరాల గురించి కాల్ చేస్తున్నాను.' : 'Reference consultation booking request.' },
+      { id: 's2', shortTitle: 'Check Symptoms', content: isTelugu ? 'మీరు ఏ సమస్య కోసం చెకప్ అనుకుంటున్నారు అండి?' : 'Ask about their primary health consultation needs.' },
+      { id: 's3', shortTitle: 'Schedule Time Slot', content: isTelugu ? 'రేపు ఉదయం 11 గంటలకు లేదా సాయంత్రం 5 గంటలకు స్లాట్ ఖాళీగా ఉంది, ఏది వీలవుతుంది?' : 'Offer available morning/evening slots.' },
+      { id: 's4', shortTitle: 'Confirm & Directions', content: isTelugu ? 'మీ అపాయింట్మెంట్ కన్ఫర్మ్ చేశాను అండి. క్లినిక్ లొకేషన్ వాట్సాప్ చేస్తాను.' : 'Confirm appointment and text clinic location.' }
+    ];
+  } else if (roleLower.includes('fitness') || roleLower.includes('gym')) {
+    opening = isTelugu
+      ? 'హలో అండి, {Lead Name} గారితో మాట్లాడుతున్నానా? ఫిట్నెస్ సెంటర్ నుండి రాహుల్ ని.'
+      : 'Hello {Lead Name}, calling from Fitness Studio regarding your trial pass.';
+
+    stepsList = [
+      { id: 's1', shortTitle: 'Connect & Inquiry', content: isTelugu ? 'మా జిమ్ మెంబర్షిప్ గురించి మీరు ఎంక్వైరీ చేశారు కదా అండి?' : 'Reference gym trial inquiry.' },
+      { id: 's2', shortTitle: 'Understand Fitness Goal', content: isTelugu ? 'మీ మెయిన్ గోల్ వెయిట్ లాస్ ఆ లేక ఫిట్నెస్ కోసమా అండి?' : 'Ask primary goal (weight loss, strength, fitness).' },
+      { id: 's3', shortTitle: 'Offer Free Trial', content: isTelugu ? 'ఈ శనివారం లేదా ఆదివారం ఫ్రీ ట్రయల్ వర్కౌట్ కి రండి.' : 'Invite for complimentary workout session.' },
+      { id: 's4', shortTitle: 'WhatsApp VIP Pass', content: isTelugu ? 'మీరు వచ్చే సమయానికి VIP పాస్ వాట్సాప్ చేస్తాను అండి.' : 'Send VIP pass via WhatsApp.' }
+    ];
+  } else {
+    stepsList = [
+      { id: 's1', shortTitle: 'Introduce & Context', content: `Introduce company and reference inquiry in ${langText}.` },
+      { id: 's2', shortTitle: 'Qualify Needs', content: 'Ask qualifying questions regarding budget and requirements.' },
+      { id: 's3', shortTitle: 'Schedule Action', content: 'Propose next step or consultation appointment.' },
+      { id: 's4', shortTitle: 'Confirm & Close', content: 'Confirm details and send follow-up on WhatsApp.' }
+    ];
   }
-];
+
+  return { opening_line: opening, steps: stepsList };
+};
 
 export default function CreateEmployee({ onNavigate }) {
-  const [selectedTemplate, setSelectedTemplate] = useState(PRESET_TEMPLATES[0]);
-  const [name, setName] = useState(PRESET_TEMPLATES[0].name);
-  const [role, setRole] = useState(PRESET_TEMPLATES[0].role);
-  const [department, setDepartment] = useState(PRESET_TEMPLATES[0].department);
-  const [customPrompt, setCustomPrompt] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState('');
+  const [selectedCharacter, setSelectedCharacter] = useState(CHARACTERS[0]);
 
-  const handleSelectTemplate = (tmpl) => {
-    setSelectedTemplate(tmpl);
-    setName(tmpl.name);
-    setRole(tmpl.role);
-    setDepartment(tmpl.department);
+  // Form Fields
+  const [name, setName] = useState(CHARACTERS[0].name);
+  const [role, setRole] = useState(CHARACTERS[0].role);
+  const [department, setDepartment] = useState(CHARACTERS[0].department || 'Sales');
+  const [specialInstructions, setSpecialInstructions] = useState('');
+
+  // Languages
+  const [selectedLanguages, setSelectedLanguages] = useState(['Telugu', 'English']);
+
+  // Call Script State
+  const [openingLine, setOpeningLine] = useState(CHARACTERS[0].opening_line || '');
+  const [steps, setSteps] = useState(CHARACTERS[0].steps || []);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Reaction State for Hero Mascot
+  const [heroReaction, setHeroReaction] = useState('idle');
+
+  // Submit State
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [createdEmployee, setCreatedEmployee] = useState(null);
+  const [apiError, setApiError] = useState('');
+
+  // Select Preset Character
+  const handleSelectCharacter = (character) => {
+    setSelectedCharacter(character);
+    setName(character.name);
+    setRole(character.role);
+    setDepartment(character.department || 'Sales');
+    setOpeningLine(character.opening_line || '');
+    setSteps(character.steps || []);
+
+    // Trigger reaction
+    setHeroReaction('smile');
+    setTimeout(() => setHeroReaction('idle'), 1500);
   };
 
-  const handleCreateEmployee = async () => {
-    if (!name.trim()) {
-      setError('Please provide an employee name.');
-      return;
+  // Toggle Language Chip
+  const handleToggleLanguage = (langId) => {
+    let updated;
+    if (selectedLanguages.includes(langId)) {
+      if (selectedLanguages.length === 1) return;
+      updated = selectedLanguages.filter(l => l !== langId);
+    } else {
+      updated = [...selectedLanguages, langId];
     }
-    setIsSubmitting(true);
-    setError('');
+    setSelectedLanguages(updated);
 
-    const templateToUse = selectedTemplate || PRESET_TEMPLATES[0];
+    // Trigger reaction
+    setHeroReaction('nod');
+    setTimeout(() => setHeroReaction('idle'), 1200);
+  };
+
+  // Generate Script
+  const handleGenerateScript = () => {
+    setIsGenerating(true);
+    setHeroReaction('thinking');
+
+    setTimeout(() => {
+      const generated = generateAIScript(role, selectedLanguages);
+      setOpeningLine(generated.opening_line);
+      setSteps(generated.steps);
+      setIsGenerating(false);
+      setHeroReaction('happy');
+      setTimeout(() => setHeroReaction('idle'), 2000);
+    }, 600);
+  };
+
+  // Validation Check
+  const missingFields = [];
+  if (!name.trim()) missingFields.push('Employee Name');
+  if (!role.trim()) missingFields.push('Role / Job Title');
+  if (selectedLanguages.length === 0) missingFields.push('Language Selection');
+  if (steps.length === 0) missingFields.push('Call Script Steps');
+
+  const isFormValid = missingFields.length === 0;
+
+  // Submit API Call
+  const handleCreateEmployee = async () => {
+    if (!isFormValid || isSubmitting) return;
+
+    setIsSubmitting(true);
+    setApiError('');
+
+    const templateToUse = selectedCharacter || CHARACTERS[0];
     const callScriptData = {
-      opening_line: templateToUse.opening_line || `హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా?`,
-      steps: templateToUse.steps || []
+      opening_line: openingLine.trim() || `హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా?`,
+      steps: steps.map((s, idx) => ({
+        id: s.id || `step_${idx+1}`,
+        title: s.shortTitle || `${idx+1}. Call Step`,
+        content: typeof s === 'string' ? s : s.content
+      }))
     };
 
     const universalSpec = {
@@ -169,25 +173,32 @@ export default function CreateEmployee({ onNavigate }) {
       call_script: callScriptData
     };
 
+    const finalMission = specialInstructions.trim()
+      ? `${templateToUse.desc || templateToUse.about} Special Guidance: ${specialInstructions.trim()}`
+      : (templateToUse.desc || templateToUse.about || 'Autonomous digital worker.');
+
+    const primaryLangCode = selectedLanguages.includes('Telugu') ? 'te' : selectedLanguages.includes('Hindi') ? 'hi' : 'en';
+
     try {
       const res = await fetch('/api/v1/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim(),
-          role: role.trim() || 'AI Telephony Caller',
+          role: role.trim(),
           department: department || 'Sales',
-          mission: customPrompt || templateToUse.desc,
-          description: customPrompt || templateToUse.desc,
+          mission: finalMission,
+          description: finalMission,
           personality: 'Professional, warm, encouraging',
           communication_style: 'Concise and natural',
           sales_behavior: 'Consultative & proactive',
-          languages: ['te', 'en'],
-          voice_id: templateToUse.voice_id || 'sarvam-te-kavitha',
-          voice_name: templateToUse.voice_name || 'Kavitha (Telugu)',
+          languages: selectedLanguages.map(l => l.toLowerCase().slice(0, 2)),
+          voice_id: primaryLangCode === 'te' ? 'sarvam-te-kavitha' : primaryLangCode === 'hi' ? 'sarvam-hi-anushka' : 'sarvam-en-sarah',
+          voice_name: primaryLangCode === 'te' ? 'Kavitha (Sarvam AI)' : primaryLangCode === 'hi' ? 'Anushka (Sarvam AI)' : 'Sarah (Sarvam AI)',
           voice_gender: 'female',
-          voice_language: 'te',
+          voice_language: primaryLangCode,
           primary_model: 'groq',
+          mascot: selectedCharacter?.mascot || 'beard',
           call_script: callScriptData,
           universal_spec: universalSpec,
           working_hours: { start: '09:00', end: '21:00', days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'] }
@@ -196,223 +207,332 @@ export default function CreateEmployee({ onNavigate }) {
 
       if (res.ok) {
         const created = await res.json();
-        onNavigate('employee-detail', { employeeId: created.id });
+        setCreatedEmployee({
+          ...created,
+          mascot: selectedCharacter?.mascot || 'beard',
+          name: name.trim(),
+          role: role.trim()
+        });
+        setIsSuccess(true);
       } else {
         const data = await res.json();
-        setError(data.detail || 'Could not create AI employee.');
+        setApiError(data.detail || 'Could not create AI employee.');
       }
     } catch (err) {
       console.error('Failed to create employee:', err);
-      setError('Connection error while creating employee.');
+      setApiError('Connection error. Please verify server connectivity and retry.');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Reset form to create another
+  const handleCreateAnother = () => {
+    setIsSuccess(false);
+    setCreatedEmployee(null);
+    setSelectedCharacter(CHARACTERS[0]);
+    setName(CHARACTERS[0].name);
+    setRole(CHARACTERS[0].role);
+    setSpecialInstructions('');
+    setOpeningLine(CHARACTERS[0].opening_line);
+    setSteps(CHARACTERS[0].steps);
+  };
+
+  // SUCCESS SCREEN
+  if (isSuccess && createdEmployee) {
+    return (
+      <SuccessScreen
+        employee={createdEmployee}
+        onOpenStudio={() => onNavigate('employee-detail', { employeeId: createdEmployee.id })}
+        onCreateAnother={handleCreateAnother}
+      />
+    );
+  }
+
   return (
-    <div style={{ maxWidth: 1040, margin: '0 auto', padding: '28px 24px' }} className="animate-fade-in">
-      {/* Back button */}
-      <button
-        onClick={() => onNavigate('employees')}
-        style={{
-          background: 'transparent',
-          border: 'none',
-          color: '#64748b',
-          fontSize: 13,
+    <div className="create-employee-root" style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', position: 'fixed', top: 0, left: 0, zIndex: 100 }}>
+      {/* HEADER BAR */}
+      <header style={{
+        height: 60,
+        background: '#FFFFFF',
+        borderBottom: '1px solid var(--border-subtle)',
+        padding: '0 28px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexShrink: 0
+      }}>
+        {/* Left: Back Link & Brand */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <button
+            type="button"
+            onClick={() => onNavigate('employees')}
+            style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-heading)',
+              fontSize: 12.5,
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              borderRadius: 20,
+              transition: 'all 200ms ease-out',
+              boxShadow: '0 1px 2px rgba(16, 24, 40, 0.04)'
+            }}
+          >
+            <ArrowLeft size={15} /> Back to My Employees
+          </button>
+
+          <div style={{ height: 18, width: 1, background: 'var(--border-subtle)' }} />
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <img src="/saadhyam-logo.png" alt="Saadhyam Logo" style={{ height: 22, width: 'auto' }} />
+            <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-heading)', fontFamily: 'Newsreader, serif' }}>
+              Saadhyam
+            </span>
+          </div>
+        </div>
+
+        {/* Center Title */}
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-heading)', tracking: '-0.02em' }}>
+            Create New AI Employee
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text-label)' }}>
+            Hire an autonomous digital worker in under 1 minute
+          </div>
+        </div>
+
+        {/* Right Badge */}
+        <div>
+          <span style={{
+            fontSize: 11,
+            fontWeight: 700,
+            padding: '4px 10px',
+            borderRadius: 20,
+            background: 'var(--purple-tint)',
+            color: 'var(--purple-primary)'
+          }}>
+            Voice AI Builder
+          </span>
+        </div>
+      </header>
+
+      {/* TOAST / ERROR BANNER WITH RETRY */}
+      {apiError && (
+        <div style={{
+          background: '#FEF2F2',
+          borderBottom: '1px solid #FECACA',
+          color: '#B91C1C',
+          padding: '8px 28px',
+          fontSize: 12.5,
           fontWeight: 600,
-          cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: 6,
-          marginBottom: 16
-        }}
-      >
-        <ArrowLeft size={16} /> Back to My Employees
-      </button>
-
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: '#0f172a', fontFamily: 'Plus Jakarta Sans' }}>
-          Create New AI Employee
-        </h1>
-        <p style={{ margin: '4px 0 0', fontSize: 14, color: '#64748b' }}>
-          Create an autonomous voice agent that speaks fluent Telugu & English, follows structured call steps, and dials customers automatically.
-        </p>
-      </div>
-
-      {error && (
-        <div style={{
-          background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c',
-          padding: '12px 16px', borderRadius: 10, fontSize: 13, marginBottom: 20
+          justifyContent: 'space-between'
         }}>
-          {error}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertCircle size={15} color="#B91C1C" />
+            <span>{apiError}</span>
+          </div>
+          <button
+            onClick={handleCreateEmployee}
+            style={{
+              background: '#B91C1C',
+              color: '#FFFFFF',
+              border: 'none',
+              padding: '3px 12px',
+              borderRadius: 12,
+              fontSize: 11.5,
+              fontWeight: 700,
+              cursor: 'pointer'
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      {/* 1. Choose Pre-configured Template */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 12, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          1. Choose Role & Script Template
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: 14 }}>
-          {PRESET_TEMPLATES.map(t => {
-            const isSelected = selectedTemplate?.id === t.id;
-            return (
-              <div
-                key={t.id}
-                onClick={() => handleSelectTemplate(t)}
-                style={{
-                  background: isSelected ? '#faf5ff' : '#ffffff',
-                  border: isSelected ? '2px solid #7c3aed' : '1px solid #e2e8f0',
-                  borderRadius: 14,
-                  padding: 18,
-                  cursor: 'pointer',
-                  transition: 'all 0.15s ease',
-                  boxShadow: isSelected ? '0 4px 14px rgba(124,58,237,0.1)' : '0 1px 3px rgba(0,0,0,0.02)'
-                }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{
-                      width: 38, height: 38, borderRadius: 10,
-                      background: t.color, color: '#fff',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: 16, fontWeight: 800
-                    }}>
-                      {t.avatar}
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a' }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>{t.role}</div>
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#7c3aed', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Check size={13} color="#fff" />
-                    </div>
-                  )}
-                </div>
-                <p style={{ margin: '0 0 10px', fontSize: 12, color: '#475569', lineHeight: 1.4 }}>
-                  {t.desc}
-                </p>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#f1f5f9', color: '#334155' }}>
-                    {t.language}
-                  </span>
-                  <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10, background: '#f5f3ff', color: '#7c3aed' }}>
-                    {t.steps.length} call steps
-                  </span>
-                </div>
+      {/* MAIN TWO-COLUMN BODY (55% LEFT / 45% RIGHT) */}
+      <main style={{
+        flex: 1,
+        padding: '16px 28px 80px',
+        overflow: 'hidden',
+        boxSizing: 'border-box'
+      }}>
+        <div style={{
+          maxWidth: 1320,
+          margin: '0 auto',
+          height: '100%',
+          display: 'grid',
+          gridTemplateColumns: 'minmax(0, 52%) minmax(0, 48%)',
+          gap: 20,
+          alignItems: 'start'
+        }}>
+
+          {/* LEFT COLUMN: PRESETS, IDENTITY & LANGUAGE */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+
+            {/* 1. Character Presets Row */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8 }}>
+                1. Select Character Preset
               </div>
-            );
-          })}
-        </div>
-      </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                {CHARACTERS.map(char => (
+                  <CharacterCard
+                    key={char.id}
+                    character={char}
+                    isSelected={selectedCharacter?.id === char.id}
+                    onSelect={handleSelectCharacter}
+                  />
+                ))}
+              </div>
+            </div>
 
-      {/* 2. Customise Employee Profile */}
-      <div style={{ background: '#ffffff', borderRadius: 16, border: '1px solid #e2e8f0', padding: 24, marginBottom: 24, boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          2. Employee Details
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-              Employee Name *
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. Farhan"
-              style={{
-                width: '100%', padding: '10px 14px', borderRadius: 8,
-                border: '1px solid #cbd5e1', fontSize: 14, boxSizing: 'border-box'
-              }}
+            {/* 2. Side-by-Side Employee Name & Role Inputs */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 4 }}>
+                  Employee Name *
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="e.g. Farhan"
+                  className="premium-input"
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-heading)', marginBottom: 4 }}>
+                  Role / Job Title *
+                </label>
+                <input
+                  type="text"
+                  value={role}
+                  onChange={e => setRole(e.target.value)}
+                  placeholder="e.g. Real Estate Lead Caller"
+                  className="premium-input"
+                />
+              </div>
+            </div>
+
+            {/* 3. Language Selection Component */}
+            <LanguagePicker
+              selectedLanguages={selectedLanguages}
+              onToggleLanguage={handleToggleLanguage}
+            />
+
+            {/* 4. Special Instructions Textarea (Compact 2-line with char counter) */}
+            <div style={{
+              background: '#FFFFFF',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 16,
+              padding: '12px 16px',
+              boxShadow: 'var(--shadow-soft)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-label)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  Special Instructions (Optional)
+                </label>
+                <span style={{ fontSize: 11, color: 'var(--text-label)' }}>
+                  {specialInstructions.length} / 200
+                </span>
+              </div>
+              <textarea
+                rows={2}
+                maxLength={200}
+                value={specialInstructions}
+                onChange={e => setSpecialInstructions(e.target.value)}
+                placeholder="e.g. Focus on 2BHK property listings in Gachibowli, mention weekend discounts..."
+                className="premium-textarea"
+                style={{ fontSize: 13 }}
+              />
+            </div>
+          </div>
+
+          {/* RIGHT COLUMN: SINGLE HERO CARD (CHARACTER STRIP + SCRIPT PANEL) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, height: '100%', minHeight: 0 }}>
+            {/* Slim Hero Strip */}
+            <CharacterHero
+              character={selectedCharacter}
+              reaction={heroReaction}
+            />
+
+            {/* Script Panel (Fills rest of height) */}
+            <ScriptPanel
+              openingLine={openingLine}
+              setOpeningLine={setOpeningLine}
+              steps={steps}
+              setSteps={setSteps}
+              role={role}
+              selectedLanguages={selectedLanguages}
+              onGenerateScript={handleGenerateScript}
+              isGenerating={isGenerating}
             />
           </div>
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-              Designation / Role *
-            </label>
-            <input
-              type="text"
-              value={role}
-              onChange={e => setRole(e.target.value)}
-              placeholder="e.g. Real Estate Lead Caller"
-              style={{
-                width: '100%', padding: '10px 14px', borderRadius: 8,
-                border: '1px solid #cbd5e1', fontSize: 14, boxSizing: 'border-box'
-              }}
-            />
-          </div>
+        </div>
+      </main>
+
+      {/* FIXED FROSTED GLASS FOOTER */}
+      <footer className="frosted-footer" style={{
+        position: 'fixed',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: 64,
+        padding: '0 36px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        zIndex: 110
+      }}>
+        <div style={{ fontSize: 13, color: 'var(--text-body)' }}>
+          Ready to launch <strong>{name || 'AI Worker'}</strong> as <strong>{role || 'Voice Role'}</strong>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 6 }}>
-            Custom Mission / Extra Guidance (Optional)
-          </label>
-          <textarea
-            rows={2}
-            value={customPrompt}
-            onChange={e => setCustomPrompt(e.target.value)}
-            placeholder="e.g. Focus on luxury 2BHK and 3BHK villas in Gachibowli and tell customers our weekend discount is ending soon."
+        {/* Create Employee CTA Button with Tooltip for Missing Fields */}
+        <div style={{ position: 'relative' }} title={!isFormValid ? `Please complete: ${missingFields.join(', ')}` : ''}>
+          <button
+            type="button"
+            onClick={handleCreateEmployee}
+            disabled={!isFormValid || isSubmitting}
             style={{
-              width: '100%', padding: '10px 14px', borderRadius: 8,
-              border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box', resize: 'vertical'
+              height: 50,
+              padding: '0 32px',
+              borderRadius: 25,
+              background: isFormValid ? 'linear-gradient(135deg, #7C3AED 0%, #6D28D9 100%)' : '#E2E8F0',
+              color: isFormValid ? '#FFFFFF' : '#94A3B8',
+              border: 'none',
+              fontSize: 15,
+              fontWeight: 700,
+              cursor: isFormValid && !isSubmitting ? 'pointer' : 'not-allowed',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+              boxShadow: isFormValid ? '0 4px 16px rgba(124, 58, 237, 0.35)' : 'none',
+              transition: 'all 200ms ease-out'
             }}
-          />
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Launching Worker...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                <span>Create Employee</span>
+              </>
+            )}
+          </button>
         </div>
-
-        {/* Script Preview Box */}
-        <div style={{ background: '#f8fafc', borderRadius: 10, padding: 14, border: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 4 }}>
-            DEFAULT OPENING LINE PREVIEW
-          </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#0f172a' }}>
-            {selectedTemplate?.opening_line || 'హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా?'}
-          </div>
-          <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-            Includes 5 full call steps in Telugu & English, pre-call variables, and automated customer dialer.
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Action Button */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12 }}>
-        <button
-          onClick={() => onNavigate('employees')}
-          style={{
-            background: '#ffffff', border: '1px solid #cbd5e1', color: '#475569',
-            padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer'
-          }}
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleCreateEmployee}
-          disabled={isSubmitting}
-          style={{
-            background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-            border: 'none', color: '#ffffff',
-            padding: '12px 28px', borderRadius: 10, fontSize: 14, fontWeight: 700,
-            cursor: isSubmitting ? 'not-allowed' : 'pointer',
-            display: 'flex', alignItems: 'center', gap: 8,
-            boxShadow: '0 4px 14px rgba(124,58,237,0.35)'
-          }}
-        >
-          {isSubmitting ? (
-            <>
-              <Loader2 size={16} className="animate-spin" />
-              Configuring Voice & Script...
-            </>
-          ) : (
-            <>
-              <Sparkles size={16} />
-              Launch {name || 'Employee'} & Open Studio
-            </>
-          )}
-        </button>
-      </div>
+      </footer>
     </div>
   );
 }

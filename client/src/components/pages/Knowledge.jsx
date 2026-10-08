@@ -141,18 +141,18 @@ export default function Knowledge({ onNavigate }) {
 
       {/* Stats Cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 28 }}>
-        <div className="card" style={{ padding: 20 }}>
+        <div className="card-glass" style={{ padding: 20 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-            <BookOpen size={16} color="var(--primary)" /> Total Sources
+            <BookOpen size={16} color="#7c3aed" /> Total Sources
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8 }}>{sources.length}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', marginTop: 8, fontFamily: 'Newsreader, serif' }}>{sources.length}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Across all AI employees</div>
         </div>
-        <div className="card" style={{ padding: 20 }}>
+        <div className="card-glass" style={{ padding: 20 }}>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
             <CheckCircle2 size={16} color="#10b981" /> Total Chunks Indexed
           </div>
-          <div style={{ fontSize: 26, fontWeight: 700, color: 'var(--text-primary)', marginTop: 8 }}>
+          <div style={{ fontSize: 28, fontWeight: 800, color: 'var(--text-primary)', marginTop: 8, fontFamily: 'Newsreader, serif' }}>
             {sources.reduce((acc, s) => acc + (s.chunk_count || 0), 0)}
           </div>
           <div style={{ fontSize: 12, color: '#10b981', marginTop: 4 }}>Ready for real-time retrieval</div>
