@@ -5,49 +5,6 @@ import {
 } from 'lucide-react';
 import SkeletonLoader from '../common/SkeletonLoader';
 
-const DEFAULT_TEAMS = [
-  {
-    id: 'team_sales_pod',
-    name: 'Outbound Sales & Lead Qualification Pod',
-    department: 'Sales & Outreach',
-    status: 'active',
-    leader: 'Sara (Sales Lead)',
-    mission: 'High-speed lead outreach, qualifying customer inquiries, and scheduling appointments.',
-    members_count: 3,
-    members: [
-      { id: '1', name: 'Sara', role: 'lead' },
-      { id: '2', name: 'Kiet', role: 'member' },
-      { id: '3', name: 'Priya', role: 'member' }
-    ]
-  },
-  {
-    id: 'team_support_squad',
-    name: '24/7 Customer Care & Support Tier-1',
-    department: 'Customer Support',
-    status: 'active',
-    leader: 'Priya (Support Lead)',
-    mission: 'Resolving customer queries, multilingual helpdesk support, and ticketing escalations.',
-    members_count: 2,
-    members: [
-      { id: '3', name: 'Priya', role: 'lead' },
-      { id: '1', name: 'Sara', role: 'member' }
-    ]
-  },
-  {
-    id: 'team_realestate_squad',
-    name: 'Real Estate & Property Advisory Unit',
-    department: 'Operations & Sales',
-    status: 'active',
-    leader: 'Kiet (Property Lead)',
-    mission: 'Handling property inquiries, cab pickup scheduling, and buyer site visits.',
-    members_count: 2,
-    members: [
-      { id: '2', name: 'Kiet', role: 'lead' },
-      { id: '1', name: 'Sara', role: 'member' }
-    ]
-  }
-];
-
 export default function Teams({ onNavigate }) {
   const [teams, setTeams] = useState([]);
   const [employees, setEmployees] = useState([]);
@@ -69,9 +26,9 @@ export default function Teams({ onNavigate }) {
 
       if (teamsRes.ok) {
         const tData = await teamsRes.json();
-        setTeams(tData.data && tData.data.length > 0 ? tData.data : DEFAULT_TEAMS);
+        setTeams(tData.data || []);
       } else {
-        setTeams(DEFAULT_TEAMS);
+        setTeams([]);
       }
 
       if (empsRes.ok) {
@@ -80,7 +37,7 @@ export default function Teams({ onNavigate }) {
       }
     } catch (err) {
       console.error('Error fetching teams:', err);
-      setTeams(DEFAULT_TEAMS);
+      setTeams([]);
     } finally {
       setLoading(false);
     }
@@ -90,7 +47,7 @@ export default function Teams({ onNavigate }) {
     fetchData();
   }, []);
 
-  const displayTeams = teams.length > 0 ? teams : DEFAULT_TEAMS;
+  const displayTeams = teams;
 
   const handleCreate = async (e) => {
     e.preventDefault();

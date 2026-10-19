@@ -29,20 +29,25 @@ class Settings:
     FIREBASE_API_KEY: str = os.getenv("FIREBASE_API_KEY", "")
 
     # ── LLM Providers ───────────────────────────────────────────────────────
-    PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "groq")
+    PRIMARY_LLM: str = os.getenv("PRIMARY_LLM", "gemini")
+    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
+    GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     ANTHROPIC_API_KEY: str = os.getenv("ANTHROPIC_API_KEY", "")
-    GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
 
     # ── Voice ───────────────────────────────────────────────────────────────
-    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "")
+    PRIMARY_STT: str = os.getenv("PRIMARY_STT", "sarvam")
+    PRIMARY_TTS: str = os.getenv("PRIMARY_TTS", "cartesia")
+    SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "sk_jn30w4nk_BBKoKdIB5re7Y7khT7suNyUd")
+    SARVAM_STT_MODEL: str = os.getenv("SARVAM_STT_MODEL", "saaras:v4")
+    DEFAULT_VOICE_ID: str = os.getenv("DEFAULT_VOICE_ID", "07bc462a-c644-49f1-baf7-82d5599131be")
+    CARTESIA_PRIMARY_VOICE_ID: str = "07bc462a-c644-49f1-baf7-82d5599131be"
+    CARTESIA_ALT_VOICE_ID: str = "cf061d8b-a752-4865-81a2-57570a6e0565"
+    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "sk_car_Caz6Y144PrSF7XKUjSK7fU")
     CARTESIA_MODEL_ID: str = os.getenv("CARTESIA_MODEL_ID", "sonic-preview")
-    DEFAULT_VOICE_ID: str = os.getenv("DEFAULT_VOICE_ID", "330c4fa0-1da3-4c55-8e97-951bfd724e20")
-    SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")
-    SARVAM_STT_MODEL: str = os.getenv("SARVAM_STT_MODEL", "saarika:v2.5")
 
     # ── Silence Handling ─────────────────────────────────────────────────────
     MEDIUM_SILENCE_SECONDS: float = float(os.getenv("MEDIUM_SILENCE_SECONDS", 14.0))

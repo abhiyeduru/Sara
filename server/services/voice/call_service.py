@@ -117,11 +117,27 @@ class CallService:
         # 5. Resolve Caller ID (From number)
         resolved_from = from_number or plivo_client.caller_id or "+918065522007"
 
-        # 6. Create Call Record in Database
+        # 6. Resolve actual workspace ID and Lead
+        resolved_ws_id = user.id
+        from server.models import WorkspaceMember, Workspace, Lead
+        wm = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
+        if wm:
+            resolved_ws_id = wm.workspace_id
+        elif emp and emp.workspace_id and db.query(Workspace).filter(Workspace.id == emp.workspace_id).first():
+            resolved_ws_id = emp.workspace_id
+
+        if not lead_id:
+            matched_lead = db.query(Lead).filter(
+                (Lead.phone == clean_to) | (Lead.phone.endswith(clean_to[-10:]))
+            ).order_by(Lead.updated_at.desc()).first()
+            if matched_lead:
+                lead_id = matched_lead.id
+
+        # 7. Create Call Record in Database
         call_id = f"call_{uuid.uuid4().hex[:12]}"
         call_record = Call(
             id=call_id,
-            workspace_id=user.id,
+            workspace_id=resolved_ws_id,
             ai_employee_id=emp.id,
             employee_id=emp.id,
             lead_id=lead_id,
@@ -144,21 +160,8 @@ class CallService:
         })
 
         # 7. Execute Call via Plivo API or Simulation
-        from dotenv import dotenv_values
-        fresh_env = dotenv_values()
-        base_url = (
-            fresh_env.get("PLIVO_WEBHOOK_BASE_URL")
-            or fresh_env.get("PUBLIC_BASE_URL")
-            or os.getenv("PLIVO_WEBHOOK_BASE_URL")
-            or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None)
-            or os.getenv("PUBLIC_BASE_URL")
-            or settings.PUBLIC_BASE_URL
-            or "https://difficulties-them-regulations-kenneth.trycloudflare.com"
-        ).rstrip("/")
-
-        # Guard against invalid localhost answer_url for cloud telephony
-        if "localhost" in base_url or "127.0.0.1" in base_url:
-            base_url = "https://difficulties-them-regulations-kenneth.trycloudflare.com"
+        from .plivo_service import get_live_public_base_url
+        base_url = get_live_public_base_url()
 
         answer_url = f"{base_url}/api/v1/voice/plivo/answer/{call_id}"
         hangup_url = f"{base_url}/api/v1/voice/plivo/hangup/{call_id}"

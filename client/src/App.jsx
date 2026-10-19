@@ -26,10 +26,11 @@ import MCPConnections from './components/pages/MCPConnections';
 import PhoneNumbers from './components/pages/PhoneNumbers';
 import TalkWithSara from './components/pages/TalkWithSara';
 import CampaignsStudio from './components/pages/CampaignsStudio';
-import AdminPanel from './components/pages/AdminPanel';
+import AdminPortal from './components/admin/AdminPortal';
 import ComingSoon from './components/pages/ComingSoon';
 import LoginModal from './components/auth/LoginModal';
 import BusinessOnboardingModal from './components/auth/BusinessOnboardingModal';
+import MobileBottomNav from './components/MobileBottomNav';
 
 import { UsersRound, GraduationCap, Zap, Megaphone, PhoneIncoming, MessageCircle,
   Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic, ShieldCheck } from 'lucide-react';
@@ -69,13 +70,13 @@ const PAGE_META = {
 
 function renderPage(page, onNavigate, pageParams = {}) {
   switch (page) {
-    case 'admin':           return <AdminPanel onNavigate={onNavigate} />;
+    case 'admin':           return <AdminPortal onNavigate={onNavigate} />;
     case 'dashboard':       return <Dashboard onNavigate={onNavigate} />;
     case 'talk-sara':       return <TalkWithSara onNavigate={onNavigate} />;
     case 'ask':             return <AskSara onNavigate={onNavigate} />;
     case 'employees':       return <Employees onNavigate={onNavigate} />;
     case 'employees/new':   return <CreateEmployee onNavigate={onNavigate} />;
-    case 'employee-detail': return <EmployeeDetail onNavigate={onNavigate} employeeId={pageParams?.employeeId} />;
+    case 'employee-detail': return <EmployeeDetail onNavigate={onNavigate} employeeId={pageParams?.employeeId} initialTab={pageParams?.tab} />;
     case 'teams':           return <Teams onNavigate={onNavigate} />;
     case 'tasks':           return <Tasks onNavigate={onNavigate} />;
     case 'workflows':       return <Workflows onNavigate={onNavigate} />;
@@ -108,36 +109,83 @@ function renderPage(page, onNavigate, pageParams = {}) {
 // Ask Sara Floating Panel
 function AskSaraPanel({ onClose, currentPage }) {
   const [msg, setMsg] = useState('');
+  const [reply, setReply] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAsk = async (queryText) => {
+    const q = queryText || msg;
+    if (!q.trim() || loading) return;
+    setLoading(true);
+    setReply('');
+    try {
+      const res = await fetch('/api/v1/voice/chat/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: q,
+          language: 'english'
+        })
+      });
+      const data = await res.json();
+      setReply(data.reply || data.response || 'I am ready to help you with your workspace.');
+    } catch (e) {
+      setReply('I can help manage your AI employees, business leads, and voice campaigns.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div style={{ position:'fixed', bottom:90, right:24, width:360, background:'#fff',
+    <div style={{ position:'fixed', bottom:90, right:24, width:380, maxHeight:'480px', background:'#fff',
       borderRadius:16, boxShadow:'0 20px 60px rgba(0,0,0,0.15)', border:'1px solid var(--border)',
-      zIndex:200, animation:'slideUp 0.3s cubic-bezier(0.16,1,0.3,1)', overflow:'hidden' }}>
+      zIndex:200, animation:'slideUp 0.3s cubic-bezier(0.16,1,0.3,1)', overflow:'hidden', display:'flex', flexDirection:'column' }}>
       <div style={{ padding:'16px', background:'linear-gradient(135deg,#7c3aed,#6d28d9)', color:'#fff',
         display:'flex', alignItems:'center', gap:10 }}>
         <Sparkles size={18} />
         <div style={{ flex:1 }}>
-          <div style={{ fontWeight:700, fontSize:14 }}>Ask Sara</div>
+          <div style={{ fontWeight:700, fontSize:14 }}>Ask Sara (Powered by Gemini)</div>
           <div style={{ fontSize:11, opacity:0.8 }}>Context: {PAGE_META[currentPage]?.title || 'Dashboard'}</div>
         </div>
         <button onClick={onClose} style={{ background:'transparent', border:'none', color:'#fff', cursor:'pointer', fontSize:18, lineHeight:1 }}>×</button>
       </div>
-      <div style={{ padding:14 }}>
+      <div style={{ padding:14, overflowY:'auto', flex:1 }}>
         <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:10 }}>
-          Ask about this page or anything in your workspace...
+          Ask about this page, your AI workforce, or customer leads...
         </div>
+
+        {reply && (
+          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, color: '#1e293b', lineHeight: 1.5 }}>
+            {reply}
+          </div>
+        )}
+
+        {loading && (
+          <div style={{ background: '#f5f3ff', border: '1px solid #ddd6fe', borderRadius: 10, padding: 10, marginBottom: 12, fontSize: 12, color: '#7c3aed' }} className="animate-pulse">
+            ⚡ Gemini is thinking...
+          </div>
+        )}
+
         <div style={{ display:'flex', gap:8, alignItems:'center' }}>
           <input
             className="input"
             placeholder="Type your question..."
             value={msg}
+            disabled={loading}
             onChange={e=>setMsg(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleAsk(); }}
             style={{ flex:1 }}
           />
-          <button className="btn btn-primary btn-icon"><Sparkles size={14} /></button>
+          <button
+            className="btn btn-primary btn-icon"
+            disabled={loading || !msg.trim()}
+            onClick={() => handleAsk()}
+          >
+            <Sparkles size={14} />
+          </button>
         </div>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginTop:10 }}>
           {['Show summary','Create task','View analytics'].map(s => (
-            <button key={s} className="chip" style={{ fontSize:11 }} onClick={()=>setMsg(s)}>{s}</button>
+            <button key={s} className="chip" style={{ fontSize:11 }} onClick={() => { setMsg(s); handleAsk(s); }}>{s}</button>
           ))}
         </div>
       </div>
@@ -148,6 +196,10 @@ function AskSaraPanel({ onClose, currentPage }) {
 export default function App() {
   const getInitialPage = () => {
     try {
+      const hostname = (window.location.hostname || '').toLowerCase();
+      if (hostname.startsWith('admin.') || hostname === 'admin.saadhyam.com') {
+        return 'admin';
+      }
       const hash = window.location.hash.replace(/^#\/?/, '');
       if (hash && PAGE_META[hash]) return hash;
       const path = window.location.pathname.replace(/^\//, '');
@@ -169,11 +221,17 @@ export default function App() {
   const [page, setPage] = useState(getInitialPage);
   const [pageParams, setPageParams] = useState({});
   const [showAskSara, setShowAskSara] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const meta = PAGE_META[page] || {};
 
   // Sync state with browser Hash & Back/Forward buttons
   useEffect(() => {
     const handleHashOrPopState = () => {
+      const hostname = (window.location.hostname || '').toLowerCase();
+      if (hostname.startsWith('admin.') || hostname === 'admin.saadhyam.com') {
+        setPage('admin');
+        return;
+      }
       const hash = window.location.hash.replace(/^#\/?/, '');
       if (hash && PAGE_META[hash]) {
         setPage(hash);
@@ -258,6 +316,9 @@ export default function App() {
           setNeedsOnboarding(false);
           window.history.replaceState({}, document.title, window.location.pathname + `#${page}`);
         }
+      } else if (urlParams.get('auth_error')) {
+        console.warn('Google auth redirect notice:', urlParams.get('auth_error'));
+        window.history.replaceState({}, document.title, window.location.pathname + `#${page}`);
       } else if (currentUser) {
         fetch('/api/v1/auth/me')
           .then(r => r.json())
@@ -275,8 +336,14 @@ export default function App() {
   }, []);
 
   const handleNavigate = (newPage, params = {}) => {
+    const hostname = (typeof window !== 'undefined' ? window.location.hostname || '' : '').toLowerCase();
+    if ((hostname.startsWith('admin.') || hostname === 'admin.saadhyam.com') && newPage !== 'admin') {
+      window.location.href = 'https://sara.saadhyam.com';
+      return;
+    }
     setPage(newPage);
     setPageParams(params || {});
+    setMobileMenuOpen(false);
 
     // Update browser URL Hash & History State so refreshing F5 stays on the active page!
     if (window.location.hash !== `#${newPage}`) {
@@ -294,6 +361,14 @@ export default function App() {
 
   // Ask Sara & Create Employee are full-screen workspace pages without sidebar/topbar
   const isFullPage = page === 'ask' || page === 'employees/new';
+
+  // 0. Dedicated Platform Admin Portal (Always active for admin.saadhyam.com, #admin, or /admin)
+  const isExplicitAdminHost = typeof window !== 'undefined' &&
+    ((window.location.hostname || '').toLowerCase().startsWith('admin.') || (window.location.hostname || '').toLowerCase() === 'admin.saadhyam.com');
+
+  if (page === 'admin' || isExplicitAdminHost) {
+    return <AdminPortal onNavigate={handleNavigate} />;
+  }
 
   // 1. If not logged in, show Google Login screen
   if (!currentUser) {
@@ -344,8 +419,21 @@ export default function App() {
         />
       )}
 
+      {/* Mobile Backdrop Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-mobile-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <Sidebar activePage={page} onNavigate={handleNavigate} />
+      <Sidebar
+        activePage={page}
+        onNavigate={handleNavigate}
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+      />
 
       {/* Main */}
       <div className="main-content">
@@ -360,17 +448,28 @@ export default function App() {
           currentUser={currentUser}
           onLogout={handleLogout}
           onOpenOnboarding={() => setShowOnboarding(true)}
+          onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
         />
 
-        {/* Page */}
-        <div style={{ flex: 1, overflow: 'auto' }}>
+        {/* Locked Page Scroll Container (Prevents horizontal flicking) */}
+        <div className="page-scroll-container">
           {renderPage(page, handleNavigate, pageParams)}
         </div>
       </div>
 
-      {/* Floating Ask Sara Button */}
+      {/* Mobile Bottom Navigation Bar (iOS / Android Native Feel) */}
+      {!isFullPage && (
+        <MobileBottomNav
+          activePage={page}
+          onNavigate={handleNavigate}
+          onToggleMobileMenu={() => setMobileMenuOpen(!mobileMenuOpen)}
+        />
+      )}
+
+      {/* Floating Ask Sara Button (Desktop only; on mobile bottom nav provides clean, uncluttered navigation) */}
       {!isFullPage && (
         <button
+          className="floating-sara-btn hide-on-mobile"
           onClick={() => handleNavigate('ask')}
           title="Ask Sara (Full Screen Workspace)"
           style={{

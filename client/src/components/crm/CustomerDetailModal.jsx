@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { crmApi } from "../../services/crmApi";
+import { Download } from "lucide-react";
 
 export default function CustomerDetailModal({ customerId, onClose, onCustomerUpdated }) {
   const [profile, setProfile] = useState(null);
@@ -341,6 +342,14 @@ export default function CustomerDetailModal({ customerId, onClose, onCustomerUpd
                           className="h-8 max-w-xs"
                           preload="none"
                         />
+                        <a
+                          href={`/api/crm/calls/${call.id}/recording/stream?download=true`}
+                          download={`recording_${call.id}.wav`}
+                          className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition-colors flex items-center justify-center"
+                          title="Download WAV Recording"
+                        >
+                          <Download size={14} />
+                        </a>
                       </div>
                     )}
                   </div>

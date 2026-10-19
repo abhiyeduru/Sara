@@ -28,6 +28,10 @@ from server.services.voice.plivo_client import (
 from server.services.voice.plivo_service import PlivoService
 from server.services.voice.audio_codec_service import AudioCodecService
 from server.services.voice.number_service import NumberService
+from server.api.v1.voice.router import (
+    generate_plivo_media_stream_xml,
+    _generate_plivo_media_stream_xml,
+)
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -92,13 +96,12 @@ def run_all_tests():
     print("\n[TEST 4] Testing Plivo Bidirectional Media Stream XML Response...")
     from fastapi import Request
     from unittest.mock import MagicMock
-    from server.api.v1.voice.router import _generate_plivo_media_stream_xml
 
     mock_request = MagicMock(spec=Request)
     mock_request.headers = {"host": "localhost:8000"}
     mock_request.base_url = "http://localhost:8000"
 
-    xml_output = _generate_plivo_media_stream_xml(mock_request, call_id="call_test_xyz", employee_id="emp_test_123")
+    xml_output = generate_plivo_media_stream_xml(mock_request, call_id="call_test_xyz", employee_id="emp_test_123")
     assert "<Response>" in xml_output, "Missing <Response> in XML"
     assert "<Stream" in xml_output, "Missing <Stream> tag"
     assert 'bidirectional="true"' in xml_output, "Stream must be bidirectional"

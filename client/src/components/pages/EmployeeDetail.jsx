@@ -5,12 +5,14 @@ import {
   Settings, Shield, TrendingUp, Mic, MicOff, Play, Pause, Edit3, MoreHorizontal,
   ChevronRight, Star, Clock, Sparkles, FileText, Plus, Volume2, RefreshCw,
   ArrowLeft, Copy, Check, Trash2, GripVertical, AlertCircle, ExternalLink,
-  ChevronDown, Send, Globe, Sliders, X, PhoneCall, Zap, UserCheck
+  ChevronDown, Send, Globe, Sliders, X, PhoneCall, Zap, UserCheck, FileSpreadsheet
 } from 'lucide-react';
+import BulkLeadsModal from '../employee-builder/BulkLeadsModal';
 
 const TABS = [
   { id: 'Overview', label: 'Overview' },
   { id: 'Instant leads', label: 'Instant leads' },
+  { id: 'Bulk leads', label: 'Bulk leads 📂' },
   { id: 'Call script', label: 'Call script' },
   { id: 'Training', label: 'Training' },
   { id: 'Actions', label: 'Actions' },
@@ -22,41 +24,41 @@ const TABS = [
 const DEFAULT_VARIABLES = [
   'Lead Name',
   'Phone number',
-  'Property Type',
+  'Service / Requirement',
   'Preferred Location',
-  'Budget Range',
-  'Project Name'
+  'Budget / Package',
+  'Notes / Timings'
 ];
 
 const LANGUAGE_SCRIPTS = {
   telugu: {
-    opening_line: "హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను సారా ని.",
+    opening_line: "హలో అండి, {Lead Name} గారేనా మాట్లాడేది? నేను {Company} నుండి మాట్లాడుతున్నాను.",
     steps: [
-      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "మా ఆఫీస్ నుండి సారా మాట్లాడేది అండి, మీరు ప్రాపర్టీ కోసం ఇంక్వైరీ చేశారు కదా అండి?" },
-      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "మీరు ఏ ఏరియాలో ప్లాట్ లేదా ఫ్లాట్ వెతుకుతున్నారో చెప్పగలరా అండి?" },
-      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "మీరు లివింగ్ కోసం చూస్తున్నారా లేక ఇన్వెస్ట్‌మెంట్ కోసమా అండి?" },
-      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "మీ బడ్జెట్ రేంజ్ ఎంత ఉండొచ్చు అండి?" },
-      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "ఈ వీకెండ్ సైట్ విజిట్ కి ఎప్పుడు రాగలరో చెప్తారా అండి?" }
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "నమస్కారం అండి! మీరు మా సేవల గురించి తెలుసుకోవడానికి రిక్వెస్ట్ చేశారు కదా, వివరాలు పంచుకోవడానికి కాల్ చేశాను." },
+      { id: 'step_2', title: '2. Understand Requirements', badge: null, content: "మీ ప్రస్తుత అవసరం ఏమిటో మరియు మీరు ఏ రకమైన సొల్యూషన్ చూస్తున్నారో చెప్పగలరా అండి?" },
+      { id: 'step_3', title: '3. Present Tailored Solution', badge: null, content: "మీ అవసరానికి తగినట్లుగా మా వద్ద అనుకూలమైన ప్యాకేజీలు మరియు క్వాలిటీ సపోర్ట్ అందుబాటులో ఉన్నాయి." },
+      { id: 'step_4', title: '4. Qualify Timing & Details', badge: null, content: "మీరు ఎప్పటి నుండి ప్రారంభించాలనుకుంటున్నారు లేదా మీ ప్రిఫర్డ్ టైమింగ్స్ ఏమిటి అండి?" },
+      { id: 'step_5', title: '5. Schedule Meeting / Next Steps', badge: null, content: "మన టీమ్ తో డీటైల్డ్ డిస్కషన్ లేదా కన్సల్టేషన్ ప్లాన్ చేద్దామా అండి?" }
     ]
   },
   english: {
-    opening_line: "Hello! Am I speaking with {Lead Name}? This is Sara calling.",
+    opening_line: "Hello! Am I speaking with {Lead Name}? This is calling from {Company}.",
     steps: [
-      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "Hi, I am Sara calling from our real estate office regarding your recent property inquiry." },
-      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "Could you please tell me which preferred location or area you are looking for?" },
-      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "Are you looking for personal living or investment purposes?" },
-      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "What is your approximate budget range for this property?" },
-      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "When would be a convenient time for you to schedule a site visit this weekend?" }
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "Hi! I am calling regarding your recent enquiry with our team." },
+      { id: 'step_2', title: '2. Understand Requirements', badge: null, content: "Could you please share your specific requirements and what goals you are looking to achieve?" },
+      { id: 'step_3', title: '3. Present Tailored Solution', badge: null, content: "We offer dedicated solutions and customized packages designed to fit your exact needs." },
+      { id: 'step_4', title: '4. Qualify Timing & Details', badge: null, content: "What is your target timeline or preferred schedule for getting started?" },
+      { id: 'step_5', title: '5. Schedule Meeting / Next Steps', badge: null, content: "Would you like to schedule a strategy meeting with our team to finalize the details?" }
     ]
   },
   hindi: {
-    opening_line: "नमस्ते! क्या मैं {Lead Name} से बात कर रहा हूँ? मैं सारा हूँ।",
+    opening_line: "नमस्ते! क्या मैं {Lead Name} जी से बात कर रही हूँ? मैं {Company} से बोल रही हूँ।",
     steps: [
-      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "नमस्ते, मैं सारा बोल रही हूँ। आपकी प्रॉपर्टी इंक्वायरी के संबंध में कॉल किया है।" },
-      { id: 'step_2', title: '2. Qualify Need & Location', badge: null, content: "कृपया बताएं कि आप किस लोकेशन या क्षेत्र में देख रहे हैं?" },
-      { id: 'step_3', title: '3. Qualify Purpose (Living vs Investment)', badge: null, content: "क्या आप रहने के लिए देख रहे हैं या इन्वेस्ट करने के लिए?" },
-      { id: 'step_4', title: '4. Qualify Budget Range', badge: null, content: "आपकी बजट रेंज क्या रहेगी?" },
-      { id: 'step_5', title: '5. Book Site Visit', badge: null, content: "साइट विजिट के लिए आप कब आ सकते हैं?" }
+      { id: 'step_1', title: '1. Warm Greeting & Introduction', badge: 'START', content: "नमस्ते! आपने हमारी सेवाओं के बारे में जानकारी मांगी थी, उसी के लिए कॉल किया है।" },
+      { id: 'step_2', title: '2. Understand Requirements', badge: null, content: "कृपया बताएं कि आपकी मुख्य आवश्यकता क्या है और आप किस तरह का समाधान तलाश रहे हैं?" },
+      { id: 'step_3', title: '3. Present Tailored Solution', badge: null, content: "आपकी ज़रूरत के अनुसार हमारे पास कस्टमाइज्ड पैकेज और विशेषज्ञ सहायता उपलब्ध है।" },
+      { id: 'step_4', title: '4. Qualify Timing & Details', badge: null, content: "आप कब से शुरू करना चाहते हैं और आपका पसंदीदा समय क्या रहेगा?" },
+      { id: 'step_5', title: '5. Schedule Meeting / Next Steps', badge: null, content: "क्या हम आपकी सुविधा अनुसार टीम के साथ चर्चा के लिए एक मीटिंग का समय तय करें?" }
     ]
   }
 };
@@ -73,12 +75,13 @@ function formatIndianPhone(input) {
   return cleaned;
 }
 
-export default function EmployeeDetail({ onNavigate, employeeId }) {
-  const [tab, setTab] = useState('Call script');
+export default function EmployeeDetail({ onNavigate, employeeId, initialTab }) {
+  const [tab, setTab] = useState(initialTab || 'Call script');
   const [employee, setEmployee] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
 
   // Script State
   const [openingLine, setOpeningLine] = useState('');
@@ -117,13 +120,8 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
   const [talkInput, setTalkInput] = useState('');
   const [isTalking, setIsTalking] = useState(false);
 
-  // Voice Tab State
-  const [voiceProvider, setVoiceProvider] = useState('sarvam'); // 'sarvam' or 'cartesia'
+  // Voice Tab State (Exclusively Sarvam AI Sweet bulbul:v3)
   const [sarvamVoices, setSarvamVoices] = useState([]);
-  const [cartesiaVoices, setCartesiaVoices] = useState([]);
-  const [cartesiaSearch, setCartesiaSearch] = useState('');
-  const [cartesiaTotal, setCartesiaTotal] = useState(988);
-  const [showCartesiaModal, setShowCartesiaModal] = useState(false);
   const [selectedVoiceId, setSelectedVoiceId] = useState('sarvam-te-kavitha');
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [voiceTone, setVoiceTone] = useState('respectful');
@@ -192,25 +190,12 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
       const res = await fetch('/api/voices');
       if (res.ok) {
         const data = await res.json();
-        setSarvamVoices(data.filter(v => v.provider === 'sarvam'));
-        setCartesiaVoices(data.filter(v => v.provider === 'cartesia'));
+        // Exclusively Sarvam AI Sweet Voices
+        const sarvamList = data.filter(v => v.provider === 'sarvam');
+        setSarvamVoices(sarvamList.length > 0 ? sarvamList : data);
       }
     } catch (err) {
       console.error('Failed to load voices:', err);
-    }
-  };
-
-  // 3. Search Cartesia Library
-  const searchCartesiaLibrary = async (query = '') => {
-    try {
-      const res = await fetch(`/api/voices/cartesia?limit=40&search=${encodeURIComponent(query)}`);
-      if (res.ok) {
-        const data = await res.json();
-        setCartesiaVoices(data.data || []);
-        setCartesiaTotal(data.total || 988);
-      }
-    } catch (err) {
-      console.error('Failed to query Cartesia voice library:', err);
     }
   };
 
@@ -255,7 +240,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
     if (!employee) return;
     setSaving(true);
     try {
-      const voiceObj = [...sarvamVoices, ...cartesiaVoices].find(v => v.id === voiceId);
+      const voiceObj = sarvamVoices.find(v => v.id === voiceId);
       const res = await fetch(`/api/v1/employees/${employee.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -265,6 +250,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
           voice_gender: voiceObj?.gender || 'female',
           voice_speed: speed || voiceSpeed,
           voice_tone: tone || voiceTone,
+          voice_language: voiceObj?.language || 'te',
         }),
       });
 
@@ -368,10 +354,10 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
 
     const langCode = selectedLanguage === 'hindi' ? 'hi-IN' : selectedLanguage === 'english' ? 'en-IN' : 'te-IN';
     const spokenText = selectedLanguage === 'english'
-      ? `Hello ${name}! This is ${empName} calling regarding your property inquiry.`
+      ? `Hello ${name}! This is ${empName} calling regarding your recent enquiry.`
       : selectedLanguage === 'hindi'
-      ? `नमस्ते ${name} जी! मैं ${empName} बोल रही हूँ, आपकी इंक्वायरी के लिए कॉल किया है।`
-      : `నమస్కారం అండీ, ${name} గారితో మాట్లాడుతున్నానా? నేను ${empName} ని మాట్లాడుతున్నాను.`;
+      ? `नमस्ते ${name} जी! मैं ${empName} बोल रही हूँ, आपकी इंక్వాయరీ కోసం కాల్ చేశాను.`
+      : `నమస్కారం అండీ, ${name} గారితో మాట్లాడుతున్నానా? నేను ${empName} మాట్లాడుతున్నాను.`;
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -393,8 +379,8 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
           variables: {
             'Lead Name': name,
             'Phone number': phone,
-            'Property Type': propType || instantPropType,
-            'Budget Range': budget || instantBudget
+            'Service Required': propType || instantPropType || 'General Consultation',
+            'Budget Range': budget || instantBudget || 'Standard'
           }
         })
       });
@@ -405,7 +391,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         ...prev,
         { speaker: 'System', text: `Live Outbound Call Connected: ${phone} (Caller ID: ${fromPhone})` },
         { speaker: empName, text: spokenText },
-        { speaker: name, text: selectedLanguage === 'english' ? 'Hi Sara! Yes, I want complete details and pricing.' : (selectedLanguage === 'hindi' ? 'नमस्ते सारा जी! मुझे प्रॉपर्टी के पूरे डिटेल्स चाहिए।' : 'హాయ్ అండి, అవునండి. నాకు వివరాలు కావాలి.') }
+        { speaker: name, text: selectedLanguage === 'english' ? 'Hi! Yes, I want complete details and pricing.' : (selectedLanguage === 'hindi' ? 'नमस्ते! मुझे आपकी सेवाओं और पैकेजेस के डिटेल्स चाहिए।' : 'హాయ్ అండి, అవునండి. నాకు సేవల వివరాలు కావాలి.') }
       ]);
     } catch (err) {
       console.error('Instant call failed:', err);
@@ -1244,10 +1230,11 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                       </span>
                       <input
                         type="text"
-                        value={step.title || ''}
+                        value={step.title || step.shortTitle || ''}
                         onChange={e => {
                           const updated = [...steps];
                           updated[idx].title = e.target.value;
+                          updated[idx].shortTitle = e.target.value;
                           setSteps(updated);
                         }}
                         style={{
@@ -1647,119 +1634,48 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
-                  Voice Architecture & Engine
+                  Sarvam AI Sweet Voice Architecture
                 </h2>
                 <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
-                  Choose native Indian multilingual voices (Sarvam AI) or neural voices from Cartesia's 988 library.
+                  Ultra-sweet, authentic conversational Indic neural voices (bulbul:v3) with soft, polite, natural cadences.
                 </p>
               </div>
 
-              {/* Engine Switcher */}
-              <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 8 }}>
-                <button
-                  onClick={() => setVoiceProvider('sarvam')}
-                  style={{
-                    background: voiceProvider === 'sarvam' ? '#ffffff' : 'transparent',
-                    color: voiceProvider === 'sarvam' ? '#7c3aed' : '#64748b',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: voiceProvider === 'sarvam' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'
-                  }}
-                >
-                  Sarvam AI (Indian TTS)
-                </button>
-                <button
-                  onClick={() => setVoiceProvider('cartesia')}
-                  style={{
-                    background: voiceProvider === 'cartesia' ? '#ffffff' : 'transparent',
-                    color: voiceProvider === 'cartesia' ? '#7c3aed' : '#64748b',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '6px 12px',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                    boxShadow: voiceProvider === 'cartesia' ? '0 1px 3px rgba(0,0,0,0.06)' : 'none'
-                  }}
-                >
-                  Cartesia Neural (988 Voices)
-                </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed', background: '#f5f3ff', border: '1px solid #ddd6fe', padding: '5px 12px', borderRadius: 20 }}>
+                  🌸 Pure Sweet Indic Voices
+                </span>
               </div>
             </div>
 
             {/* Provider Info Pill */}
-            {voiceProvider === 'sarvam' ? (
-              <div style={{
-                background: '#faf5ff',
-                border: '1px solid #d8b4fe',
-                borderRadius: 10,
-                padding: '12px 16px',
-                marginBottom: 20,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>
-                    S
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#581c87' }}>Sarvam AI Multilingual bulbul:v3</div>
-                    <div style={{ fontSize: 11, color: '#7e22ce' }}>High-fidelity native Telugu, Hindi & Indian English synthesis. Model latency ~180ms.</div>
-                  </div>
+            <div style={{
+              background: 'linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%)',
+              border: '1px solid #d8b4fe',
+              borderRadius: 12,
+              padding: '14px 18px',
+              marginBottom: 20,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: '#7c3aed', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, boxShadow: '0 2px 6px rgba(124,58,237,0.3)' }}>
+                  S
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 700, color: '#16a34a', background: '#ecfdf5', padding: '3px 8px', borderRadius: 4 }}>
-                  Active STT + TTS
-                </span>
-              </div>
-            ) : (
-              <div style={{
-                background: '#eff6ff',
-                border: '1px solid #bfdbfe',
-                borderRadius: 10,
-                padding: '12px 16px',
-                marginBottom: 20,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', background: '#2563eb', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 13 }}>
-                    C
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e3a8a' }}>Cartesia Sonic Neural Library</div>
-                    <div style={{ fontSize: 11, color: '#3b82f6' }}>Instant sub-90ms global voice library with 988 expressive conversational voices.</div>
-                  </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#581c87' }}>Sarvam AI bulbul:v3 + saaras:v3 Realtime STT</div>
+                  <div style={{ fontSize: 12, color: '#6b21a8', marginTop: 2 }}>High-fidelity sweet Telugu & Hindi neural synthesis. Sub-180ms streaming latency.</div>
                 </div>
-                <button
-                  onClick={() => {
-                    setShowCartesiaModal(true);
-                    searchCartesiaLibrary('');
-                  }}
-                  style={{
-                    background: '#2563eb',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: 6,
-                    padding: '6px 12px',
-                    fontSize: 11,
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Browse 988 Voices →
-                </button>
               </div>
-            )}
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#dcfce7', border: '1px solid #bbf7d0', padding: '4px 10px', borderRadius: 20 }}>
+                ● Active Voice Stack
+              </span>
+            </div>
 
             {/* Voice Cards Grid */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14 }}>
-              {(voiceProvider === 'sarvam' ? sarvamVoices : cartesiaVoices).map(v => {
+              {sarvamVoices.map(v => {
                 const isSelected = selectedVoiceId === v.id;
                 return (
                   <div
@@ -1809,18 +1725,18 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     </div>
 
                     <p style={{ fontSize: 11, color: '#475569', lineHeight: 1.4, margin: '6px 0 10px' }}>
-                      {v.description || `${v.style || 'Neural Conversational'} voice calibrated for low-latency live real estate sales calls.`}
+                      {v.description || `${v.style || 'Neural Conversational'} voice calibrated for polite, high-converting Telugu calls.`}
                     </p>
 
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 11 }}>
                       <span style={{
-                        background: v.provider === 'sarvam' ? '#f3e8ff' : '#eff6ff',
-                        color: v.provider === 'sarvam' ? '#7c3aed' : '#2563eb',
+                        background: '#f3e8ff',
+                        color: '#7c3aed',
                         padding: '1px 6px',
                         borderRadius: 4,
                         fontWeight: 600
                       }}>
-                        {v.provider === 'sarvam' ? 'Sarvam AI' : 'Cartesia'}
+                        Sarvam AI
                       </span>
                       {isSelected && (
                         <span style={{ color: '#7c3aed', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1981,7 +1897,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
             </div>
           </div>
           <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>
-            <strong>Mission:</strong> {employee?.mission || 'Call inbound property leads within 60 seconds, qualify interest in Telugu & English, and book on-site visits.'}
+            <strong>Mission:</strong> {employee?.mission || 'Assist callers with warmth, understand specific requirements, explain business offerings, and guide them to the next steps.'}
           </p>
         </div>
       )}
@@ -2090,13 +2006,13 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 16 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#475569', marginBottom: 5 }}>
-                    Property Requirement (Variable)
+                    Service / Requirement (Variable)
                   </label>
                   <input
                     type="text"
                     value={instantPropType}
                     onChange={e => setInstantPropType(e.target.value)}
-                    placeholder="e.g. 3BHK Luxury Villa"
+                    placeholder="e.g. Consultation / Plan / Package"
                     style={{
                       width: '100%', padding: '9px 12px', borderRadius: 8,
                       border: '1px solid #cbd5e1', fontSize: 13, boxSizing: 'border-box'
@@ -2246,7 +2162,7 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                   <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', textAlign: 'left', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>
                     <th style={{ padding: '10px 12px' }}>Customer Name</th>
                     <th style={{ padding: '10px 12px' }}>Phone Number</th>
-                    <th style={{ padding: '10px 12px' }}>Property Requirement</th>
+                    <th style={{ padding: '10px 12px' }}>Requirement / Interest</th>
                     <th style={{ padding: '10px 12px' }}>Budget</th>
                     <th style={{ padding: '10px 12px' }}>Status</th>
                     <th style={{ padding: '10px 12px', textAlign: 'right' }}>Action</th>
@@ -2311,135 +2227,74 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         </div>
       )}
 
-      {/* CARTESIA 988 VOICES MODAL */}
-      {showCartesiaModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000,
-          padding: 20
-        }}>
-          <div style={{
-            background: '#ffffff',
-            borderRadius: 16,
-            width: '100%',
-            maxWidth: 720,
-            maxHeight: '85vh',
-            display: 'flex',
-            flexDirection: 'column',
-            boxShadow: '0 20px 50px rgba(0,0,0,0.2)'
-          }}>
-            {/* Modal Header */}
-            <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* BULK LEADS TAB FOR THIS EMPLOYEE */}
+      {tab === 'Bulk leads' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div style={{ background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '24px 28px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 14 }}>
               <div>
-                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: '#0f172a' }}>
-                  Import from Cartesia Library ({cartesiaTotal} Voices)
-                </h3>
-                <p style={{ margin: '3px 0 0', fontSize: 12, color: '#64748b' }}>
-                  Search and bind any of Cartesia's global voice library to {empName}.
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 36, height: 36, borderRadius: 10, background: '#f5f3ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <FileSpreadsheet size={18} color="#7c3aed" />
+                  </div>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a' }}>
+                    Bulk Leads Auto-Caller for {empName}
+                  </h2>
+                </div>
+                <p style={{ margin: '4px 0 0', fontSize: 13, color: '#64748b' }}>
+                  Upload Excel (.xlsx/.xls), CSV, or connect a Google Sheet. Custom-map columns and auto-dial leads 1-by-1 with {empName}'s active script.
                 </p>
               </div>
+
               <button
-                onClick={() => setShowCartesiaModal(false)}
-                style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 4 }}
+                type="button"
+                onClick={() => setIsBulkModalOpen(true)}
+                style={{
+                  background: 'linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: 12,
+                  padding: '11px 22px',
+                  fontSize: 13.5,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  boxShadow: '0 4px 16px rgba(124, 58, 237, 0.25)'
+                }}
               >
-                <X size={20} color="#64748b" />
+                <FileSpreadsheet size={16} />
+                <span>Open Bulk Leads & Sequential Caller 📂</span>
               </button>
             </div>
 
-            {/* Search Input */}
-            <div style={{ padding: '14px 24px', borderBottom: '1px solid #f1f5f9' }}>
-              <input
-                type="text"
-                placeholder="Search voices by name, accent, tone (e.g. calm, friendly, guide)..."
-                value={cartesiaSearch}
-                onChange={e => {
-                  setCartesiaSearch(e.target.value);
-                  searchCartesiaLibrary(e.target.value);
-                }}
-                style={{
-                  width: '100%',
-                  padding: '9px 14px',
-                  borderRadius: 8,
-                  border: '1px solid #cbd5e1',
-                  fontSize: 13,
-                  boxSizing: 'border-box'
-                }}
-              />
-            </div>
-
-            {/* Voices List */}
-            <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {cartesiaVoices.map(v => (
-                <div
-                  key={v.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderRadius: 10,
-                    border: '1px solid #e2e8f0',
-                    background: '#f8fafc'
-                  }}
-                >
-                  <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{v.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>
-                      {v.language?.toUpperCase()} · {v.gender} · {v.description?.slice(0, 80)}...
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <button
-                      onClick={() => handlePlayPreview(v.id)}
-                      style={{
-                        padding: '6px 10px',
-                        background: '#e2e8f0',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 600,
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 4
-                      }}
-                    >
-                      <Play size={10} /> Preview
-                    </button>
-                    <button
-                      onClick={() => {
-                        handleSaveVoice(v.id, voiceSpeed, voiceTone);
-                        setShowCartesiaModal(false);
-                      }}
-                      style={{
-                        padding: '6px 14px',
-                        background: '#7c3aed',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: 11,
-                        fontWeight: 600
-                      }}
-                    >
-                      Select Voice
-                    </button>
-                  </div>
+            {/* Feature highlights */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 20 }}>
+              <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>1. Flexible Column Mapping</div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                  Supports any sheet headers — customizable Name, Phone, and Notes mapping.
                 </div>
-              ))}
+              </div>
+              <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>2. Sequential 1-by-1 Calling</div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                  Click "Call Now" to automatically dial leads one-by-one with live progress.
+                </div>
+              </div>
+              <div style={{ background: '#f8fafc', padding: '14px 16px', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#1e293b' }}>3. 2-3 Attempt Smart Retries</div>
+                <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 3 }}>
+                  Automatically retries unanswered numbers up to 3 times before completing.
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+
 
       {/* LIVE TEST CHAT MODAL */}
       {showTalkModal && (
@@ -2475,7 +2330,10 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                 />
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a' }}>Chat with {empName}</div>
-                  <div style={{ fontSize: 11, color: '#16a34a' }}>● Online (Groq + Sarvam Voice)</div>
+                  <div style={{ fontSize: 11, color: '#16a34a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#16a34a', display: 'inline-block' }}></span>
+                    Online (Google Gemini Intelligence)
+                  </div>
                 </div>
               </div>
               <button
@@ -2500,51 +2358,102 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
                     padding: '10px 14px',
                     borderRadius: msg.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
                     fontSize: 13,
-                    maxWidth: '85%'
+                    maxWidth: '85%',
+                    lineHeight: 1.5
                   }}
                 >
                   {msg.content}
                 </div>
               ))}
+              {isTalking && (
+                <div style={{
+                  alignSelf: 'flex-start',
+                  background: '#f1f5f9',
+                  padding: '8px 12px',
+                  borderRadius: '12px 12px 12px 2px',
+                  fontSize: 12,
+                  color: '#6d28d9',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}>
+                  <span className="animate-pulse font-medium">⚡ Gemini is thinking...</span>
+                </div>
+              )}
             </div>
 
             <div style={{ padding: '12px 16px', borderTop: '1px solid #e2e8f0', display: 'flex', gap: 8 }}>
               <input
                 type="text"
                 value={talkInput}
+                disabled={isTalking}
                 onChange={e => setTalkInput(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && talkInput.trim()) {
+                onKeyDown={async e => {
+                  if (e.key === 'Enter' && talkInput.trim() && !isTalking) {
                     const userMsg = talkInput.trim();
-                    setTalkMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+                    const updatedHistory = [...talkMessages, { role: 'user', content: userMsg }];
+                    setTalkMessages(updatedHistory);
                     setTalkInput('');
-                    // Quick simulated AI reply in Telugu
-                    setTimeout(() => {
-                      setTalkMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: 'చాలా మంచిదండి. మీరు చూస్తున్న లొకేషన్ గురించి చెప్తారా? మా దగ్గర హైటెక్ సిటీ మరియు గచ్చిబౌలి దగ్గర ప్రీమియం ప్రాజెక్ట్‌లు ఉన్నాయి.'
-                      }]);
-                    }, 800);
+                    setIsTalking(true);
+
+                    try {
+                      const res = await fetch('/api/v1/voice/chat/simulate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          employee_id: employee?.id,
+                          message: userMsg,
+                          history: talkMessages,
+                          language: selectedLanguage
+                        })
+                      });
+                      const data = await res.json();
+                      const reply = data.reply || data.response || 'నమస్కారం అండి, మీకు ఎలా సహాయపడగలను?';
+                      setTalkMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+                    } catch (err) {
+                      console.error('Gemini chat error:', err);
+                      setTalkMessages(prev => [...prev, { role: 'assistant', content: 'నమస్కారం అండి, మీకు ఎలా సహాయపడగలను?' }]);
+                    } finally {
+                      setIsTalking(false);
+                    }
                   }
                 }}
                 placeholder="Type your reply in Telugu or English..."
                 style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
               />
               <button
-                onClick={() => {
-                  if (talkInput.trim()) {
+                disabled={isTalking || !talkInput.trim()}
+                onClick={async () => {
+                  if (talkInput.trim() && !isTalking) {
                     const userMsg = talkInput.trim();
-                    setTalkMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+                    const updatedHistory = [...talkMessages, { role: 'user', content: userMsg }];
+                    setTalkMessages(updatedHistory);
                     setTalkInput('');
-                    setTimeout(() => {
-                      setTalkMessages(prev => [...prev, {
-                        role: 'assistant',
-                        content: 'చాలా మంచిదండి. మీరు చూస్తున్న లొకేషన్ గురించి చెప్తారా? మా దగ్గర హైటెక్ సిటీ మరియు గచ్చిబౌలి దగ్గర ప్రీమియం ప్రాజెక్ట్‌లు ఉన్నాయి.'
-                      }]);
-                    }, 800);
+                    setIsTalking(true);
+
+                    try {
+                      const res = await fetch('/api/v1/voice/chat/simulate', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          employee_id: employee?.id,
+                          message: userMsg,
+                          history: talkMessages,
+                          language: selectedLanguage
+                        })
+                      });
+                      const data = await res.json();
+                      const reply = data.reply || data.response || 'నమస్కారం అండి, మీకు ఎలా సహాయపడగలను?';
+                      setTalkMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+                    } catch (err) {
+                      console.error('Gemini chat error:', err);
+                      setTalkMessages(prev => [...prev, { role: 'assistant', content: 'నమస్కారం అండి, మీకు ఎలా సహాయపడగలను?' }]);
+                    } finally {
+                      setIsTalking(false);
+                    }
                   }
                 }}
-                style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '0 16px', cursor: 'pointer' }}
+                style={{ background: isTalking ? '#a78bfa' : '#7c3aed', color: '#fff', border: 'none', borderRadius: 8, padding: '0 16px', cursor: isTalking ? 'not-allowed' : 'pointer' }}
               >
                 <Send size={15} />
               </button>
@@ -2553,6 +2462,15 @@ export default function EmployeeDetail({ onNavigate, employeeId }) {
         </div>
       )}
 
+      {/* BULK LEADS MODAL */}
+      <BulkLeadsModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        preselectedEmployeeId={employee?.id || empId}
+        preselectedEmployeeName={empName}
+        preselectedScript={steps}
+        onCampaignCreated={() => {}}
+      />
     </div>
   );
 }

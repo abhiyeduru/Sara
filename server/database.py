@@ -13,10 +13,17 @@ def create_db_engine():
                 db_url,
                 pool_pre_ping=True,
                 pool_recycle=300,
-                pool_size=10,
-                max_overflow=20,
+                pool_size=15,
+                max_overflow=30,
+                pool_timeout=30,
                 echo=False,
-                connect_args={"connect_timeout": 3} if "postgres" in db_url else {}
+                connect_args={
+                    "connect_timeout": 5,
+                    "keepalives": 1,
+                    "keepalives_idle": 30,
+                    "keepalives_interval": 10,
+                    "keepalives_count": 5
+                } if "postgres" in db_url else {}
             )
             with test_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
@@ -25,17 +32,109 @@ def create_db_engine():
         except Exception as e:
             logger.warning(f"PostgreSQL connection to Neon failed ({e}). Falling back to local SQLite database (sqlite:///sara.db)...")
 
-    # Local SQLite fallback
+    # Local SQLite fallback with NullPool to prevent QueuePool exhaustion under concurrent voice/polling loads
+    from sqlalchemy.pool import NullPool
+    from sqlalchemy import event
     sqlite_url = "sqlite:///sara.db"
-    return create_engine(
+    sqlite_engine = create_engine(
         sqlite_url,
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 60},
+        poolclass=NullPool,
         echo=False
     )
+
+    @event.listens_for(sqlite_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        try:
+            # WAL mode enables concurrent read access while a write is occurring
+            cursor.execute("PRAGMA journal_mode=WAL")
+            # Busy timeout: wait up to 60,000ms for locks instead of throwing OperationalError
+            cursor.execute("PRAGMA busy_timeout=60000")
+            # Normal synchronous is fast and safe with WAL
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            # Cache size: 64MB in-memory cache
+            cursor.execute("PRAGMA cache_size=-64000")
+            # Temp store in memory
+            cursor.execute("PRAGMA temp_store=MEMORY")
+            # Memory-mapped I/O for 256MB
+            cursor.execute("PRAGMA mmap_size=268435456")
+            # Enforce foreign key constraints
+            cursor.execute("PRAGMA foreign_keys=ON")
+            # Auto-checkpoint WAL every 1,000 pages to keep WAL file compact
+            cursor.execute("PRAGMA wal_autocheckpoint=1000")
+        except Exception as pe:
+            logger.debug(f"SQLite PRAGMA tuning note: {pe}")
+        finally:
+            cursor.close()
+
+    return sqlite_engine
 
 engine = create_db_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
+def get_database_health_status(db = None):
+    """
+    Returns live database diagnostic health metrics:
+    Latency, storage sizes, WAL state, and entity counts.
+    """
+    import os
+    import time
+    from sqlalchemy import text
+
+    start_time = time.time()
+    health = {
+        "status": "healthy",
+        "engine": "sqlite" if str(engine.url).startswith("sqlite") else "postgresql",
+        "url_masked": str(engine.url).split("@")[-1] if "@" in str(engine.url) else str(engine.url),
+        "latency_ms": 0.0,
+        "wal_mode": False,
+        "busy_timeout_ms": 60000,
+        "db_size_mb": 0.0,
+        "wal_size_mb": 0.0,
+        "table_counts": {}
+    }
+
+    own_session = False
+    if db is None:
+        db = SessionLocal()
+        own_session = True
+
+    try:
+        # Measure ping latency
+        db.execute(text("SELECT 1"))
+        health["latency_ms"] = round((time.time() - start_time) * 1000, 2)
+
+        if health["engine"] == "sqlite":
+            res = db.execute(text("PRAGMA journal_mode")).fetchone()
+            if res:
+                health["wal_mode"] = str(res[0]).lower() == "wal"
+
+            # Check file size
+            db_path = "sara.db"
+            if os.path.exists(db_path):
+                health["db_size_mb"] = round(os.path.getsize(db_path) / (1024 * 1024), 2)
+            wal_path = "sara.db-wal"
+            if os.path.exists(wal_path):
+                health["wal_size_mb"] = round(os.path.getsize(wal_path) / (1024 * 1024), 2)
+
+        # Count records
+        for table in ["users", "workspaces", "calls", "credit_accounts", "credit_transactions", "leads", "tasks"]:
+            try:
+                cnt = db.execute(text(f"SELECT COUNT(*) FROM {table}")).scalar()
+                health["table_counts"][table] = cnt
+            except Exception:
+                pass
+
+    except Exception as e:
+        health["status"] = "degraded"
+        health["error"] = str(e)
+    finally:
+        if own_session:
+            db.close()
+
+    return health
 
 def get_db():
     db = SessionLocal()

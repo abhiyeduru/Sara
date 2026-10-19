@@ -46,11 +46,14 @@ async def get_billing_account(
     """Get credit balance, call limits and subscription info."""
     account = _get_user_account(db, user)
     call_limit = CallBillingService.get_call_limit_minutes(db, account.workspace_id)
+    is_unlimited = account.plan == "unlimited" or account.balance >= 100000
 
     return {
         "id": account.id,
         "balance": account.balance,
-        "minutes": round(account.balance / CallBillingService.RATE_PER_MINUTE_INR, 1),
+        "is_unlimited": is_unlimited,
+        "balance_display": "Unlimited" if is_unlimited else f"₹{account.balance:,.0f}",
+        "minutes": 999999.0 if is_unlimited else round(account.balance / CallBillingService.RATE_PER_MINUTE_INR, 1),
         "rate_per_minute": CallBillingService.RATE_PER_MINUTE_INR,
         "call_limit_minutes": call_limit,
         "min_balance_required": CallBillingService.MIN_BALANCE_REQUIRED,

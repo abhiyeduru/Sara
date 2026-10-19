@@ -77,12 +77,96 @@ BUSINESS_TEMPLATES = {
             "In emergency situations, immediately advise calling the emergency ambulance number."
         ]
     },
-    "Custom Business": {
-        "services": ["General Inquiry", "Customer Support", "Booking Request", "Lead Generation"],
+    "Fitness & Gym": {
+        "services": ["Membership plans", "Personal training inquiry", "Batch timings", "Free trial booking", "Facilities & equipment", "Diet & nutrition guidance"],
         "default_name": "SARA",
-        "role_title": "Customer Representative",
-        "faqs": [],
-        "rules": ["Be polite, professional, and adhere strictly to provided business facts."]
+        "role_title": "Fitness & Wellness Consultant",
+        "faqs": [
+            {"question": "What are your gym membership plans?", "answer": "We offer monthly, quarterly, and annual passes with complimentary personal training orientation.", "category": "Pricing", "priority": 1},
+            {"question": "Can I get a free trial session?", "answer": "Yes! We offer a 1-day complimentary workout pass. I can book your trial slot right away.", "category": "Booking", "priority": 1},
+            {"question": "What are the gym timings?", "answer": "We are open Monday through Saturday from 6:00 AM to 10:00 PM, and Sundays from 7:00 AM to 1:00 PM.", "category": "General", "priority": 2}
+        ],
+        "rules": [
+            "Always invite the prospect for a complimentary gym tour or trial session.",
+            "Promote annual membership discounts when budget concerns are raised."
+        ]
+    },
+    "Restaurant & Food": {
+        "services": ["Table reservation", "Menu & specials inquiry", "Party & event catering", "Home delivery", "Operating hours"],
+        "default_name": "SARA",
+        "role_title": "Host & Reservations Specialist",
+        "faqs": [
+            {"question": "Can I reserve a table for tonight?", "answer": "Yes, absolutely! For how many guests and at what time would you like to book?", "category": "Booking", "priority": 1},
+            {"question": "Do you offer pure vegetarian or vegan options?", "answer": "Yes, we have dedicated pure vegetarian and vegan menu options prepared separately.", "category": "Menu", "priority": 2}
+        ],
+        "rules": [
+            "Confirm the guest count, date, and preferred time before finalizing reservations.",
+            "Note any food allergies or special dietary requirements."
+        ]
+    },
+    "IT & Software Services": {
+        "services": ["Custom software development", "Mobile app development", "Cloud & DevOps consulting", "AI & Automation solutions", "Technical consultation booking"],
+        "default_name": "SARA",
+        "role_title": "Solutions Consultant",
+        "faqs": [
+            {"question": "How do you price software projects?", "answer": "We offer fixed-scope milestone delivery as well as dedicated sprint-based engineering teams tailored to your roadmap.", "category": "Pricing", "priority": 1},
+            {"question": "Can we schedule a discovery call with a technical architect?", "answer": "Yes! I can schedule a 30-minute discovery consultation with our technical architect this week.", "category": "Booking", "priority": 1}
+        ],
+        "rules": [
+            "Understand the prospect's project requirements, technology stack, and timeline.",
+            "Schedule a discovery call with the technical solutions team."
+        ]
+    },
+    "Financial & Insurance": {
+        "services": ["Health insurance plans", "Life insurance & savings", "Business loans", "Investment advisory", "Policy renewal"],
+        "default_name": "SARA",
+        "role_title": "Financial Advisory Specialist",
+        "faqs": [
+            {"question": "What documents are needed for policy application?", "answer": "You only need basic KYC documents like Aadhaar, PAN card, and bank statement.", "category": "Requirements", "priority": 1},
+            {"question": "How quickly are claims processed?", "answer": "Cashless hospitalization claims are pre-authorized within 30 minutes at our network hospitals.", "category": "Claims", "priority": 2}
+        ],
+        "rules": [
+            "Never guarantee investment returns or unverified policy yields.",
+            "Direct specific underwriting decisions to authorized advisors."
+        ]
+    },
+    "Salon & Spa": {
+        "services": ["Hair styling & treatment", "Skin care & facials", "Bridal makeover packages", "Spa & massage therapy", "Appointment booking"],
+        "default_name": "SARA",
+        "role_title": "Salon & Spa Coordinator",
+        "faqs": [
+            {"question": "How do I book an appointment?", "answer": "I can reserve your preferred slot right now. Which service are you interested in and at what time?", "category": "Booking", "priority": 1},
+            {"question": "Do you have bridal packages?", "answer": "Yes! We have pre-bridal and bridal makeover packages customized to your event schedule.", "category": "Packages", "priority": 2}
+        ],
+        "rules": [
+            "Confirm appointment time, stylist preference, and service duration.",
+            "Inform guests about arrival 10 minutes prior to their appointment."
+        ]
+    },
+    "Automotive & Dealership": {
+        "services": ["New car inquiry", "Test drive booking", "Periodic vehicle service", "Insurance renewal", "Exchange valuation"],
+        "default_name": "SARA",
+        "role_title": "Automotive Client Advisor",
+        "faqs": [
+            {"question": "Can I book a test drive at home?", "answer": "Yes! We provide doorstep test drives at your home or office at your convenience.", "category": "Booking", "priority": 1},
+            {"question": "What is the waiting period for delivery?", "answer": "Most models are available for delivery within 7 to 14 days depending on variant and color.", "category": "Availability", "priority": 2}
+        ],
+        "rules": [
+            "Capture customer preferred model, fuel type (petrol/electric/hybrid), and budget.",
+            "Offer doorstep test drives or dealership visits."
+        ]
+    },
+    "Custom Business": {
+        "services": ["General Inquiry", "Customer Support", "Booking Request", "Product Pricing", "Consultation Scheduling"],
+        "default_name": "SARA",
+        "role_title": "Senior Client Advisory Specialist",
+        "faqs": [
+            {"question": "How can I get started?", "answer": "I can explain our offerings and connect you with our team immediately. What are your primary requirements?", "category": "General", "priority": 1}
+        ],
+        "rules": [
+            "Be polite, professional, and adhere strictly to provided business facts.",
+            "Understand customer requirements and offer the most suitable service or product."
+        ]
     }
 }
 
@@ -140,7 +224,7 @@ def create_agent(
         profile = BusinessProfile(
             agent_id=agent.id,
             user_id=current_user.id,
-            business_name="ABC Properties",
+            business_name=payload.role_title or current_user.display_name or "SARA AI",
             industry=payload.business_type
         )
     db.add(profile)
@@ -573,7 +657,7 @@ async def upload_documents(
 
     profile = db.query(BusinessProfile).filter(BusinessProfile.agent_id == agent.id).first()
     biz_dict = {
-        "business_name": profile.business_name if profile else "ABC Properties",
+        "business_name": profile.business_name if profile else (agent.name or "SARA AI"),
         "description": profile.description if profile else "",
         "locations": profile.locations if profile else [],
         "services": profile.services_offered if profile else [agent.service_type],
@@ -664,7 +748,7 @@ def teach_agent(
 
     profile = db.query(BusinessProfile).filter(BusinessProfile.agent_id == agent.id).first()
     biz_dict = {
-        "business_name": profile.business_name if profile else "ABC Properties",
+        "business_name": profile.business_name if profile else (agent.name or "SARA AI"),
         "description": profile.description if profile else "",
         "locations": profile.locations if profile else [],
         "services": profile.services_offered if profile else [agent.service_type],

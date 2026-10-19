@@ -4,83 +4,84 @@ from typing import AsyncGenerator, Dict, Any
 class SentenceChunker:
     """
     Buffers streaming LLM tokens and yields complete conversational phrases
-    at natural spoken boundaries (periods, commas, question marks, exclamation marks).
-    Enables instant Time-To-First-Audio (TTFA) streaming to TTS.
+    at natural spoken sentence boundaries (. ! ? \\n ।).
+    Eliminates mid-speech silence gaps by never breaking on commas for short phrases,
+    ensuring each audio chunk has sufficient duration to buffer smoothly.
     """
     # Strong sentence boundaries: . ! ? newline or Devanagari/Indic danda ।
     STRONG_BOUNDARY_REGEX = re.compile(r'([.?!।\n]+)')
-    # Pause boundaries: , ; :
+    # Pause boundaries: , ; : used for natural clauses when phrase has 5+ words
     PAUSE_BOUNDARY_REGEX = re.compile(r'([,;:]+)')
 
-    def __init__(self, min_chunk_words: int = 2, max_chunk_words: int = 14):
+    def __init__(self, min_chunk_words: int = 4, max_chunk_words: int = 18):
         self.min_chunk_words = min_chunk_words
         self.max_chunk_words = max_chunk_words
         self.buffer = ""
+        self.is_first_chunk = True
 
     def process_token(self, token: str) -> list[str]:
         """
-        Add token to buffer and return any complete chunks ready for TTS.
+        Add token to buffer and return complete phrase chunks ready for TTS.
+        Ensures prompt Time-To-First-Audio while preserving complete phrase integrity.
         """
         self.buffer += token
         ready_chunks = []
 
         while self.buffer:
-            strong_match = self.STRONG_BOUNDARY_REGEX.search(self.buffer)
-            pause_match = self.PAUSE_BOUNDARY_REGEX.search(self.buffer)
+            min_strong = 1 if self.is_first_chunk else self.min_chunk_words
+            # Check for strong sentence boundaries (. ! ? \n ।)
+            strong_matches = list(self.STRONG_BOUNDARY_REGEX.finditer(self.buffer))
+            found_chunk = False
 
-            earliest_match = None
-            is_strong = False
-
-            if strong_match and pause_match:
-                if strong_match.start() <= pause_match.start():
-                    earliest_match = strong_match
-                    is_strong = True
-                else:
-                    earliest_match = pause_match
-                    is_strong = False
-            elif strong_match:
-                earliest_match = strong_match
-                is_strong = True
-            elif pause_match:
-                earliest_match = pause_match
-                is_strong = False
-
-            if earliest_match:
-                end_pos = earliest_match.end()
+            for m in strong_matches:
+                end_pos = m.end()
                 potential_chunk = self.buffer[:end_pos].strip()
                 words = potential_chunk.split()
                 word_count = len(words)
 
-                # Strong boundaries (. ? ! \n) are complete spoken thoughts: emit if >= 1 word
-                if is_strong and word_count >= 1:
+                if word_count >= min_strong:
                     ready_chunks.append(potential_chunk)
                     self.buffer = self.buffer[end_pos:].lstrip()
-                    continue
-                # Pause boundaries (, ; :) emit only if substantive phrase (>= 8 words) to prevent chopping short clauses
-                elif not is_strong and word_count >= 8:
-                    ready_chunks.append(potential_chunk)
-                    self.buffer = self.buffer[end_pos:].lstrip()
-                    continue
-                elif word_count >= self.max_chunk_words:
-                    ready_chunks.append(potential_chunk)
-                    self.buffer = self.buffer[end_pos:].lstrip()
-                    continue
-                else:
-                    # Weak boundary with too few words; wait for more words or punctuation
+                    self.is_first_chunk = False
+                    found_chunk = True
                     break
 
-            # If no punctuation, check if buffer reached max words
+            if found_chunk:
+                continue
+
+            # Check for natural clause pause boundaries (, ; :) - fast initial delivery for conversation
+            min_pause = 2 if self.is_first_chunk else 5
+            pause_matches = list(self.PAUSE_BOUNDARY_REGEX.finditer(self.buffer))
+            for pm in pause_matches:
+                end_pos = pm.end()
+                potential_chunk = self.buffer[:end_pos].strip()
+                words = potential_chunk.split()
+                word_count = len(words)
+
+                if word_count >= min_pause:
+                    ready_chunks.append(potential_chunk)
+                    self.buffer = self.buffer[end_pos:].lstrip()
+                    self.is_first_chunk = False
+                    found_chunk = True
+                    break
+
+            if found_chunk:
+                continue
+
+            # If no boundary matched, check if buffer exceeds max_chunk_words limit (18 words)
             words = self.buffer.strip().split()
             if len(words) >= self.max_chunk_words:
-                split_idx = self.buffer.rfind(" ")
-                if split_idx != -1:
+                # Split at ~12-14 words to keep both sides balanced
+                target_words = words[:12]
+                split_text = " ".join(target_words)
+                split_idx = self.buffer.find(split_text) + len(split_text)
+                if split_idx > 0 and split_idx < len(self.buffer):
                     chunk = self.buffer[:split_idx].strip()
                     self.buffer = self.buffer[split_idx:].lstrip()
                     if chunk:
                         ready_chunks.append(chunk)
-                else:
-                    ready_chunks.append(self.buffer.strip())
-                    self.buffer = ""
+                        self.is_first_chunk = False
+                        continue
             break
 
         return ready_chunks

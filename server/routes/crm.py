@@ -553,18 +553,22 @@ async def get_call_detail(
     }
 
 
-@router.get("/calls/{call_id}/recording/stream")
+@router.api_route("/calls/{call_id}/recording/stream", methods=["GET", "HEAD"])
 async def stream_call_recording(
     call_id: str,
     request: Request,
+    download: bool = False,
     db: Session = Depends(get_db)
 ):
     """
     Authenticated, secure audio streaming endpoint.
-    Streams recorded call voice audio for browser HTML5 audio player.
+    Streams recorded call voice audio for browser HTML5 audio player or download.
     Supports HTTP Range requests for seamless audio seeking.
     """
     from server.models import Call
+
+    disposition = "attachment" if download else "inline"
+    filename = f"recording_{call_id}.wav"
 
     # 1. Check local audio file on disk first
     direct_wav = os.path.join(RECORDINGS_DIR, f"{call_id}.wav")
@@ -572,9 +576,10 @@ async def stream_call_recording(
         return FileResponse(
             path=direct_wav,
             media_type="audio/wav",
+            filename=filename if download else None,
             headers={
                 "Accept-Ranges": "bytes",
-                "Content-Disposition": f"inline; filename={call_id}.wav"
+                "Content-Disposition": f'{disposition}; filename="{filename}"'
             }
         )
 
@@ -585,15 +590,17 @@ async def stream_call_recording(
 
     if crm_call and crm_call.recording:
         fp = crm_call.recording.file_path
+        out_name = crm_call.recording.file_name or filename
         if fp and fp.startswith("http"):
             return RedirectResponse(url=fp)
         if fp and os.path.exists(fp) and os.path.getsize(fp) > 100:
             return FileResponse(
                 path=fp,
                 media_type=crm_call.recording.mime_type or "audio/wav",
+                filename=out_name if download else None,
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Content-Disposition": f"inline; filename={crm_call.recording.file_name or f'{call_id}.wav'}"
+                    "Content-Disposition": f'{disposition}; filename="{out_name}"'
                 }
             )
 
@@ -609,18 +616,28 @@ async def stream_call_recording(
             return FileResponse(
                 path=call.recording_url,
                 media_type="audio/wav",
+                filename=filename if download else None,
                 headers={
                     "Accept-Ranges": "bytes",
-                    "Content-Disposition": f"inline; filename={call_id}.wav"
+                    "Content-Disposition": f'{disposition}; filename="{filename}"'
                 }
             )
 
     # 4. Fallback: Check demo sample if present
     demo_sample = os.path.join(RECORDINGS_DIR, "demo_sample.wav")
     if os.path.exists(demo_sample):
-        return FileResponse(path=demo_sample, media_type="audio/wav")
+        return FileResponse(
+            path=demo_sample,
+            media_type="audio/wav",
+            filename="demo_sample.wav" if download else None,
+            headers={
+                "Accept-Ranges": "bytes",
+                "Content-Disposition": f'{disposition}; filename="demo_sample.wav"'
+            }
+        )
 
     raise HTTPException(status_code=404, detail="Call audio recording not found.")
+
 
 
 @router.post("/calls/{call_id}/analyze")

@@ -3,6 +3,7 @@ SARA AI — Plivo Call Service
 Orchestrates outbound and inbound calls via Plivo Voice API for Indian phone numbers (+91),
 persisting call sessions, transcripts, statuses, and handling Plivo Webhook callbacks.
 """
+import os
 import uuid
 import logging
 from typing import Dict, Any, Optional
@@ -18,6 +19,63 @@ from .plivo_client import plivo_client, normalize_plivo_phone_number
 from .voice_events import voice_events_bus
 
 logger = logging.getLogger("sara.voice.plivo_service")
+
+
+def is_domain_resolvable(url: str) -> bool:
+    if not url or "api.trycloudflare.com" in url or "localhost" in url or "127.0.0.1" in url:
+        return False
+    try:
+        from urllib.parse import urlparse
+        import socket
+        import time
+        import httpx
+        host = urlparse(url).hostname
+        if not host:
+            return False
+        # Plivo requires that the domain has valid public DNS resolution
+        socket.gethostbyname(host)
+        
+        # Test HTTP health through Cloudflare edge (retry on transient 530 during edge warmup)
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=2.5, verify=False, follow_redirects=True) as client:
+                    resp = client.get(f"{url.rstrip('/')}/api/health")
+                    if resp.status_code == 200:
+                        return True
+                    if resp.status_code == 530:
+                        time.sleep(0.5)
+            except Exception:
+                time.sleep(0.5)
+        # If DNS resolved, the domain is valid for Plivo answer_url
+        return True
+    except Exception:
+        return False
+
+
+def get_live_public_base_url() -> str:
+    """Always resolves the latest public Cloudflare URL dynamically from .env or server/.env and verifies DNS health."""
+    root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+    try:
+        from dotenv import dotenv_values
+        for env_file in [os.path.join(root_dir, "server", ".env"), os.path.join(root_dir, ".env")]:
+            if os.path.exists(env_file):
+                vals = dotenv_values(env_file)
+                url = vals.get("PLIVO_WEBHOOK_BASE_URL") or vals.get("PUBLIC_BASE_URL")
+                if url and "localhost" not in url and "127.0.0.1" not in url and is_domain_resolvable(url):
+                    clean_url = url.rstrip("/")
+                    # Sync in-memory environment so future calls never use stale values
+                    os.environ["PLIVO_WEBHOOK_BASE_URL"] = clean_url
+                    os.environ["PUBLIC_BASE_URL"] = clean_url
+                    if hasattr(settings, "PLIVO_WEBHOOK_BASE_URL"):
+                        setattr(settings, "PLIVO_WEBHOOK_BASE_URL", clean_url)
+                    if hasattr(settings, "PUBLIC_BASE_URL"):
+                        setattr(settings, "PUBLIC_BASE_URL", clean_url)
+                    return clean_url
+    except Exception:
+        pass
+
+    url = os.getenv("PLIVO_WEBHOOK_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None) or getattr(settings, "PUBLIC_BASE_URL", None) or ""
+    return url.rstrip("/")
 
 
 class PlivoService:
@@ -132,9 +190,7 @@ class PlivoService:
             }
 
         # Real Live Outbound Call via Plivo API
-        base_url = settings.PLIVO_WEBHOOK_BASE_URL.rstrip("/")
-        if "localhost" in base_url and settings.PUBLIC_BASE_URL:
-            base_url = settings.PUBLIC_BASE_URL.rstrip("/")
+        base_url = get_live_public_base_url()
 
         answer_url = f"{base_url}/api/v1/voice/plivo/answer/{call_id}"
         hangup_url = f"{base_url}/api/v1/voice/plivo/hangup/{call_id}"

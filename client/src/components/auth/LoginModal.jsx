@@ -170,12 +170,14 @@ export default function LoginModal({ onLoginSuccess }) {
         });
 
         if (googleBtnRef.current) {
+          googleBtnRef.current.innerHTML = '';
           window.google.accounts.id.renderButton(googleBtnRef.current, {
             theme: theme === 'dark' ? 'filled_black' : 'outline',
             size: 'large',
-            width: 340,
+            width: 320,
             text: 'continue_with',
             shape: 'rectangular',
+            logo_alignment: 'left',
           });
         }
       } catch (e) {
@@ -316,33 +318,14 @@ export default function LoginModal({ onLoginSuccess }) {
   };
 
   const handleGoogleRedirectLogin = () => {
-    if (window.google?.accounts?.id?.prompt) {
-      window.google.accounts.id.prompt((notification) => {
-        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-          launchDirectOAuth();
-        }
-      });
-      return;
-    }
     launchDirectOAuth();
   };
 
   const launchDirectOAuth = () => {
-    if (apiBase || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      window.location.href = `${apiBase}/api/v1/auth/google/login`;
-      return;
-    }
-    const clientId = googleClientId || DEFAULT_GOOGLE_CLIENT_ID;
-    const redirectUri = window.location.origin;
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      response_type: 'token id_token',
-      scope: 'openid email profile',
-      nonce: Date.now().toString(),
-      prompt: 'select_account',
-    });
-    window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+    setLoading(true);
+    const origin = window.location.origin;
+    const apiEndpoint = apiBase ? `${apiBase}/api/v1/auth/google/login` : '/api/v1/auth/google/login';
+    window.location.href = `${apiEndpoint}?redirect_to=${encodeURIComponent(origin)}`;
   };
 
   // Theme tokens
@@ -579,6 +562,8 @@ export default function LoginModal({ onLoginSuccess }) {
             )}
 
             {/* 1. Continue with Google Button */}
+            {/* 1. Official Google Identity Services 1-Click Button */}
+            {/* 1. Primary Direct Google Sign-In */}
             <button
               onClick={handleGoogleRedirectLogin}
               disabled={loading}
@@ -619,11 +604,21 @@ export default function LoginModal({ onLoginSuccess }) {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              <span>Continue with Google</span>
+              <span>{loading ? 'Connecting to Google...' : 'Continue with Google'}</span>
             </button>
 
-            {/* Google Identity Services Hidden/Mounted Button */}
-            <div ref={googleBtnRef} style={{ display: 'none' }} />
+            {/* 2. Optional 1-Click Popup Container (Active when origin is registered) */}
+            <div
+              style={{
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                minHeight: 38,
+              }}
+            >
+              <div ref={googleBtnRef} style={{ width: '100%', display: 'flex', justifyContent: 'center' }} />
+            </div>
 
             {/* 2. Continue with Demo / Quick Access Button */}
             <button

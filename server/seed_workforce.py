@@ -19,9 +19,8 @@ def _now():
     return datetime.now(timezone.utc)
 
 def seed_workforce():
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.id == "user_business_owner_1").first()
+    print("Seed Workforce dummy seeding is permanently disabled. Only real workforce data are preserved.")
+    return
         if not user:
             user = User(
                 id="user_business_owner_1",

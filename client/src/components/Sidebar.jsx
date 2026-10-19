@@ -5,7 +5,7 @@ import {
   PhoneIncoming, MessageCircle, Inbox, Building2, UserCheck,
   BarChart3, LineChart, Grid2x2, Link, Cpu, Hash, Code2,
   CreditCard, Settings, ChevronDown, Bot, Sparkles,
-  Bell, Shield, ShieldCheck, Activity, Mic
+  Bell, Shield, ShieldCheck, Activity, Mic, X
 } from 'lucide-react';
 
 const NAV = [
@@ -57,25 +57,27 @@ const NAV = [
     ]
   },
   {
-    section: 'Administration',
+    section: 'Workspace',
     items: [
-      { id: 'admin',     label: 'Admin Panel',  icon: ShieldCheck },
       { id: 'approvals', label: 'Approvals',   icon: Shield },
       { id: 'activity',  label: 'Activity Log', icon: Activity },
-      { id: 'billing',   label: 'Billing',      icon: CreditCard },
+      { id: 'billing',   label: 'Billing & Usage', icon: CreditCard },
       { id: 'settings',  label: 'Settings',     icon: Settings },
     ]
   },
 ];
 
-export default function Sidebar({ activePage, onNavigate }) {
+export default function Sidebar({ activePage, onNavigate, isOpen, onClose }) {
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${isOpen ? 'mobile-open' : ''}`}>
       {/* Logo Header (Fixed top) */}
-      <div className="sidebar-header">
+      <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', width: '100%' }}
-          onClick={() => onNavigate('dashboard')}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', flex: 1 }}
+          onClick={() => {
+            onNavigate('dashboard');
+            if (onClose) onClose();
+          }}
         >
           <img
             src="/saadhyam-logo.png"
@@ -106,12 +108,33 @@ export default function Sidebar({ activePage, onNavigate }) {
               fontWeight: 600,
               padding: '2px 7px',
               borderRadius: 6,
-              marginLeft: 'auto'
+              marginLeft: 6
             }}
           >
             Voice AI
           </span>
         </div>
+
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="sidebar-mobile-close-btn"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-muted)',
+              cursor: 'pointer',
+              padding: 6,
+              borderRadius: 6,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+            aria-label="Close navigation"
+          >
+            <X size={18} />
+          </button>
+        )}
       </div>
 
       {/* Navigation (Smooth scrollable body) */}
@@ -119,22 +142,39 @@ export default function Sidebar({ activePage, onNavigate }) {
         {NAV.map(({ section, items }) => (
           <div key={section} style={{ marginBottom: 4 }}>
             <div className="nav-section-label">{section}</div>
-            {items.map(({ id, label, icon: Icon }) => {
+            {items.map(({ id, label, icon: Icon, badge }) => {
               const isActive = activePage === id;
               return (
                 <div
                   key={id}
                   className={`nav-item ${isActive ? 'active' : ''}`}
-                  onClick={() => onNavigate(id)}
+                  onClick={() => {
+                    onNavigate(id);
+                    if (onClose) onClose();
+                  }}
                 >
                   <Icon size={15} className="nav-icon" />
                   <span style={{ fontSize: 13, flex: 1 }}>{label}</span>
+                  {badge && (
+                    <span style={{
+                      fontSize: 10,
+                      fontWeight: 700,
+                      background: 'rgba(124, 58, 237, 0.1)',
+                      color: '#7c3aed',
+                      padding: '2px 6px',
+                      borderRadius: 4,
+                      border: '1px solid rgba(124, 58, 237, 0.2)'
+                    }}>
+                      {badge}
+                    </span>
+                  )}
                 </div>
               );
             })}
           </div>
         ))}
       </nav>
+
 
       {/* Bottom — Workspace (Fixed bottom) */}
       <div className="sidebar-footer">

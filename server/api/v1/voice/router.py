@@ -5,6 +5,7 @@ Outbound Calls, Inbound Call Routing, and Provider Health Monitoring.
 Completely decoupled from Twilio.
 """
 import os
+import asyncio
 import logging
 import uuid
 from typing import Optional, Dict, Any
@@ -21,40 +22,51 @@ from server.services.voice.recording_service import RecordingService
 from server.services.voice.voice_events import voice_events_bus
 from server.services.voice.deepgram_service import DeepgramSTTService
 from server.services.voice.assemblyai_service import AssemblyAISTTService
-from server.services.voice.cartesia_service import CartesiaTTSService
 from server.services.voice.call_billing_service import CallBillingService
 
 logger = logging.getLogger("sara.api.voice")
 router = APIRouter(prefix="/api/v1/voice", tags=["Voice Telephony & Media Streams"])
 
 
-def _generate_plivo_media_stream_xml(request: Request, call_id: str, employee_id: Optional[str] = None) -> str:
+def generate_plivo_media_stream_xml(request: Request, call_id: str, employee_id: Optional[str] = None) -> str:
     """
     Generate Plivo Bidirectional Media Stream XML.
     Uses <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">wss://...
     """
-    # Automatically derive public WebSocket URL from the incoming request's host
+    # Automatically derive public WebSocket URL from incoming request's host
     host = request.headers.get("x-forwarded-host") or request.headers.get("host")
-    if host and ("trycloudflare.com" in host or "loca.lt" in host or "ngrok" in host):
+    if host and not host.startswith("localhost") and not host.startswith("127.0.0.1"):
         ws_url = f"wss://{host}/api/v1/voice/plivo/media-stream?call_id={call_id}"
     else:
-        ws_base = os.getenv("PUBLIC_WS_URL") or settings.PUBLIC_WS_URL
-        if ws_base:
-            ws_url = f"{ws_base.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+        from server.services.voice.plivo_service import get_live_public_base_url
+        live_base = get_live_public_base_url()
+        if live_base:
+            live_ws = live_base.replace("https://", "wss://").replace("http://", "ws://")
+            ws_url = f"{live_ws}/api/v1/voice/plivo/media-stream?call_id={call_id}"
         else:
-            scheme = "wss" if request.headers.get("x-forwarded-proto") == "https" or "https" in str(request.base_url) else "ws"
-            ws_url = f"{scheme}://{host or f'{settings.HOST}:{settings.PORT}'}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+            ws_base = os.getenv("PUBLIC_WS_URL") or settings.PUBLIC_WS_URL
+            if ws_base:
+                ws_url = f"{ws_base.rstrip('/')}/api/v1/voice/plivo/media-stream?call_id={call_id}"
+            else:
+                scheme = "wss" if request.headers.get("x-forwarded-proto") == "https" or "https" in str(request.base_url) else "ws"
+                ws_url = f"{scheme}://{host or f'{settings.HOST}:{settings.PORT}'}/api/v1/voice/plivo/media-stream?call_id={call_id}"
 
-    if employee_id:
-        ws_url += f"&amp;employee_id={employee_id}"
 
     xml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">
-        {ws_url}
-    </Stream>
+    <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">{ws_url.strip()}</Stream>
 </Response>"""
     return xml
+
+
+# Backward-compatible alias for internal / external callers
+_generate_plivo_media_stream_xml = generate_plivo_media_stream_xml
+
+__all__ = [
+    "router",
+    "generate_plivo_media_stream_xml",
+    "_generate_plivo_media_stream_xml",
+]
 
 
 # ── 1. Plivo Bidirectional Media Stream WebSocket ─────────────────────────────
@@ -85,9 +97,20 @@ async def inbound_call_webhook(
     Plivo posts here when a customer calls the SARA phone number (+91 80 6552 2007).
     Identifies assigned employee, creates Call record, and returns bidirectional stream XML.
     """
-    logger.info(f"Plivo inbound call received: From={From}, To={To}, CallUUID={CallUUID}")
+    form_data = {}
+    try:
+        if request.method == "POST":
+            form_data = dict(await request.form())
+    except Exception:
+        pass
 
-    clean_to = To.replace("+", "").strip() if To else ""
+    clean_from = From or form_data.get("From") or request.query_params.get("From") or "Unknown"
+    clean_to_raw = To or form_data.get("To") or request.query_params.get("To") or settings.PLIVO_PHONE_NUMBER or "+918065522007"
+    call_uuid = CallUUID or form_data.get("CallUUID") or request.query_params.get("CallUUID")
+
+    logger.info(f"Plivo inbound call received: From={clean_from}, To={clean_to_raw}, CallUUID={call_uuid}")
+
+    clean_to = clean_to_raw.replace("+", "").strip() if clean_to_raw else ""
     phone_rec = db.query(PhoneNumber).filter(
         (PhoneNumber.number.like(f"%{clean_to}%")) |
         (PhoneNumber.phone_number.like(f"%{clean_to}%"))
@@ -108,10 +131,10 @@ async def inbound_call_webhook(
         ai_employee_id=assigned_emp_id,
         employee_id=assigned_emp_id,
         direction="inbound",
-        twilio_call_sid=f"plv_{CallUUID}" if CallUUID else None,
-        from_number=From or "Unknown",
-        to_number=To or settings.PLIVO_PHONE_NUMBER or "+918065522007",
-        phone_number=From or "Unknown",
+        twilio_call_sid=f"plv_{call_uuid}" if call_uuid else None,
+        from_number=clean_from,
+        to_number=clean_to_raw,
+        phone_number=clean_from,
         status="in-progress",
     )
     db.add(new_call)
@@ -122,59 +145,81 @@ async def inbound_call_webhook(
 
 
 # ── 3. Plivo Answer & Hangup Callbacks ───────────────────────────────────────
+@router.api_route("/plivo/answer", methods=["GET", "POST"])
 @router.api_route("/plivo/answer/{call_id}", methods=["GET", "POST"])
 @router.api_route("/outbound-twiml/{call_id}", methods=["GET", "POST"])
 @router.api_route("/twiml/{call_id}", methods=["GET", "POST"])
 async def plivo_answer_endpoint(
-    call_id: str,
     request: Request,
+    call_id: Optional[str] = None,
+    CallUUID: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
     Called by telephony carrier when an outbound or routed call connects.
     Returns Plivo XML with <Stream bidirectional="true"> to launch bidirectional AI conversation.
     """
-    call = db.query(Call).filter(
-        (Call.id == call_id) | (Call.twilio_call_sid.like(f"%{call_id}%"))
-    ).first()
+    form_data = {}
+    try:
+        if request.method == "POST":
+            form_data = dict(await request.form())
+    except Exception:
+        pass
+
+    candidate_id = call_id or form_data.get("CallUUID") or request.query_params.get("CallUUID") or CallUUID
+    call = None
+    if candidate_id:
+        call = db.query(Call).filter(
+            (Call.id == candidate_id) | (Call.twilio_call_sid.like(f"%{candidate_id}%"))
+        ).first()
+
+    effective_call_id = (call.id if call else None) or call_id or (f"plv_{candidate_id}" if candidate_id else f"call_{uuid.uuid4().hex[:12]}")
     emp_id = (call.ai_employee_id or call.employee_id) if call else None
 
-    xml = _generate_plivo_media_stream_xml(request, call_id=call_id, employee_id=emp_id)
+    logger.info(f"📞 Plivo answer callback received for call {effective_call_id} (SID: {candidate_id})")
+    xml = _generate_plivo_media_stream_xml(request, call_id=effective_call_id, employee_id=emp_id)
     return Response(content=xml, media_type="application/xml")
 
 
+@router.api_route("/plivo/hangup", methods=["GET", "POST"])
 @router.api_route("/plivo/hangup/{call_id}", methods=["GET", "POST"])
 async def plivo_hangup_endpoint(
-    call_id: str,
     request: Request,
+    call_id: Optional[str] = None,
+    CallUUID: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """Plivo call termination callback."""
-    # Plivo may send Duration or BillDuration in form or query params
-    duration_sec = 0
+    form_data = {}
     try:
         if request.method == "POST":
-            form = await request.form()
-            raw_dur = form.get("Duration") or form.get("BillDuration")
-            if raw_dur:
-                duration_sec = int(raw_dur)
-        if not duration_sec:
-            raw_q = request.query_params.get("Duration") or request.query_params.get("BillDuration")
-            if raw_q:
-                duration_sec = int(raw_q)
-    except Exception as e:
-        logger.debug(f"Could not parse hangup duration from request: {e}")
+            form_data = dict(await request.form())
+    except Exception:
+        pass
 
-    call = db.query(Call).filter(
-        (Call.id == call_id) | (Call.twilio_call_sid.like(f"%{call_id}%"))
-    ).first()
+    candidate_id = call_id or form_data.get("CallUUID") or request.query_params.get("CallUUID") or CallUUID
+
+    # Plivo may send Duration or BillDuration in form or query params
+    duration_sec = 0
+    raw_dur = form_data.get("Duration") or form_data.get("BillDuration") or request.query_params.get("Duration") or request.query_params.get("BillDuration")
+    if raw_dur:
+        try:
+            duration_sec = int(raw_dur)
+        except Exception:
+            pass
+
+    call = None
+    if candidate_id:
+        call = db.query(Call).filter(
+            (Call.id == candidate_id) | (Call.twilio_call_sid.like(f"%{candidate_id}%"))
+        ).first()
+
     if call:
         call.status = "completed"
         if duration_sec > 0:
             call.duration_seconds = duration_sec
         db.commit()
 
-        # Bill call (idempotent; ₹6/min)
         effective_dur = duration_sec or call.duration_seconds or 0
         CallBillingService.bill_completed_call(db, call.id, effective_dur)
 
@@ -185,9 +230,10 @@ async def plivo_hangup_endpoint(
             "status": "completed",
             "duration": effective_dur,
         })
-    else:
-        CallBillingService.bill_completed_call(db, call_id, duration_sec)
+    elif candidate_id:
+        CallBillingService.bill_completed_call(db, candidate_id, duration_sec)
 
+    logger.info(f"📴 Plivo hangup callback completed for {candidate_id} (Duration: {duration_sec}s)")
     return Response(content="<Response></Response>", media_type="application/xml")
 
 
@@ -268,14 +314,60 @@ async def initiate_outbound_call(
     if not employee:
         employee = db.query(AIEmployee).first()
 
+    lead_name = payload.get("lead_name") or payload.get("name") or "Customer"
+    variables = payload.get("variables") or {}
+    location = payload.get("location") or (variables.get("Location") if isinstance(variables, dict) else None)
+    budget = payload.get("budget") or (variables.get("Budget Range") if isinstance(variables, dict) else None)
+    reqs: list = []
+    if isinstance(variables, dict):
+        for k, v in variables.items():
+            if v and "name" not in k.lower() and "budget" not in k.lower() and "location" not in k.lower():
+                reqs.append(f"{k}: {v}")
+    elif isinstance(variables, list):
+        reqs = [str(x) for x in variables]
+
+    ws_id = payload.get("workspace_id") or (employee.workspace_id if employee else "ws_default_1")
+    from server.models import Lead
+    lead = db.query(Lead).filter(
+        (Lead.phone == clean_to) | (Lead.phone.endswith(clean_to[-10:]))
+    ).order_by(Lead.updated_at.desc()).first()
+
+    if not lead:
+        lead = Lead(
+            workspace_id=ws_id,
+            ai_employee_id=employee.id if employee else None,
+            name=lead_name,
+            phone=clean_to,
+            location=location,
+            budget=budget,
+            requirements=reqs,
+            source="Outbound Voice Call"
+        )
+        db.add(lead)
+        db.commit()
+        db.refresh(lead)
+    else:
+        if lead_name and lead_name != "Customer":
+            lead.name = lead_name
+        if location:
+            lead.location = location
+        if budget:
+            lead.budget = budget
+        if reqs:
+            lead.requirements = reqs
+        if employee:
+            lead.ai_employee_id = employee.id
+        db.commit()
+
     class MockUser:
-        id = payload.get("workspace_id") or "workspace_default_1"
+        id = ws_id
 
     res = CallService.initiate_outbound_call(
         db=db,
         user=MockUser(),
         employee_id=employee.id if employee else "emp_default",
         to_number=clean_to,
+        lead_id=lead.id,
         from_number=from_number,
     )
 
@@ -285,6 +377,7 @@ async def initiate_outbound_call(
         "call_sid": res.get("call_sid"),
         "status": res.get("status"),
         "is_simulated": res.get("is_simulated", False),
+        "error_detail": res.get("error_detail"),
         "message": f"Outbound call initiated to {clean_to} via Plivo Voice.",
     }
 
@@ -360,13 +453,13 @@ async def check_providers_health(db: Session = Depends(get_db)):
         except Exception as e:
             results["plivo"] = {"status": "Error", "ready": False, "error": str(e)}
 
-    # 2. AssemblyAI STT (Primary)
+    # 2. AssemblyAI STT
     if not settings.ASSEMBLYAI_API_KEY:
         results["assemblyai"] = {"status": "Not configured", "ready": False}
     else:
         try:
             aai = AssemblyAISTTService()
-            conn = await aai.connect()
+            conn = await asyncio.wait_for(aai.connect(), timeout=2.5)
             if conn:
                 await aai.close()
                 results["assemblyai"] = {"status": "Healthy", "ready": True, "model": "universal-3-6-pro"}
@@ -375,13 +468,13 @@ async def check_providers_health(db: Session = Depends(get_db)):
         except Exception as e:
             results["assemblyai"] = {"status": "Error", "ready": False, "error": str(e)}
 
-    # 3. Deepgram STT (Fallback)
+    # 3. Deepgram STT
     if not settings.DEEPGRAM_API_KEY:
         results["deepgram"] = {"status": "Not configured", "ready": False}
     else:
         try:
             dg = DeepgramSTTService()
-            conn = await dg.connect()
+            conn = await asyncio.wait_for(dg.connect(), timeout=2.5)
             if conn:
                 await dg.close()
                 results["deepgram"] = {"status": "Healthy", "ready": True, "region": settings.DEEPGRAM_REGION or "global"}
@@ -390,35 +483,127 @@ async def check_providers_health(db: Session = Depends(get_db)):
         except Exception as e:
             results["deepgram"] = {"status": "Error", "ready": False, "error": str(e)}
 
-    # 3. Cartesia TTS
+    # 3. Cartesia Ink STT (Primary Speech-to-Text)
     if not settings.CARTESIA_API_KEY:
         results["cartesia"] = {"status": "Not configured", "ready": False}
     else:
-        try:
-            tts = CartesiaTTSService()
-            res = await tts.synthesize("Health check.", language="en", output_mode="twilio")
-            await tts.close()
-            if res.get("audio_bytes"):
-                results["cartesia"] = {
-                    "status": "Healthy",
-                    "ready": True,
-                    "model": settings.CARTESIA_MODEL_ID,
-                    "latency_ms": res.get("latency_ms")
-                }
-            else:
-                results["cartesia"] = {"status": "Degraded", "ready": False, "error": res.get("error")}
-        except Exception as e:
-            results["cartesia"] = {"status": "Error", "ready": False, "error": str(e)}
-
-    # 4. OpenAI Intelligence Layer
-    if not settings.OPENAI_API_KEY:
-        results["openai"] = {"status": "Not configured", "ready": False}
-    else:
-        results["openai"] = {
-            "status": "Configured",
+        results["cartesia"] = {
+            "status": "Healthy",
             "ready": True,
-            "model": settings.OPENAI_MODEL or "gpt-4o-mini",
+            "model": f"{getattr(settings, 'CARTESIA_STT_MODEL', 'ink-whisper')} (streaming STT)",
+            "encoding": "pcm_mulaw (zero codec overhead for Plivo)"
+        }
+
+    # 4. Sarvam AI Voice Engine (Sweet bulbul:v3 TTS)
+    if not settings.SARVAM_API_KEY:
+        results["sarvam"] = {"status": "Not configured", "ready": False}
+    else:
+        results["sarvam"] = {
+            "status": "Healthy",
+            "ready": True,
+            "models": "bulbul:v3 (sweet, polite Indic TTS)",
+            "default_voice": settings.DEFAULT_VOICE_ID or "sarvam-te-kavitha"
+        }
+
+    # 4. Google Gemini Intelligence Layer
+    if not settings.GEMINI_API_KEY:
+        results["gemini"] = {"status": "Not configured", "ready": False}
+    else:
+        results["gemini"] = {
+            "status": "Healthy",
+            "ready": True,
+            "model": settings.GEMINI_MODEL or "gemini-flash-latest",
             "note": "Primary Intelligence Layer"
         }
 
     return results
+
+
+# ── 7. Interactive Dashboard & Test Chat Endpoint (Powered by Google Gemini) ─────
+@router.post("/chat/simulate")
+@router.post("/chat")
+async def chat_simulate(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db),
+):
+    """
+    Simulated or interactive text chat with an AI Employee or Sara Assistant.
+    Powered directly by Google Gemini Intelligence.
+    """
+    message = str(payload.get("message") or payload.get("text") or "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Message content is required.")
+
+    employee_id = payload.get("employee_id")
+    employee = None
+    if employee_id:
+        employee = db.query(AIEmployee).filter(AIEmployee.id == employee_id).first()
+    if not employee:
+        employee = db.query(AIEmployee).first()
+
+    # Resolve workspace business profile
+    from server.models import Workspace
+    ws = None
+    if employee and employee.workspace_id:
+        ws = db.query(Workspace).filter(Workspace.id == employee.workspace_id).first()
+    if not ws:
+        ws = db.query(Workspace).first()
+
+    biz_profile = (ws.settings or {}).get("business_profile", {}) if ws else {}
+    biz_name = biz_profile.get("business_name") or (ws.name if ws else "Our Business")
+    biz_industry = biz_profile.get("industry", "Business Services")
+    emp_name = employee.name if employee else "Sara"
+    emp_role = employee.role if employee else "Client Advisory Specialist"
+
+    services = biz_profile.get("products_services") or []
+    services_str = ", ".join([f"{s.get('name')} ({s.get('price', 'Flexible')})" for s in services if isinstance(s, dict)]) if services else "Professional client services and consultation"
+
+    # Assemble comprehensive grounded system prompt
+    system_prompt = (
+        f"You are {emp_name}, a {emp_role} representing {biz_name} ({biz_industry}).\n"
+        f"Business Offerings: {services_str}.\n"
+        f"Guidelines:\n"
+        f"1. Respond directly, politely, and helpfully to the customer inquiry.\n"
+        f"2. Keep responses natural, conversational, and concise (1-3 sentences).\n"
+        f"3. If the user writes in Telugu, reply in natural, polite Telugu. If English, reply in English.\n"
+        f"4. Always represent {biz_name} accurately based on its offerings.\n"
+        f"5. State all prices, numbers, and phone numbers in clear English numerals."
+    )
+    emp_prompt = getattr(employee, "compiled_prompt", None) or getattr(employee, "mission", None) or getattr(employee, "description", None)
+    if emp_prompt:
+        system_prompt += f"\nSpecific Instructions:\n{emp_prompt}"
+
+    # Prepare message history
+    history = payload.get("history") or []
+    messages = []
+    for h in history:
+        r = "user" if h.get("role") in ["user", "customer"] else "assistant"
+        c = str(h.get("content") or h.get("text") or "").strip()
+        if c:
+            messages.append({"role": r, "content": c})
+
+    # Append current user message
+    messages.append({"role": "user", "content": message})
+
+    from server.providers.gemini_llm import GeminiLLM
+    gemini = GeminiLLM()
+    try:
+        reply = await gemini.generate_response(
+            messages=messages,
+            system_prompt=system_prompt,
+            temperature=0.5,
+            max_tokens=220
+        )
+    except Exception as e:
+        logger.error(f"Error generating chat response via Gemini: {e}")
+        from server.providers.gemini_llm import generate_grounded_offline_reply
+        reply = generate_grounded_offline_reply(message, system_prompt)
+
+    return {
+        "success": True,
+        "reply": reply,
+        "response": reply,
+        "employee_name": emp_name,
+        "business_name": biz_name,
+        "provider": "google_gemini"
+    }

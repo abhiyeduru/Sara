@@ -48,6 +48,15 @@ class EmployeeCreate(BaseModel):
     permissions: List[PermissionIn] = []
     working_hours: dict = {"start": "09:00", "end": "21:00", "days": ["mon","tue","wed","thu","fri","sat"]}
 
+class EmployeeCompileAndCreateRequest(BaseModel):
+    description: str
+    calling_mode: str = "instant"          # "instant" | "bulk"
+    language: str = "te"                  # "te", "hi", "ta", "kn", "ml", "mr", "en"
+    template_category: Optional[str] = None
+    script_stages: Optional[List[dict]] = None
+    opening_line: Optional[str] = None
+    save_immediately: bool = True
+
 class EmployeeUpdate(BaseModel):
     name: Optional[str] = None
     role: Optional[str] = None
@@ -115,8 +124,16 @@ async def list_employees(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """List all AI employees in the workspace."""
-    q = db.query(AIEmployee).filter(AIEmployee.workspace_id == user.id)
+    """List all AI employees in the account/workspace."""
+    from server.models import WorkspaceMember
+    member = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
+    allowed_ids = [user.id]
+    if member and member.workspace_id:
+        allowed_ids.append(member.workspace_id)
+
+    q = db.query(AIEmployee).filter(
+        (AIEmployee.created_by == user.id) | (AIEmployee.workspace_id.in_(allowed_ids))
+    )
     if status:
         q = q.filter(AIEmployee.status == status)
     if department:
@@ -195,6 +212,137 @@ async def create_employee(
     return _to_dict(emp)
 
 
+@router.post("/compile-and-create", status_code=201)
+async def compile_and_create_employee(
+    body: EmployeeCompileAndCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Compile natural-language job description, calling mode, language and template
+    into an autonomous, production-ready AI employee and save to database.
+    """
+    from server.engine.agent_compiler import AgentCompiler
+
+    # 1. Compile through AI compiler pipeline
+    compiler = AgentCompiler()
+    spec = compiler.compile(
+        natural_input=body.description,
+        language_preference=body.language
+    )
+
+    # 2. Curated voice mapping for regional Indian languages
+    voice_map = {
+        "te": ("07bc462a-c644-49f1-baf7-82d5599131be", "Sindhu (Telugu Sweet & Natural)", "female"),
+        "hi": ("sarvam-hi-swara", "Swara (Hindi Warm)", "female"),
+        "ta": ("sarvam-ta-ananya", "Ananya (Tamil)", "female"),
+        "kn": ("sarvam-kn-sapna", "Sapna (Kannada)", "female"),
+        "ml": ("sarvam-ml-amala", "Amala (Malayalam)", "female"),
+        "mr": ("sarvam-mr-aarohi", "Aarohi (Marathi)", "female"),
+        "en": ("07bc462a-c644-49f1-baf7-82d5599131be", "Sindhu (English Sweet)", "female"),
+    }
+    voice_id, voice_name, voice_gender = voice_map.get(body.language, ("07bc462a-c644-49f1-baf7-82d5599131be", "Sindhu", "female"))
+
+    identity = spec.get("identity", {})
+    name = identity.get("name") or "Sara"
+    role = identity.get("role_title") or (f"{body.template_category or 'Business'} Specialist")
+    department = identity.get("department") or (body.template_category or "Sales")
+    mission = identity.get("mission") or body.description
+
+    # Attach calling mode and template category
+    universal_spec = spec
+    universal_spec["calling_mode"] = body.calling_mode
+    universal_spec["template_category"] = body.template_category
+    universal_spec["primary_language"] = body.language
+
+    # Build script steps from selected template stages or workflow
+    if body.script_stages:
+        steps = []
+        for s in body.script_stages:
+            stg_dialogue = s.get("dialogue", {})
+            chosen_text = stg_dialogue.get(body.language) or stg_dialogue.get("en") or (s.get("content") or s.get("title") or "")
+            steps.append({
+                "id": f"s{s.get('step', len(steps) + 1)}",
+                "shortTitle": s.get("title") or f"Stage {len(steps) + 1}",
+                "content": chosen_text,
+                "dialogue": stg_dialogue
+            })
+        first_line = body.opening_line or (steps[0]["content"] if steps else "")
+        call_script = {
+            "opening_line": first_line or spec.get("prompt_templates", {}).get("greeting", f"హలో అండి, నేను {name} మాట్లాడుతున్నాను."),
+            "steps": steps
+        }
+        universal_spec["call_script"] = call_script
+        universal_spec["script_stages"] = body.script_stages
+    else:
+        steps = []
+        wf_steps = spec.get("workflow", {}).get("steps", [])
+        for idx, s in enumerate(wf_steps, start=1):
+            steps.append({
+                "id": f"s{idx}",
+                "shortTitle": s.get("title") or s.get("name") or f"Step {idx}",
+                "content": s.get("action") or s.get("detail") or ""
+            })
+
+        call_script = {
+            "opening_line": spec.get("prompt_templates", {}).get("greeting", f"హలో అండి, నేను {name} మాట్లాడుతున్నాను."),
+            "steps": steps or [
+                {"id": "s1", "shortTitle": "Greet & Identify", "content": "Introduce warmly and ask caller what they need."},
+                {"id": "s2", "shortTitle": "Qualify Details", "content": "Ask for specific requirements, budget, or preferred timing."},
+                {"id": "s3", "shortTitle": "Schedule & Confirm", "content": "Confirm appointment or site visit details."},
+                {"id": "s4", "shortTitle": "Follow-up Action", "content": "Send instant confirmation on WhatsApp."}
+            ]
+        }
+        universal_spec["call_script"] = call_script
+
+    # Inject multi-stage conversational script directly into system prompt
+    script_prompt = "\n\n### MANDATORY MULTI-STAGE CONVERSATIONAL SCRIPT & STAGES:\n"
+    for st in call_script.get("steps", []):
+        script_prompt += f"Stage: {st.get('shortTitle')}\nInstruction / Dialogue: \"{st.get('content')}\"\n\n"
+    compiled_prompt = spec.get("system_prompt", "") + script_prompt
+
+    emp = AIEmployee(
+        workspace_id=user.id,
+        created_by=user.id,
+        name=name,
+        role=role,
+        department=department,
+        mission=mission,
+        description=body.description,
+        personality=spec.get("behavior", {}).get("personality", "Professional, warm, helpful"),
+        communication_style=spec.get("behavior", {}).get("communication_style", "Concise & polite"),
+        sales_behavior=spec.get("behavior", {}).get("sales_behavior", "Consultative"),
+        languages=[body.language, "en"] if body.language != "en" else ["en"],
+        voice_id=voice_id,
+        voice_name=voice_name,
+        voice_gender=voice_gender,
+        voice_language=body.language,
+        primary_model="groq",
+        status="active",
+        compiled_prompt=compiled_prompt,
+        universal_spec=universal_spec,
+        workflow_spec=spec.get("workflow", {}),
+        tools_spec=spec.get("tools", []),
+    )
+    db.add(emp)
+    db.flush()
+
+    # Default permissions
+    default_perms = [
+        ("crm:read", "allowed"), ("crm:write", "allowed"),
+        ("calls:make", "allowed"), ("calls:receive", "allowed"),
+        ("lead:read", "allowed"), ("lead:write", "allowed"),
+        ("knowledge:read", "allowed"),
+    ]
+    for cap, access in default_perms:
+        db.add(AIEmployeePermission(employee_id=emp.id, capability=cap, access=access))
+
+    db.commit()
+    db.refresh(emp)
+    logger.info(f"Autonomously compiled & created AI Employee {emp.name} ({emp.id}) with mode {body.calling_mode}")
+    return _to_dict(emp)
+
+
 @router.get("/{employee_id}")
 async def get_employee(
     employee_id: str,
@@ -222,7 +370,9 @@ async def update_employee(
         AIEmployee.workspace_id == user.id,
     ).first()
     if not emp:
-        raise HTTPException(404, "AI Employee not found")
+        emp = db.query(AIEmployee).filter(AIEmployee.id == employee_id).first()
+        if not emp:
+            raise HTTPException(404, "AI Employee not found")
 
     data = body.dict(exclude_none=True)
     if "call_script" in data:
@@ -395,12 +545,17 @@ async def rewrite_script(
     if not emp:
         raise HTTPException(404, "AI Employee not found")
 
-    import json
+    from server.providers.gemini_llm import GeminiLLM
     from server.providers.groq_llm import GroqLLM
     from server.providers.openai_llm import OpenAILLM
     from server.config import settings
 
-    llm = GroqLLM() if settings.PRIMARY_LLM == "groq" else OpenAILLM()
+    if getattr(settings, "PRIMARY_LLM", "gemini").lower() == "gemini":
+        llm = GeminiLLM()
+    elif settings.PRIMARY_LLM == "groq":
+        llm = GroqLLM()
+    else:
+        llm = OpenAILLM()
     current_script = body.current_script or (emp.universal_spec or {}).get("call_script", {})
 
     system_instruction = (
@@ -471,17 +626,77 @@ async def trigger_employee_call(
             raise HTTPException(404, "AI Employee not found")
 
     from server.services.voice.call_service import CallService
+    from server.models import Lead, WorkspaceMember, Workspace
     clean_to = body.phone_number.strip().replace(" ", "").replace("-", "")
     if clean_to.startswith("0"):
         clean_to = "+91" + clean_to[1:]
     elif not clean_to.startswith("+"):
         clean_to = f"+91{clean_to}" if len(clean_to) == 10 else f"+{clean_to}"
 
+    # Extract lead variables & customer information from user inputs
+    lead_name = body.lead_name or "Customer"
+    location = None
+    budget = None
+    reqs: list = []
+    if body.variables and isinstance(body.variables, dict):
+        for k, v in body.variables.items():
+            if not v:
+                continue
+            k_lower = k.lower()
+            if "name" in k_lower and str(v).lower() != "customer":
+                lead_name = str(v)
+            elif "budget" in k_lower:
+                budget = str(v)
+            elif "location" in k_lower or "area" in k_lower:
+                location = str(v)
+            else:
+                reqs.append(f"{k}: {v}")
+
+    # Resolve workspace ID
+    resolved_ws_id = user.id
+    wm = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
+    if wm:
+        resolved_ws_id = wm.workspace_id
+    elif emp.workspace_id and db.query(Workspace).filter(Workspace.id == emp.workspace_id).first():
+        resolved_ws_id = emp.workspace_id
+
+    # Create or update Lead record with customer details
+    lead = db.query(Lead).filter(
+        (Lead.phone == clean_to) | (Lead.phone.endswith(clean_to[-10:]))
+    ).order_by(Lead.updated_at.desc()).first()
+
+    if not lead:
+        lead = Lead(
+            workspace_id=resolved_ws_id,
+            ai_employee_id=emp.id,
+            name=lead_name,
+            phone=clean_to,
+            location=location,
+            budget=budget,
+            requirements=reqs,
+            source="Manual Outbound Call"
+        )
+        db.add(lead)
+        db.commit()
+        db.refresh(lead)
+    else:
+        if lead_name and lead_name != "Customer":
+            lead.name = lead_name
+        if location:
+            lead.location = location
+        if budget:
+            lead.budget = budget
+        if reqs:
+            lead.requirements = reqs
+        lead.ai_employee_id = emp.id
+        db.commit()
+
     call_res = CallService.initiate_outbound_call(
         db=db,
         user=user,
         employee_id=emp.id,
         to_number=clean_to,
+        lead_id=lead.id,
         from_number=body.from_number,
     )
     return {
@@ -493,6 +708,7 @@ async def trigger_employee_call(
         "error_detail": call_res.get("error_detail"),
         "employee_name": emp.name,
         "to": clean_to,
+        "lead_name": lead_name,
         "message": f"Outbound call to {clean_to} initiated with {emp.name}."
     }
 

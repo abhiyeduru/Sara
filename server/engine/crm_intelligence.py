@@ -309,13 +309,13 @@ def generate_one_click_summary(customer: Any, calls: List[Any], tasks: List[Any]
 
     return {
         "WHO_THEY_ARE": f"{name} ({phone}), based in {location or 'Hyderabad'}. Company: {company}.",
-        "WHAT_THEY_WANT": f"{', '.join(reqs) if reqs else getattr(customer, 'interest', 'Real Estate property')}. Budget: {budget or memory.get('budget_range', 'Flexible')}.",
+        "WHAT_THEY_WANT": f"{', '.join(reqs) if reqs else getattr(customer, 'interest', 'Services and Offerings')}. Budget: {budget or memory.get('budget_range', 'Flexible')}.",
         "WHAT_HAS_HAPPENED": f"{total_calls} voice call interaction(s) conducted. {last_call_summary.splitlines()[0] if last_call_summary else 'Initial inquiry registered'}.",
         "CURRENT_STATUS": f"Pipeline Stage: {stage} (Lead Score: {getattr(customer, 'lead_score', 50)}/100).",
-        "WHAT_THEY_CARE_ABOUT": f"Location convenience, transparent documentation, and verified RERA approvals.",
+        "WHAT_THEY_CARE_ABOUT": f"Quality service, transparent pricing, and timely execution.",
         "WHAT_THEY_OBJECTED_TO": f"{', '.join(memory.get('objection_history', ['Requested competitive pricing / flexible payment milestones']))}.",
-        "WHAT_WAS_PROMISED": f"{'Brochure dispatch and follow-up callback' if not memory.get('commitments_log') else memory['commitments_log'][-1].get('promise', 'Brochure sent')}.",
-        "WHAT_NEEDS_TO_HAPPEN_NEXT": f"{pending_tasks[0] if pending_tasks else 'Schedule site visit and connect with senior sales specialist'}."
+        "WHAT_WAS_PROMISED": f"{'Information dispatch and follow-up callback' if not memory.get('commitments_log') else memory['commitments_log'][-1].get('promise', 'Details sent')}.",
+        "WHAT_NEEDS_TO_HAPPEN_NEXT": f"{pending_tasks[0] if pending_tasks else 'Schedule next consultation call and connect with client advisor'}."
     }
 
 

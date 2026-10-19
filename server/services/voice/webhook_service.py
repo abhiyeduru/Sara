@@ -11,8 +11,7 @@ from twilio.twiml.voice_response import VoiceResponse, Gather
 
 from server.models import Call, AIEmployee, KnowledgeSource, KnowledgeDocument, Lead
 from server.config import settings
-from server.providers.groq_llm import GroqLLM
-from server.providers.openai_llm import OpenAILLM
+from server.providers.gemini_llm import GeminiLLM
 from .voice_events import voice_events_bus
 from .transcript_service import TranscriptService
 
@@ -33,14 +32,16 @@ class WebhookService:
                 AIEmployee.id == (call.ai_employee_id or call.employee_id)
             ).first()
 
-        greeting = (
-            f"Hello, this is {emp.name if emp else 'Sara'} from Mentneo Properties. "
-            "I'm reaching out regarding your recent inquiry. How can I help you today?"
-        )
-        if emp and emp.name == "Arjun":
-            greeting = f"Hello! This is Arjun from SARA Customer Support. How may I assist you today?"
-        elif emp and (emp.name == "Sara" or emp.name == "Lakshmi"):
-            greeting = f"Namaste! This is {emp.name} from Mentneo Properties in Hyderabad. I'm following up on your premium 2 and 3 BHK apartment inquiry. Is now a good time to speak?"
+        lang = getattr(emp, "voice_language", "te") or "te"
+        say_voice = "Polly.Kavitha" if lang in ["te", "telugu"] else ("Polly.Kajal" if lang in ["hi", "hindi"] else "Polly.Kajal")
+        say_lang = "te-IN" if lang in ["te", "telugu"] else ("hi-IN" if lang in ["hi", "hindi"] else "en-IN")
+
+        if lang in ["te", "telugu"]:
+            greeting = f"నమస్కారం అండీ! నేను {emp.name if emp else 'సారా'}. మీరు ఇప్పుడు మాట్లాడగలరా అండీ?"
+        elif lang in ["hi", "hindi"]:
+            greeting = f"नमस्ते जी! मैं {emp.name if emp else 'सारा'} बोल रही हूँ। क्या बात करने का सही समय है?"
+        else:
+            greeting = f"Hello! This is {emp.name if emp else 'Sara'}. Is now a good time to speak?"
 
 
         # Record greeting in transcript
@@ -76,13 +77,14 @@ class WebhookService:
             action=f"{base_url}/api/v1/voice/process/{call_id}",
             method="POST",
             speech_timeout="auto",
-            language="en-IN",
+            language=say_lang,
         )
-        gather.say(greeting, voice="Polly.Aditi", language="en-IN")
+        gather.say(greeting, voice=say_voice, language=say_lang)
         resp.append(gather)
 
         # Fallback if no speech detected
-        resp.say("I didn't quite catch that. Could you please repeat?", voice="Polly.Aditi", language="en-IN")
+        silence_prompt = "నమస్కారం అండీ, నేను వింటున్నాను. మీ రిక్వైర్మెంట్ గురించి చెప్పండి." if say_lang == "te-IN" else "I'm listening. Could you please share your requirement?"
+        resp.say(silence_prompt, voice=say_voice, language=say_lang)
         resp.redirect(f"{base_url}/api/v1/voice/twiml/{call_id}")
 
         return str(resp)
@@ -102,15 +104,26 @@ class WebhookService:
         base_url = settings.TWILIO_WEBHOOK_BASE_URL.rstrip("/")
         resp = VoiceResponse()
 
+        emp = None
+        if call and (call.ai_employee_id or call.employee_id):
+            emp = db.query(AIEmployee).filter(
+                AIEmployee.id == (call.ai_employee_id or call.employee_id)
+            ).first()
+
+        lang = getattr(emp, "voice_language", "te") or "te"
+        say_voice = "Polly.Kavitha" if lang in ["te", "telugu"] else ("Polly.Kajal" if lang in ["hi", "hindi"] else "Polly.Kajal")
+        say_lang = "te-IN" if lang in ["te", "telugu"] else ("hi-IN" if lang in ["hi", "hindi"] else "en-IN")
+
         if not speech_result or not speech_result.strip():
             gather = Gather(
                 input="speech",
                 action=f"{base_url}/api/v1/voice/process/{call_id}",
                 method="POST",
                 speech_timeout="auto",
-                language="en-IN",
+                language=say_lang,
             )
-            gather.say("I'm still here. Could you tell me a bit more about what you're looking for?", voice="Polly.Aditi", language="en-IN")
+            prompt_empty = "నేను ఇంకా వింటున్నాను అండీ. మీకు ఫ్లాట్ లేదా ప్లాట్ కావాలా చెప్తారా?" if say_lang == "te-IN" else "I'm still here. Could you tell me what you're looking for?"
+            gather.say(prompt_empty, voice=say_voice, language=say_lang)
             resp.append(gather)
             return str(resp)
 
@@ -156,14 +169,18 @@ class WebhookService:
             pass
 
         # Build prompt for AI Employee
+        biz_name = "our business"
+        if emp and getattr(emp, "workspace", None):
+            biz_name = emp.workspace.name or biz_name
+        role = emp.role if emp and emp.role else "Business & Client Advisor"
         system_prompt = (
-            f"You are {emp.name if emp else 'Sara'}, {emp.role if emp else 'AI Real Estate Specialist'} at Mentneo Properties.\n"
+            f"You are {emp.name if emp else 'Sara'}, {role} representing {biz_name}.\n"
             f"Personality: {emp.personality if emp else 'Professional & Friendly'}.\n"
             f"Communication Style: Short, natural, conversational spoken responses (1 to 2 sentences max). Do not use bullet points or markdown.\n"
             f"Instructions:\n"
             f"1. Acknowledge what the customer said.\n"
-            f"2. Answer their question concisely using verified knowledge.\n"
-            f"3. Ask one clear qualifying follow-up question (e.g. preferred location, budget bracket, or site visit timing).\n"
+            f"2. Answer their question concisely using verified offerings.\n"
+            f"3. Ask one clear qualifying follow-up question tailored to understand their requirements or schedule the next step.\n"
         )
         if rag_context:
             system_prompt += f"\nVERIFIED KNOWLEDGE:\n{rag_context}\n"
@@ -178,7 +195,7 @@ class WebhookService:
 
         ai_reply = ""
         try:
-            llm = GroqLLM() if settings.GROQ_API_KEY else OpenAILLM()
+            llm = GeminiLLM()
             user_prompt = f"Recent conversation:\n{convo_history_str}\n\nCustomer just said: \"{user_text}\"\n\nRespond as {emp.name if emp else 'Sara'}:"
             ai_reply = await llm.generate_response(
                 system_prompt=system_prompt,
@@ -207,8 +224,9 @@ class WebhookService:
 
         # If conversation is concluding
         if is_closing:
-            resp.say(ai_reply, voice="Polly.Aditi", language="en-IN")
-            resp.say("Thank you for your time. Have a wonderful day!", voice="Polly.Aditi", language="en-IN")
+            resp.say(ai_reply, voice=say_voice, language=say_lang)
+            closing_msg = "చాలా ధన్యవాదాలు అండీ, మంచి రోజు కావాలని కోరుకుంటున్నాను!" if say_lang == "te-IN" else "Thank you for your time. Have a wonderful day!"
+            resp.say(closing_msg, voice=say_voice, language=say_lang)
             resp.hangup()
             return str(resp)
 
@@ -218,13 +236,14 @@ class WebhookService:
             action=f"{base_url}/api/v1/voice/process/{call_id}",
             method="POST",
             speech_timeout="auto",
-            language="en-IN",
+            language=say_lang,
         )
-        gather.say(ai_reply, voice="Polly.Aditi", language="en-IN")
+        gather.say(ai_reply, voice=say_voice, language=say_lang)
         resp.append(gather)
 
         # In case customer stays silent
-        resp.say("Are you still there? Please let me know if you'd like to schedule a site tour.", voice="Polly.Aditi", language="en-IN")
+        silence_reprompt = "మీరు లైన్‌లో ఉన్నారా అండీ? సైట్ విజిట్ కోసం సమయం తెలుపగలరా?" if say_lang == "te-IN" else "Are you still there? Please let me know if you'd like to schedule a site tour."
+        resp.say(silence_reprompt, voice=say_voice, language=say_lang)
         resp.redirect(f"{base_url}/api/v1/voice/twiml/{call_id}")
 
         return str(resp)

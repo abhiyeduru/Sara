@@ -1,7 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Bell, Zap, ChevronDown, Command, Sparkles, Mic } from 'lucide-react';
+import { Search, Bell, Zap, ChevronDown, Command, Sparkles, Mic, Menu } from 'lucide-react';
 
-export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, currentUser, onLogout, onOpenOnboarding, onNavigate }) {
+export default function Topbar({
+  title,
+  subtitle,
+  onAskSara,
+  onTalkWithSara,
+  currentUser,
+  onLogout,
+  onOpenOnboarding,
+  onNavigate,
+  onToggleMobileMenu
+}) {
   const [searchVal, setSearchVal] = useState('');
   const [credits, setCredits] = useState('...');
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -11,35 +21,29 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, cur
       .then(res => res.json())
       .then(data => {
         if (data && data.balance !== undefined) {
-          setCredits(Number(data.balance).toLocaleString('en-IN'));
+          if (data.is_unlimited || data.plan === 'unlimited') {
+            setCredits('Unlimited');
+          } else {
+            setCredits(Number(data.balance).toLocaleString('en-IN'));
+          }
         }
       })
       .catch(() => setCredits('1,000'));
   }, []);
 
   return (
-    <header className="topbar" style={{
-      height: 'var(--topbar-height, 60px)',
-      padding: '0 24px',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 16,
-      background: '#ffffff',
-      borderBottom: '1px solid var(--border)',
-      position: 'sticky',
-      top: 0,
-      zIndex: 30,
-      boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
-    }}>
-      {/* Search Bar */}
-      <div className="search-input" style={{
-        flex: '0 0 240px',
-        background: 'var(--surface-soft)',
-        border: '1px solid var(--border)',
-        borderRadius: 10,
-        padding: '6px 12px'
-      }}>
+    <header className="topbar">
+      {/* Mobile Hamburger Toggle */}
+      <button
+        className="topbar-hamburger-btn"
+        onClick={onToggleMobileMenu}
+        aria-label="Toggle Navigation Menu"
+      >
+        <Menu size={20} />
+      </button>
+
+      {/* Search Bar (Desktop only) */}
+      <div className="search-input topbar-search-box">
         <Search size={14} color="var(--text-muted)" />
         <input
           placeholder="Search anything..."
@@ -54,24 +58,25 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, cur
       </div>
 
       {/* Dynamic Page Title */}
-      <div style={{ flex: 1, paddingLeft: 12 }}>
+      <div className="topbar-title-section" style={{ flex: 1, minWidth: 0, paddingLeft: 8 }}>
         {title && (
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, letterSpacing: '-0.01em' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', lineHeight: 1.2, letterSpacing: '-0.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {title}
             </div>
-            {subtitle && <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1 }}>{subtitle}</div>}
+            {subtitle && <div className="hide-on-mobile" style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subtitle}</div>}
           </div>
         )}
       </div>
 
       {/* Right Action Controls */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div className="topbar-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {/* Billing Balance */}
         <div
           onClick={() => onNavigate && onNavigate('billing')}
+          className="topbar-credit-pill"
           style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px',
+            display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px',
             background: 'var(--accent-light)',
             border: '1px solid rgba(124, 58, 237, 0.2)', borderRadius: 20, cursor: 'pointer',
             transition: 'all 0.15s ease'
@@ -79,37 +84,39 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, cur
           title="View Billing & Add Credits"
         >
           <Zap size={13} color="#7c3aed" />
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: '#7c3aed' }}>₹{credits}</span>
-          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>credits</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: '#7c3aed' }}>
+            {credits === 'Unlimited' ? '∞ Unlimited' : `₹${credits}`}
+          </span>
+          <span className="hide-on-mobile" style={{ fontSize: 11, color: 'var(--text-muted)' }}>credits</span>
         </div>
 
-        {/* Talk with Sara Button */}
+        {/* Talk with Sara Button (Desktop only; on mobile it is the Hero center button on bottom nav) */}
         <button
-          className="btn btn-primary btn-sm"
+          className="btn btn-primary btn-sm topbar-btn-talk hide-on-mobile"
           onClick={onTalkWithSara}
           style={{
             background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
             border: 'none',
             boxShadow: '0 2px 8px rgba(16, 185, 129, 0.25)',
-            gap: 6,
+            gap: 5,
             fontWeight: 700,
-            padding: '6px 14px',
+            padding: '6px 12px',
             borderRadius: 20
           }}
           title="Start live voice assistant with SARA"
         >
           <Mic size={14} />
-          Talk with Sara
+          <span>Talk with Sara</span>
         </button>
 
-        {/* Ask Sara Button */}
+        {/* Ask Sara Button (Desktop only) */}
         <button
-          className="btn btn-secondary btn-sm"
+          className="btn btn-secondary btn-sm topbar-btn-ask hide-on-mobile"
           onClick={onAskSara}
-          style={{ borderRadius: 20 }}
+          style={{ borderRadius: 20, padding: '6px 12px' }}
         >
           <Sparkles size={13} color="#7c3aed" />
-          Ask Sara
+          <span>Ask Sara</span>
         </button>
 
         {/* Notifications */}
@@ -144,10 +151,10 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, cur
                 {(currentUser?.name || currentUser?.email || 'U')[0].toUpperCase()}
               </div>
             )}
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <div className="hide-on-mobile" style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {currentUser?.name || 'Account'}
             </div>
-            <ChevronDown size={13} color="var(--text-muted)" />
+            <ChevronDown size={13} color="var(--text-muted)" className="hide-on-mobile" />
           </div>
 
           {showUserMenu && (
@@ -175,6 +182,7 @@ export default function Topbar({ title, subtitle, onAskSara, onTalkWithSara, cur
                   🏢 Edit Business Details
                 </button>
               )}
+
 
               {onLogout && (
                 <button

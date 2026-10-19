@@ -15,15 +15,15 @@ from server.config import settings
 from server.models import (
     Call, AIEmployee, KnowledgeSource, KnowledgeDocument, Lead, Customer,
     ConversationSession, SessionMessage, LatencyMetric, CallEvent,
-    Workspace, BusinessProfile
+    Workspace, BusinessProfile, WorkspaceMember
 )
 from server.engine.chunker import SentenceChunker
 from server.engine.normalizer import normalize_numbers_to_english, clean_for_speech
 from server.services.voice.deepgram_service import DeepgramSTTService
-from server.services.voice.cartesia_service import CartesiaTTSService
-from server.services.voice.openai_voice_service import OpenAIVoiceService
 from server.services.voice.audio_codec_service import AudioCodecService
-from server.providers.groq_llm import GroqLLM
+from server.providers.sarvam_tts import SarvamTTS
+from server.services.voice.cartesia_service import CartesiaTTSService
+from server.providers.gemini_llm import GeminiLLM
 
 logger = logging.getLogger("sara.voice.orchestrator")
 
@@ -57,6 +57,7 @@ class ConversationOrchestrator:
         send_audio_callback: Optional[Callable[[bytes, str], Any]] = None,
         flush_audio_callback: Optional[Callable[[], Any]] = None,
         send_event_callback: Optional[Callable[[Dict[str, Any]], Any]] = None,
+        trigger_hangup_callback: Optional[Callable[[float], Any]] = None,
     ):
         self.call_id = call_id
         self.employee = employee
@@ -67,6 +68,7 @@ class ConversationOrchestrator:
         self.send_audio_callback = send_audio_callback
         self.flush_audio_callback = flush_audio_callback
         self.send_event_callback = send_event_callback
+        self.trigger_hangup_callback = trigger_hangup_callback
 
         # Conversation State
         self.state = ConversationState.IDLE
@@ -79,24 +81,27 @@ class ConversationOrchestrator:
         self.last_user_text = ""
         self.last_user_time = 0.0
 
-        # Services
-        import re
-        raw_vid = str(employee.voice_id if employee and employee.voice_id else "").strip().lower()
-        if re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", raw_vid):
+        # Services & Voice Configuration
+        raw_vid = str(employee.voice_id if employee and employee.voice_id else "").strip()
+        if raw_vid:
             self.voice_id = raw_vid
         else:
-            self.voice_id = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+            self.voice_id = getattr(settings, "DEFAULT_VOICE_ID", "07bc462a-c644-49f1-baf7-82d5599131be")
+
         if employee and employee.voice_language and employee.voice_language != "en":
             self.language = employee.voice_language
         elif employee and employee.languages and "te" in employee.languages:
             self.language = "te"
         else:
             self.language = (employee.voice_language if employee else None) or "te"
-        self.speed = employee.voice_speed if employee and employee.voice_speed else 1.0
 
-        self.cartesia_service = CartesiaTTSService(default_voice_id=self.voice_id)
-        self.openai_service = OpenAIVoiceService()
-        self.fallback_groq = GroqLLM()
+        raw_speed = getattr(employee, "voice_speed", None)
+        self.speed = max(float(raw_speed), 1.22) if (raw_speed and float(raw_speed) > 1.0) else 1.22
+
+        self.cartesia_tts = CartesiaTTSService()
+        self.sarvam_tts = SarvamTTS()
+        self.primary_tts = (getattr(settings, "PRIMARY_TTS", "cartesia") or "cartesia").lower()
+        self.gemini_service = GeminiLLM()
 
         self.active_turn_task: Optional[asyncio.Task] = None
         self.speaking_start_time: float = 0.0
@@ -105,60 +110,354 @@ class ConversationOrchestrator:
         self.current_speaking_text: str = ""
         self.last_assistant_speech_text: str = ""
         self.last_assistant_speech_end_time: float = 0.0
-        self.use_groq_primary: bool = (getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq")
+        self.primary_llm: str = (getattr(settings, "PRIMARY_LLM", "gemini") or "gemini").lower()
+        self.caller_gender: str = "unknown"
+        self.caller_title: str = ""
+        self._init_caller_gender()
         self._system_prompt = self._compile_system_prompt()
 
-    def get_initial_greeting(self) -> str:
-        """Construct warm, respectful, concise initial greeting (under 4 seconds, 8-12 words)."""
-        emp_name = self.employee.name if self.employee else "Priya"
-        lang = (self.language or "te").lower()
-        biz_name = "ABC Properties"
-        lead_name = ""
+    def _init_caller_gender(self) -> None:
+        """Inspect Lead or Customer name in DB to pre-classify caller gender if available."""
+        name = ""
+        if self.db and self.call_id:
+            try:
+                call = self.db.query(Call).filter(Call.id == self.call_id).first()
+                if call:
+                    if call.lead_id:
+                        lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
+                        if lead and lead.name:
+                            name = lead.name.strip()
+                    if not name and call.customer_id:
+                        cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
+                        if cust and cust.name and not cust.name.lower().startswith("customer"):
+                            name = cust.name.strip()
+            except Exception:
+                pass
+        if name:
+            self.detect_gender_from_name(name)
+
+    def detect_gender_from_name(self, name: str) -> None:
+        """Check if caller's name strongly indicates male or female gender."""
+        if not name:
+            return
+        n_lower = name.lower()
+        female_names = [
+            "sunitha", "priya", "anitha", "lakshmi", "bhavani", "swathi", "divya", "sneha",
+            "kavitha", "sandhya", "sravani", "deepika", "shravani", "lavanya", "padma",
+            "radha", "ramya", "sindhu", "sirisha", "geetha", "swapna", "madhuri", "sowmya",
+            "pooja", "shreya", "harika", "keerthi", "ananya", "vani", "sailaja", "kalyani",
+            "archana", "manasa", "jyothi", "usha", "rekha", "devi", "kumari", "rani", "madhavi"
+        ]
+        male_names = [
+            "abhi", "abhiram", "rajesh", "suresh", "ramesh", "kiran", "venkat", "venkatesh",
+            "prasad", "naresh", "mahesh", "srinivas", "ravi", "chaitanya", "sai", "pavan",
+            "kalyan", "shiva", "siva", "krishna", "vijay", "anand", "naveen", "ajay", "rahul",
+            "praveen", "rohit", "manoj", "sandeep", "vikram", "surya", "harish", "karthik",
+            "kumar", "reddy", "rao", "varma", "raju", "babu"
+        ]
+        for fn in female_names:
+            if fn in n_lower:
+                self.update_caller_gender("female", "మేడం")
+                return
+        for mn in male_names:
+            if mn in n_lower:
+                self.update_caller_gender("male", "సార్")
+                return
+
+    def update_caller_gender(self, gender: str, title: Optional[str] = None) -> None:
+        """Dynamically update caller gender and title, recompiling system prompt."""
+        if gender not in ["male", "female", "unknown"]:
+            return
+        new_title = title or ("మేడం" if gender == "female" else ("సార్" if gender == "male" else ""))
+        if self.caller_gender == gender and self.caller_title == new_title:
+            return
+        prev_gender = self.caller_gender
+        self.caller_gender = gender
+        self.caller_title = new_title
+        self._system_prompt = self._compile_system_prompt()
+        logger.info(f"[Call {self.call_id}] 👤 Caller Gender updated: {prev_gender} -> {gender} (Title: '{self.caller_title}')")
+
+    def adapt_honorific_to_caller(self, text: str) -> str:
+        """
+        Dynamically adapt honorifics in speech:
+        - If female: Replace 'అండీ' and repetitive patterns with 'మేడం'
+        - If male: Replace 'అండీ' and repetitive patterns with 'సార్'
+        - If unknown: Remove repeated 'అండీ' spam, keeping speech sweet and natural.
+        Prevents multiple repetitive honorifics in the same sentence.
+        """
+        if not text:
+            return ""
+        import re
+        title = self.caller_title
+
+        if not title:
+            text = re.sub(r'[\s,]*(అండీ|అండి|ఆండీ)', '', text)
+            text = re.sub(r'\s+([,!?\.])', r'\1', text)
+            return re.sub(r'\s+', ' ', text).strip()
+
+        replacements = [
+            (r'సరేనండీ|సరేనండి|సరే అండీ|సరే అండి', f'సరే {title}'),
+            (r'అవునండీ|అవునండి|అవును అండీ|అవును అండి', f'అవును {title}'),
+            (r'కాదండీ|కాదండి', f'కాదు {title}'),
+            (r'నిజమేనండీ|నిజమేనండి', f'నిజమే {title}'),
+            (r'వద్దండీ|వద్దు అండీ|వద్దు అండి', f'వద్దు {title}'),
+            (r'ధన్యవాదాలు అండీ|ధన్యవాదాలు అండి', f'ధన్యవాదాలు {title}'),
+            (r'నమస్కారం అండీ|నమస్కారం అండి', f'నమస్కారం {title}'),
+            (r'హలో అండీ|హలో అండి', f'హలో {title}'),
+            (r'చెప్పండి అండీ|చెప్పండి అండి', f'చెప్పండి {title}'),
+            (r'చూపిస్తానండీ|చూపిస్తానండి', f'చూపిస్తాను {title}'),
+            (r'ఉన్నాయండీ|ఉన్నాయండి', f'ఉన్నాయి {title}'),
+            (r'చెప్తానండీ|చెప్తానండి', f'చెప్తాను {title}'),
+            (r'లేదండీ|లేదండి', f'లేదు {title}'),
+            (r'చేస్తానండీ|చేస్తానండి', f'చేస్తాను {title}'),
+            (r'కదండీ|కదా అండీ|కదండి', f'కదా {title}'),
+            (r'(?<![ఁ-౿])(అండీ|అండి|ఆండీ)(?![ఁ-౿])', title),
+        ]
+        for pat, rep in replacements:
+            text = re.sub(pat, rep, text)
+
+        parts = text.split(title)
+        if len(parts) > 2:
+            text = parts[0] + title + "".join(parts[1:])
+
+        text = re.sub(rf'({re.escape(title)}\s*)+', f'{title} ', text)
+        text = re.sub(r'\s+([,!?\.])', r'\1', text)
+        return re.sub(r'\s+', ' ', text).strip()
+
+    def _resolve_business_context(self) -> Dict[str, Any]:
+        """Dynamically resolve business profile, user customizations, script stages, and lead context."""
+        emp_name = self.employee.name if self.employee else "Sara"
+        role = self.employee.role if self.employee and self.employee.role else "Business & Client Advisory Specialist"
+        dept = self.employee.department if self.employee and self.employee.department else "Customer Service"
+        mission = self.employee.mission if self.employee and self.employee.mission else "Assist callers with warmth, understand their requirements, explain offerings, and guide them to the next steps."
+
+        biz_name = "our business"
+        biz_desc = "Providing dedicated products, services, and consultation for our valued clients."
+        biz_industry = "General Business & Services"
+        locations_str = ""
+        services_str = ""
+        policies_str = "Transparent pricing, dedicated service, verified customer support."
+        calling_instruction = ""
+        knowledge_context = ""
+        operating_hours = "09:00 AM – 09:00 PM IST"
+        policy_questions: List[str] = []
+        policy_intro = ""
+        policy_offer = ""
+        custom_opening_line = ""
+        script_steps: List[Dict[str, Any]] = []
 
         if self.db:
             try:
-                # 1. Fetch lead name from call if available
+                ws = None
+                # 1. Resolve workspace from call first
                 if self.call_id:
-                    call = self.db.query(Call).filter(Call.id == self.call_id).first()
-                    if call:
-                        if call.lead_id:
-                            lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
-                            if lead and lead.name:
-                                lead_name = lead.name.strip()
-                        if not lead_name and call.customer_id:
-                            cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
-                            if cust and cust.name and not cust.name.lower().startswith("customer"):
-                                lead_name = cust.name.strip()
-                        if not lead_name and (call.to_number or call.phone_number):
-                            num = call.to_number or call.phone_number
-                            lead = self.db.query(Lead).filter((Lead.phone == num) | (Lead.phone.endswith(num[-10:]))).first()
-                            if lead and lead.name:
-                                lead_name = lead.name.strip()
+                    call = self.db.query(Call).filter(
+                        (Call.id == self.call_id) | 
+                        (Call.twilio_call_sid == self.call_id)
+                    ).first()
+                    if call and getattr(call, "workspace_id", None):
+                        candidate = self.db.query(Workspace).filter(Workspace.id == call.workspace_id).first()
+                        if candidate:
+                            ws = candidate
 
-                # 2. Fetch business name
-                if self.employee:
-                    ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
-                    if ws and ws.name:
+                # 2. If no ws or ws lacks business_profile, check employee workspace_id
+                if (not ws or not (ws.settings and isinstance(ws.settings, dict) and ws.settings.get("business_profile"))) and self.employee and self.employee.workspace_id:
+                    candidate = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
+                    if candidate and candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
+                        ws = candidate
+                    else:
+                        # Check workspace_members
+                        wms = self.db.query(WorkspaceMember).filter(WorkspaceMember.user_id == self.employee.workspace_id).all()
+                        for wm in wms:
+                            candidate = self.db.query(Workspace).filter(Workspace.id == wm.workspace_id).first()
+                            if candidate and candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
+                                ws = candidate
+                                break
+                        if not ws and wms:
+                            ws = self.db.query(Workspace).filter(Workspace.id == wms[0].workspace_id).first()
+
+                # 3. Fallback: search any workspace with a valid business_profile
+                if not ws or not (ws.settings and isinstance(ws.settings, dict) and ws.settings.get("business_profile")):
+                    all_ws = self.db.query(Workspace).all()
+                    for candidate in all_ws:
+                        if candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
+                            ws = candidate
+                            break
+                    if not ws and all_ws:
+                        ws = all_ws[0]
+
+                if ws:
+                    if ws.name and ws.name != "Workspace":
                         biz_name = ws.name
-                    bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == self.employee.workspace_id).first()
-                    if bp and bp.business_name:
-                        biz_name = bp.business_name
+                    # Check ws.settings['business_profile']
+                    settings_dict = ws.settings if isinstance(ws.settings, dict) else {}
+                    bp_settings = settings_dict.get("business_profile") or {}
+                    if bp_settings:
+                        biz_name = bp_settings.get("business_name") or biz_name
+                        biz_industry = bp_settings.get("industry") or biz_industry
+                        calling_instruction = bp_settings.get("calling_instruction") or ""
+                        operating_hours = bp_settings.get("operating_hours") or operating_hours
+                        if bp_settings.get("locations"):
+                            locs = bp_settings["locations"]
+                            locations_str = ", ".join(locs) if isinstance(locs, list) else str(locs)
+                        if bp_settings.get("products_services"):
+                            prods = bp_settings["products_services"]
+                            if isinstance(prods, list):
+                                parts = []
+                                for p in prods:
+                                    if isinstance(p, dict):
+                                        p_name = p.get('name') or p.get('service_name') or ''
+                                        p_price = p.get('price') or p.get('pricing') or ''
+                                        parts.append(f"{p_name} ({p_price})" if p_price else p_name)
+                                    else:
+                                        parts.append(str(p))
+                                services_str = "; ".join(filter(None, parts))
+                            else:
+                                services_str = str(prods)
+                        pol = bp_settings.get("policy") or {}
+                        if isinstance(pol, dict):
+                            policy_intro = pol.get("intro") or ""
+                            policy_offer = pol.get("offer") or ""
+                            qs = pol.get("questions") or []
+                            policy_questions = qs if isinstance(qs, list) else [str(qs)]
+                            if pol.get("guardrails"):
+                                gr = pol["guardrails"]
+                                policies_str = ", ".join(gr) if isinstance(gr, list) else str(gr)
+
+                # 4. Check BusinessProfile table
+                bp = None
+                if ws:
+                    bp = self.db.query(BusinessProfile).filter(BusinessProfile.user_id == ws.id).first()
+                if not bp and self.employee:
+                    bp = self.db.query(BusinessProfile).filter(
+                        (BusinessProfile.user_id == self.employee.workspace_id) |
+                        (BusinessProfile.business_name == biz_name)
+                    ).first()
+
+                if bp:
+                    biz_name = bp.business_name or biz_name
+                    biz_desc = bp.description or biz_desc
+                    biz_industry = bp.industry or biz_industry
+                    if bp.locations and not locations_str:
+                        locations_str = ", ".join(bp.locations) if isinstance(bp.locations, list) else str(bp.locations)
+                    if bp.services_offered and not services_str:
+                        services_str = ", ".join(bp.services_offered) if isinstance(bp.services_offered, list) else str(bp.services_offered)
+                    if bp.important_policies:
+                        policies_str = bp.important_policies
+
+                # 5. Extract script stages & custom steps from self.employee.universal_spec
+                if self.employee and self.employee.universal_spec and isinstance(self.employee.universal_spec, dict):
+                    spec = self.employee.universal_spec
+                    cs = spec.get("call_script") or {}
+                    if isinstance(cs, dict):
+                        custom_opening_line = cs.get("opening_line") or custom_opening_line
+                        if cs.get("steps") and isinstance(cs["steps"], list):
+                            script_steps = cs["steps"]
+                    if not script_steps and spec.get("script_stages") and isinstance(spec["script_stages"], list):
+                        script_steps = spec["script_stages"]
+                    if not calling_instruction and spec.get("calling_instruction"):
+                        calling_instruction = spec.get("calling_instruction")
+
+                # 6. Check Knowledge Sources
+                if ws or self.employee:
+                    filter_cond = []
+                    if ws:
+                        filter_cond.append(KnowledgeSource.workspace_id == ws.id)
+                    if self.employee:
+                        filter_cond.append(KnowledgeSource.employee_id == self.employee.id)
+                    from sqlalchemy import or_
+                    ks_list = self.db.query(KnowledgeSource).filter(or_(*filter_cond)).limit(5).all()
+                    if ks_list:
+                        snippets = [f"[{ks.name}]:\n{ks.extracted_text.strip()}" for ks in ks_list if ks.extracted_text]
+                        if snippets:
+                            knowledge_context = "\nVERIFIED BUSINESS OFFERINGS & FAQ:\n" + "\n\n".join(snippets)
+
+            except Exception as e:
+                logger.warning(f"Error resolving business context: {e}")
+
+        return {
+            "emp_name": emp_name,
+            "role": role,
+            "dept": dept,
+            "mission": mission,
+            "biz_name": biz_name,
+            "biz_desc": biz_desc,
+            "biz_industry": biz_industry,
+            "locations_str": locations_str,
+            "services_str": services_str or "Comprehensive professional services and customer consultation",
+            "policies_str": policies_str,
+            "calling_instruction": calling_instruction,
+            "knowledge_context": knowledge_context,
+            "operating_hours": operating_hours,
+            "policy_questions": policy_questions,
+            "policy_intro": policy_intro,
+            "policy_offer": policy_offer,
+            "custom_opening_line": custom_opening_line,
+            "script_steps": script_steps
+        }
+
+    def get_initial_greeting(self) -> str:
+        """Construct warm, respectful, concise initial greeting for ANY business type."""
+        ctx = self._resolve_business_context()
+        emp_name = ctx["emp_name"]
+        biz_name = ctx["biz_name"]
+        lang = (self.language or "te").lower()
+        title = self.caller_title or "సార్"
+        custom_opening = ctx.get("custom_opening_line") or ""
+        lead_name = ""
+
+        if self.db and self.call_id:
+            try:
+                call = self.db.query(Call).filter(
+                    (Call.id == self.call_id) |
+                    (Call.twilio_call_sid == self.call_id)
+                ).first()
+                if call:
+                    if call.lead_id:
+                        lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
+                        if lead and lead.name:
+                            lead_name = lead.name.strip()
+                    if not lead_name and call.customer_id:
+                        cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
+                        if cust and cust.name and not cust.name.lower().startswith("customer"):
+                            lead_name = cust.name.strip()
+                    if not lead_name and (call.to_number or call.phone_number):
+                        num = call.to_number or call.phone_number
+                        lead = self.db.query(Lead).filter((Lead.phone == num) | (Lead.phone.endswith(num[-10:]))).first()
+                        if lead and lead.name:
+                            lead_name = lead.name.strip()
             except Exception:
                 pass
 
-        # Ultra-concise greeting under 4 seconds (8-12 words) so caller can comfortably reply
+        # If user defined a custom opening line in script/universal_spec:
+        if custom_opening and custom_opening.strip():
+            greeting = custom_opening.strip()
+            greeting = greeting.replace("{Lead Name}", lead_name or title).replace("{Name}", lead_name or title)
+            greeting = greeting.replace("{Business Name}", biz_name).replace("{Company}", biz_name)
+            greeting = greeting.replace("{Preferred Timing}", "మీకు ఎప్పుడు వీలవుతుంది?")
+            # Remove any unreplaced variable brackets gracefully
+            import re
+            greeting = re.sub(r'\{[A-Za-z0-9_\s]+\}', '', greeting).strip()
+            # If the opening line doesn't mention the business, prepend sweet company introduction
+            if biz_name.lower() not in greeting.lower() and lang in ["te", "telugu"]:
+                # Strip leading "నమస్కారం అండి!" / "హలో అండి!" to avoid duplicate greetings
+                stripped = re.sub(r'^(నమస్కారం|హలో|నమస్తే)[\s,!(అండీ|అండి|ఆండీ)]*', '', greeting).strip()
+                greeting = f"నమస్కారం {title}! నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. {stripped}".strip()
+            return self.adapt_honorific_to_caller(greeting)
+
+        # Sweet, respectful greeting under 4 seconds adapting to caller's language and business
         if lang in ["te", "telugu"]:
-            if lead_name:
-                return f"హలో {lead_name} గారండి! {biz_name} నుండి కాల్ చేస్తున్నాను, మాట్లాడటానికి టైమ్ ఉందా?"
-            return f"హలో అండి! {biz_name} నుండి కాల్ చేస్తున్నాను, మాట్లాడటానికి ఇది మంచి సమయమేనా?"
+            if self.caller_title:
+                return f"హలో {self.caller_title}! నమస్కారం. నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. మీరు ఇప్పుడు మాట్లాడగలరా {self.caller_title}?"
+            return f"హలో, నమస్కారం! నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. మీరు ఇప్పుడు మాట్లాడగలరా?"
         elif lang in ["hi", "hindi"]:
-            if lead_name:
-                return f"नमस्ते {lead_name} जी! {biz_name} से बात कर रही हूँ, क्या बात करने का सही समय है?"
-            return f"नमस्ते जी! {biz_name} से {emp_name} बात कर रही हूँ, क्या बात करने का सही समय है?"
+            if lead_name and lead_name.lower() != "customer":
+                return f"नमस्ते {lead_name} जी! मैं {biz_name} से {emp_name} बात कर रही हूँ, मैं आपकी क्या सहायता कर सकती हूँ?"
+            return f"नमस्ते जी! मैं {biz_name} से {emp_name} बात कर रही हूँ, मैं आपकी क्या सहायता कर सकती हूँ?"
         else:
-            if lead_name:
-                return f"Hello {lead_name}! Calling from {biz_name}. Is this a good time to speak?"
-            return f"Hello! This is {emp_name} from {biz_name}. Is this a good time to speak?"
+            if lead_name and lead_name.lower() != "customer":
+                return f"Hello {lead_name}! This is {emp_name} calling from {biz_name}. How can I assist you today?"
+            return f"Hello! This is {emp_name} from {biz_name}. How can I assist you today?"
 
     def set_state(self, new_state: str) -> None:
         """Explicit state transition with event logging."""
@@ -179,105 +478,174 @@ class ConversationOrchestrator:
                 pass
 
     def _compile_system_prompt(self) -> str:
-        """Compile layered system prompt with dynamic business context and sweet, polite conversational guidelines."""
-        emp_name = self.employee.name if self.employee else "Priya"
-        role = self.employee.role if self.employee else "Senior Real Estate Advisor"
-        dept = self.employee.department if self.employee else "Client Advisory"
-        mission = self.employee.mission if self.employee else "Qualify the lead, collect property requirement, understand budget and location, and book a site visit or follow-up."
+        """Compile layered system prompt with dynamic business context for ANY business type."""
+        ctx = self._resolve_business_context()
+        emp_name = ctx["emp_name"]
+        role = ctx["role"]
+        dept = ctx["dept"]
+        mission = ctx["mission"]
+        biz_name = ctx["biz_name"]
+        biz_desc = ctx["biz_desc"]
+        biz_industry = ctx["biz_industry"]
+        locations_str = ctx["locations_str"]
+        services_str = ctx["services_str"]
+        policies_str = ctx["policies_str"]
+        calling_instruction = ctx["calling_instruction"]
+        knowledge_context = ctx["knowledge_context"]
+        operating_hours = ctx.get("operating_hours") or "09:00 AM – 09:00 PM IST"
+        policy_questions = ctx.get("policy_questions") or []
+        policy_offer = ctx.get("policy_offer") or ""
+        script_steps = ctx.get("script_steps") or []
 
-        # Fetch verified business profile & knowledge
-        biz_name = "ABC Properties"
-        biz_desc = "Premier real estate company in Hyderabad offering apartments, villas, and gated plots."
-        biz_industry = "Real Estate"
-        locations_str = "Gachibowli, Kondapur, Kokapet, Bachupally, Patancheru, Miyapur, Shankarpally, Medchal"
-        services_str = "1, 2 & 3 BHK Flats, Luxury High-rise Apartments, Gated Villa Plots, Bank Loan Assistance (SBI/HDFC), Free Weekend Site Visits"
-        policies_str = "All projects HMDA & RERA approved. 100% clear titles. Up to 80% bank loan assistance."
-        knowledge_context = ""
         lead_name = "Customer"
-        lead_phone = ""
-        lead_area = "Hyderabad"
-        lead_budget = "Flexible"
-        lead_topic = "Apartments & Gated Plots"
-        lead_req_type = "Buy / Investment"
-        lead_visit_date = "This Weekend"
-        lead_notes = "Inquired via online property enquiry"
+        lead_area = ""
+        lead_budget = ""
+        lead_topic = ""
+        lead_reqs: List[str] = []
+        extra_lead_vars: Dict[str, Any] = {}
 
-        if self.db:
+        if self.db and self.call_id:
             try:
-                if self.call_id:
-                    call = self.db.query(Call).filter(Call.id == self.call_id).first()
-                    if call:
-                        lead_phone = call.to_number or call.phone_number or ""
-                        if call.lead_id:
-                            lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
-                            if lead:
-                                lead_name = lead.name or lead_name
-                                lead_area = lead.location or lead_area
-                                lead_budget = lead.budget or lead_budget
-                                lead_topic = lead.intent or lead_topic
-                        if lead_name == "Customer" and call.customer_id:
-                            cust = self.db.query(Customer).filter(Customer.id == call.customer_id).first()
-                            if cust and cust.name and not cust.name.lower().startswith("customer"):
-                                lead_name = cust.name
+                call = self.db.query(Call).filter(
+                    (Call.id == self.call_id) |
+                    (Call.twilio_call_sid == self.call_id)
+                ).first()
+                lead = None
+                if call and call.lead_id:
+                    lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
+                if not lead and call and (call.to_number or call.phone_number):
+                    num = call.to_number or call.phone_number
+                    lead = self.db.query(Lead).filter(
+                        (Lead.phone == num) | (Lead.phone.endswith(num[-10:]))
+                    ).order_by(Lead.updated_at.desc()).first()
 
-                if self.employee:
-                    # 1. Fetch Workspace
-                    ws = self.db.query(Workspace).filter(Workspace.id == self.employee.workspace_id).first()
-                    if ws and ws.name:
-                        biz_name = ws.name
-
-                    # 2. Fetch BusinessProfile table if present
-                    bp = self.db.query(BusinessProfile).filter(
-                        (BusinessProfile.user_id == self.employee.workspace_id) |
-                        (BusinessProfile.user_id == getattr(self.employee, "created_by", None))
-                    ).first()
-                    if bp:
-                        biz_name = bp.business_name or biz_name
-                        biz_desc = bp.description or biz_desc
-                        biz_industry = bp.industry or biz_industry
-                        if bp.locations:
-                            locations_str = ", ".join(bp.locations) if isinstance(bp.locations, list) else str(bp.locations)
-                        if bp.services_offered:
-                            services_str = ", ".join(bp.services_offered) if isinstance(bp.services_offered, list) else str(bp.services_offered)
-                        if bp.important_policies:
-                            policies_str = bp.important_policies
-
-                    # 3. Fetch Knowledge Sources
-                    ks_list = self.db.query(KnowledgeSource).filter(
-                        (KnowledgeSource.workspace_id == self.employee.workspace_id) |
-                        (KnowledgeSource.employee_id == self.employee.id)
-                    ).limit(5).all()
-                    if ks_list:
-                        snippets = []
-                        for ks in ks_list:
-                            if ks.extracted_text:
-                                snippets.append(f"[{ks.name}]:\n{ks.extracted_text.strip()}")
-                        if snippets:
-                            knowledge_context = "\nVERIFIED REAL ESTATE OFFERINGS & PRICING:\n" + "\n\n".join(snippets)
+                if lead:
+                    lead_name = lead.name or lead_name
+                    lead_area = lead.location or lead_area
+                    lead_budget = lead.budget or lead_budget
+                    lead_topic = lead.intent or lead_topic
+                    if lead.requirements:
+                        if isinstance(lead.requirements, list):
+                            lead_reqs = [str(r) for r in lead.requirements]
+                        elif isinstance(lead.requirements, dict):
+                            for k, v in lead.requirements.items():
+                                extra_lead_vars[k] = v
+                                lead_reqs.append(f"{k}: {v}")
+                        else:
+                            lead_reqs = [str(lead.requirements)]
             except Exception as e:
-                logger.warning(f"Error compiling business context: {e}")
+                logger.warning(f"Error extracting lead context: {e}")
 
-        base_prompt = f"""You are {emp_name}, real-time AI voice representative for {biz_name} ({biz_industry}).
-Role: {role}. Mission: {mission}.
-Caller: {lead_name} | Location: {lead_area} | Budget: {lead_budget}
+        title = self.caller_title or "సార్"
+        gender_desc = self.caller_gender.upper()
 
-CRITICAL PHONE CALL RULES:
-1. RESPONSE LENGTH: 5–15 words only! Maximum 1–2 short sentences. Never give long explanations or reasonings.
-2. LANGUAGE: Natural conversational Telugu-English mix (or caller's spoken language). Match the caller.
-3. QUESTIONS: Ask only 1 question at a time.
-4. GREETINGS: If caller says "హలో" / "Hello" / "Who is this?", introduce politely in 1 short sentence and ask their requirement.
-5. FLOW: 1) Understand property type -> 2) Preferred location/budget -> 3) Suggest matching project -> 4) Offer free weekend site visit.
-6. PROJECTS ({locations_str}):
-- Shankarpally villa plots: from ₹20 Lakhs
-- Patancheru 2 BHK flats: from ₹28 Lakhs
-- Bachupally 2 BHK flats: from ₹36 Lakhs
-- Miyapur & Chandanagar 2/3 BHK flats: from ₹55 Lakhs
-- Kokapet luxury flats: from ₹1.5 Cr
-- 100% HMDA/RERA clear titles, up to 80% bank loan, free weekend site visit with cab pickup.
-7. OBJECTIONS: If expensive: "Mee budget chepthe suitable option suggest chesthanu." If not interested: "Okay, no problem. Thank you!"
-8. TRUTHFULNESS: Never invent prices or details. If unsure say: "Adi confirm chesi chepthanu."
-9. ANTI-ECHO: If caller input is just an echo of your words or static noise, DO NOT apologize or say "Sorry I can't hear". Simply ask: "Mee requirement cheppandi andi."
-{knowledge_context[:400] if knowledge_context else ""}"""
+        # Format script stages for the agent
+        script_stages_text = ""
+        if script_steps:
+            lang_key = "te" if (self.language or "").lower() in ["te", "telugu"] else ("hi" if (self.language or "").lower() in ["hi", "hindi"] else "en")
+            stages_lines = []
+            for idx, s in enumerate(script_steps, start=1):
+                s_title = s.get("shortTitle") or s.get("title") or f"Stage {idx}"
+                d = s.get("dialogue")
+                content = ""
+                if isinstance(d, dict):
+                    content = d.get(lang_key) or d.get("te") or d.get("en") or ""
+                elif isinstance(d, str):
+                    content = d
+                if not content and s.get("content"):
+                    content = s.get("content")
+                if content:
+                    content = content.replace("{Lead Name}", lead_name).replace("{Name}", lead_name)
+                    content = content.replace("{Business Name}", biz_name).replace("{Company}", biz_name)
+                    content = self.adapt_honorific_to_caller(content)
+                stages_lines.append(f"  Stage {idx} [{s_title}]: {content}")
+            script_stages_text = "\n".join(stages_lines)
+
+        extra_vars_str = "\n".join([f"- {k}: {v}" for k, v in extra_lead_vars.items()]) if extra_lead_vars else ""
+
+        base_prompt = f"""# SARA AI — TELUGU VOICE AGENT SYSTEM PROMPT
+
+## 1. Identity & Persona
+You are Sara, an extraordinarily sweet, cheerful, respectful female voice assistant representing {biz_name}.
+Role: {role}. Department: {dept}.
+Service Areas: {locations_str or "All service areas"}.
+Caller: {lead_name or "Customer"}.
+
+## 2. CALLER GENDER & RESPECTFUL ADDRESSING (STRICT RULE):
+- Detected Caller Gender: {gender_desc}
+- Required Caller Title: "{title}"
+- STRICT BAN ON REPETITIVE "అండీ" ("andi"):
+  * DO NOT keep saying "అండీ" or "andi" on every sentence! Continuous repetition of "అండీ" is strictly forbidden.
+  * If caller is a WOMAN / GIRL (female) -> ALWAYS address her respectfully as "మేడం" (Madam) (e.g. "సరే మేడం", "చెప్పండి మేడం", "ఖచ్చితంగా మేడం", "ధన్యవాదాలు మేడం").
+  * If caller is a MAN / BOY (male) -> ALWAYS address him respectfully as "సార్" (Sir) (e.g. "సరే సార్", "చెప్పండి సార్", "ఖచ్చితంగా సార్", "ధన్యవాదాలు సార్").
+  * Address the caller as "{title}" naturally at most once per turn.
+
+## 3. BUSINESS PROFILE & OFFERINGS (CUSTOMIZED BY BUSINESS OWNER):
+- Business Name: {biz_name}
+- Industry: {biz_industry}
+- Overview: {biz_desc}
+- Service Areas / Locations: {locations_str or "Hyderabad and surrounding areas"}
+- Operating Hours: {operating_hours}
+- Products & Services Offered (with Pricing/Packages):
+  {services_str}
+- Key Policies & Terms:
+  {policies_str}
+{f"- Special Offer: {policy_offer}" if policy_offer else ""}
+
+## 4. USER'S MANDATORY CUSTOM CALLING INSTRUCTION (HIGHEST PRIORITY):
+{calling_instruction or "Greet the customer warmly, introduce our business offerings, understand their requirements, and guide them to schedule a meeting or next step."}
+* NOTE: You MUST strictly adhere to this custom calling instruction in every turn of the conversation!
+
+## 5. CONVERSATION SCRIPT & STAGES:
+{script_stages_text or "1. Greet caller and state purpose. 2. Understand specific requirements. 3. Present matching offerings. 4. Confirm next steps or appointment."}
+* NOTE: Follow these stages smoothly. Never recite them like a checklist; adapt them naturally to what the customer says!
+
+## 6. CALLER CONTEXT & ENQUIRY DETAILS (USER INPUTS):
+- Caller Name: {lead_name}
+- Specific Requirement: {", ".join(lead_reqs) if lead_reqs else (lead_topic or "Enquired about our business services")}
+- Budget Range: {lead_budget or "To be discussed"}
+- Preferred Location: {lead_area or locations_str or "Applicable area"}
+{extra_vars_str}
+* NOTE: Acknowledge what the customer enquired about and tailor your answers directly to their specific need!
+
+{f"## 7. KEY QUESTIONS TO ASK CALLER:\n" + chr(10).join([f"- {q}" for q in policy_questions]) if policy_questions else ""}
+
+## 8. PROFESSIONAL HUMAN TELECALLER BEHAVIOR & CONVERSATION CONTINUITY (CRITICAL):
+1. COMPLETE & COHERENT SPOKEN SENTENCES:
+   - Like a real expert human telecaller, ALWAYS finish your sentence cleanly, naturally, and completely.
+   - Do NOT stop mid-sentence, leave dangling thoughts, or produce fragmented words.
+   - Keep answers natural, friendly, and complete (1 to 2 spoken sentences).
+
+2. RETENTION OF PREVIOUS TOPIC & SCRIPT OBJECTIVE:
+   - NEVER abandon the conversation topic or script objective!
+   - If the caller asks a side question or interrupts (e.g. asking for price, location, timings, or details):
+     * FIRST: Directly, clearly, and sweetly answer their question using the Business Profile above.
+     * SECOND: In the same turn, smoothly connect back to the previous topic or next qualification step!
+     * Example: If caller asks "ధర ఎంత?":
+       Say: "ధరలు మా వద్ద అనుకూలంగా ఉన్నాయి {title}. మీ అవసరానికి తగిన వివరాలు ఇప్పుడే పంచుకుంటాను {title}."
+   - Never lose track of what the customer wanted, what you offered, or what information you need to collect.
+
+3. DIRECT RELEVANCE — ANSWER EXACTLY WHAT CALLER SAYS:
+   - Listen carefully and directly answer what the customer JUST asked!
+   - If customer asks "ఎందుకు ఫోన్ చేసావు?", answer directly: "మీరు అడిగిన వివరాలు తెలియజేయడానికే కాల్ చేశాను {title}!"
+   - If customer mentions a specific budget, location, or symptom, immediately acknowledge that detail.
+
+4. NEVER REPEAT INTRODUCTIONS:
+   - You have ALREADY introduced yourself at the start of the call.
+   - NEVER repeat "నేను సారాను", "నేను {biz_name} నుండి", or greeting pleasantries in ongoing turns!
+
+5. EXCEPTIONALLY SWEET, CHARMING & REALISTIC SPOKEN TELUGU:
+   - Speak with captivating sweetness, warmth, and respectful affection using "{title}".
+   - Sound like an extraordinarily sweet, cheerful, polite Telugu girl who is attentive, natural, and helpful.
+   - Use colloquial spoken Telugu with natural rhythm. Never sound formal, bookish, stiff, or robotic.
+
+6. POLITE WRAP-UP & NEVER CUT OFF CALLS UNILATERALLY:
+   - When concluding a conversation or if caller says "థాంక్యూ" / "బాయ్" / "సరే":
+     Respond politely: "సరే {title}, మీ విలువైన సమయానికి ధన్యవాదాలు, నమస్కారం! మీకు ఇంకేమైనా వివరాలు కావాలా {title}?"
+   - NEVER abruptly cut off the customer! Always allow the caller to disconnect when they are ready.
+   - ONLY output [END_CALL] if the customer EXPLICITLY commands you to hang up ("కాల్ కట్ చేయండి", "ఫోన్ పెట్టేయండి", "cut the call").
+
+{knowledge_context if knowledge_context else ""}"""
         return base_prompt
 
     async def handle_barge_in(self) -> None:
@@ -286,10 +654,10 @@ CRITICAL PHONE CALL RULES:
         Stops current speaking turn, cancels ongoing generation/synthesis, flushes audio queue, and transitions to LISTENING.
         """
         if getattr(self, "greeting_in_progress", False):
-            logger.info(f"[Call {self.call_id}] Greeting in progress; ignoring barge-in")
-            return
+            self.greeting_in_progress = False
+            logger.info(f"[Call {self.call_id}] 🛑 Customer interrupted during greeting -> clearing greeting and listening")
 
-        is_active = self.is_speaking or (self.state == ConversationState.SPEAKING) or (self.active_turn_task and not self.active_turn_task.done())
+        is_active = self.is_speaking or (self.state == ConversationState.SPEAKING) or getattr(self, "greeting_in_progress", False)
         if not is_active:
             return
 
@@ -301,10 +669,6 @@ CRITICAL PHONE CALL RULES:
         # Cancel active turn task
         if self.active_turn_task and not self.active_turn_task.done():
             self.active_turn_task.cancel()
-
-        # Cancel TTS synthesis
-        self.cartesia_service.cancel()
-        self.openai_service.cancel()
 
         # Flush buffered audio in carrier queue
         if self.flush_audio_callback:
@@ -326,37 +690,42 @@ CRITICAL PHONE CALL RULES:
         if not clean_text:
             return
 
-        # Deduplication & acoustic echo guard: ignore if text matches what assistant just spoke within 1.5s
+        # Deduplication & acoustic echo guard: ignore ONLY if user utterance is a verbatim echo of assistant speech
         now = time.time()
         import re
-        if self.last_assistant_speech_text and (time.perf_counter() - self.last_assistant_speech_end_time < 1.5):
+        if self.last_assistant_speech_text and (time.perf_counter() - self.last_assistant_speech_end_time < 1.0):
             curr_words = set(re.findall(r"\w+", self.last_assistant_speech_text.lower()))
-            user_words = set(re.findall(r"\w+", clean_text.lower()))
-            if user_words and (user_words.issubset(curr_words) or (len(user_words) <= 3 and len(user_words & curr_words) >= 1)):
-                logger.info(f"[Call {self.call_id}] Discarded post-speech acoustic echo of assistant: '{clean_text}'")
+            user_words = [w for w in re.findall(r"\w+", clean_text.lower()) if len(w) > 1]
+            # Only suppress if long phrase (>= 4 words) completely contained in what assistant just said
+            if len(user_words) >= 4 and set(user_words).issubset(curr_words):
+                logger.info(f"[Call {self.call_id}] Discarded verbatim post-speech acoustic echo: '{clean_text}'")
                 return
 
-        if (now - self.last_user_time < 1.0) and (clean_text.lower() == self.last_user_text.lower()):
+        if (now - self.last_user_time < 0.8) and (clean_text.lower() == self.last_user_text.lower()):
             logger.debug(f"[Call {self.call_id}] Discarding duplicate utterance: '{clean_text}'")
             return
 
-        # If greeting is currently streaming to Plivo, do not cut it off
+        # If greeting is in progress, interrupt it immediately and process customer utterance
         if getattr(self, "greeting_in_progress", False):
-            logger.info(f"[Call {self.call_id}] Greeting in progress; deferring customer turn: '{clean_text}'")
-            return
+            logger.info(f"[Call {self.call_id}] 🛑 Customer spoke '{clean_text}' during greeting -> halting greeting and processing customer turn immediately!")
+            self.greeting_in_progress = False
+            self.is_speaking = False
 
         # Cancel any previous speaking turn that might still be active
-        if self.active_turn_task and not self.active_turn_task.done():
-            self.active_turn_task.cancel()
-        self.cartesia_service.cancel()
-        if self.flush_audio_callback:
-            try:
-                res = self.flush_audio_callback()
-                if asyncio.iscoroutine(res):
-                    await res
-            except Exception:
-                pass
-        self.is_speaking = False
+        if self.is_speaking or getattr(self, "greeting_in_progress", False):
+            if self.active_turn_task and not self.active_turn_task.done():
+                self.active_turn_task.cancel()
+            if self.flush_audio_callback:
+                try:
+                    res = self.flush_audio_callback()
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception:
+                    pass
+            self.is_speaking = False
+        else:
+            if self.active_turn_task and not self.active_turn_task.done():
+                self.active_turn_task.cancel()
 
         prev_user_time = self.last_user_time
         self.last_user_text = clean_text
@@ -366,17 +735,72 @@ CRITICAL PHONE CALL RULES:
 
         logger.info(f"[Call {self.call_id}] Customer (Turn {self.turn_index}): {clean_text}")
 
-        # Record customer message - only consolidate if user continued short phrase within 1.8s
+        # Check for explicit customer demand to end the call immediately:
+        # e.g., "కాల్ కట్ చేయండి", "ఫోన్ పెట్టేయండి", "cut the call", "hang up"
+        explicit_hangup_triggers = [
+            "కాల్ కట్ చేయండి", "ఫోన్ పెట్టేయండి", "కాల్ పెట్టేయండి", "కట్ చేయండి",
+            "ఫోన్ కట్ చేయండి", "ఇక కాల్ చేయకండి", "నాకు కాల్ చేయవద్దు",
+            "cut the call", "cut call", "disconnect the call", "please hang up", "hang up the call"
+        ]
+        clean_lower = clean_text.lower()
+        is_hangup_intent = any(ht in clean_lower for ht in explicit_hangup_triggers)
+        self.explicit_hangup_requested = is_hangup_intent
+
+        # Check for explicit gender self-identification or title clues in user speech
+        # Check negations first (e.g. "madam కాదు", "not madam", "sir నేను")
+        if any(neg in clean_lower for neg in ["మేడం కాదు", "మేడం కాదండి", "madam కాదు", "madam kaadu", "not madam", "not lady", "లేడీ కాదు"]):
+            self.update_caller_gender("male", "సార్")
+        elif any(neg in clean_lower for neg in ["సార్ కాదు", "సార్ కాదండి", "sir కాదు", "sir kaadu", "not sir", "not gentleman", "జెంట్స్ కాదు"]):
+            self.update_caller_gender("female", "మేడం")
+        elif any(w in clean_lower for w in ["సార్ అని", "సార్ నేను", "సర్ నేను", "నేను సార్", "అబ్బాయి", "boy", "sir", "gentleman", "man"]):
+            self.update_caller_gender("male", "సార్")
+        elif any(w in clean_lower for w in ["మేడం అని", "మేడం నేను", "నేను మేడం", "అమ్మాయి", "girl", "madam", "lady", "women", "woman"]):
+            self.update_caller_gender("female", "మేడం")
+
+        if is_hangup_intent:
+            logger.info(f"[Call {self.call_id}] 🛑 Customer explicitly requested call termination ('{clean_text}'). Saying polite farewell...")
+            title = self.caller_title or "సార్"
+            farewell_text = f"సరే {title}, అలాగే. మీ సమయానికి ధన్యవాదాలు, నమస్కారం!"
+            self.messages.append({"role": "user", "content": clean_text})
+            self.messages.append({"role": "assistant", "content": farewell_text})
+            self.transcript_history.append({
+                "speaker": "customer", "role": "user", "text": clean_text,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            self.transcript_history.append({
+                "speaker": self.employee.name if self.employee else "Sara",
+                "role": "assistant", "text": farewell_text,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+            if self.send_event_callback:
+                try:
+                    res = self.send_event_callback({
+                        "type": "transcript",
+                        "speaker": self.employee.name if self.employee else "Sara",
+                        "role": "assistant",
+                        "text": farewell_text,
+                        "timestamp": time.time()
+                    })
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception:
+                    pass
+
+            await self._synthesize_and_send_chunk(farewell_text, turn_start_time, True)
+            if self.trigger_hangup_callback:
+                asyncio.create_task(self.trigger_hangup_callback(12.0))
+            return
+
+        # Record customer message - consolidate if user continued phrase within 2.5s
         is_consolidated = False
-        if self.messages and self.messages[-1]["role"] == "user" and (now - prev_user_time < 1.8):
+        if self.messages and self.messages[-1]["role"] == "user" and (now - prev_user_time < 2.5):
             prev_content = self.messages[-1]["content"]
-            # Only append if previous fragment was short (< 6 words) and not duplicate
-            if len(prev_content.split()) <= 6 and clean_text.lower() not in prev_content.lower():
+            # Append if previous fragment was conversational (< 20 words) and not duplicate
+            if len(prev_content.split()) <= 20 and clean_text.lower() not in prev_content.lower():
                 self.messages[-1]["content"] = f"{prev_content} {clean_text}".strip()
                 clean_text = self.messages[-1]["content"]
                 is_consolidated = True
             else:
-                # Replace with the fresh complete utterance instead of infinite accumulation
                 self.messages[-1]["content"] = clean_text
                 is_consolidated = True
             logger.info(f"[Call {self.call_id}] Consolidated user utterance into: '{clean_text}'")
@@ -416,10 +840,10 @@ CRITICAL PHONE CALL RULES:
         )
 
     async def _execute_agent_turn(self, user_text: str, turn_start_time: float) -> None:
-        """Execute LLM streaming, phrase chunking, TTS generation, and audio dispatch."""
+        """Execute LLM streaming, phrase chunking, pipelined TTS prefetch, and audio dispatch."""
         self.set_state(ConversationState.THINKING)
         self.turn_first_audio_time: Optional[float] = None
-        chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
+        chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=18)
 
         full_reply_tokens: List[str] = []
         first_token_time: Optional[float] = None
@@ -427,21 +851,75 @@ CRITICAL PHONE CALL RULES:
         llm_first_token_ms = 0.0
         tts_first_audio_ms = 0.0
 
-        try:
-            use_groq = (
-                getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq"
-                or not self.openai_service.api_key
-                or getattr(self, "use_groq_primary", False)
-            )
+        phrase_queue: asyncio.Queue = asyncio.Queue()
+        tts_worker_task: Optional[asyncio.Task] = None
 
-            if use_groq:
-                # Use sliding context window (last 6 messages) to prevent token bloat & TPM rate limit
-                recent_messages = self.messages[-6:] if len(self.messages) > 6 else self.messages
-                # Ultra-low latency (~120ms) direct streaming via Groq (60 tokens max for 5-15 word responses)
-                async for gchunk in self.fallback_groq.stream_chat(
+        async def _prefetch_chunk(text: str) -> Tuple[bytes, str]:
+            """Synthesize audio in background concurrently as soon as LLM yields phrase."""
+            if not text or not text.strip() or (self.state == ConversationState.INTERRUPTED and self.is_speaking):
+                return b"", text
+            clean_speech = text.replace("[END_CALL]", "").replace("[end_call]", "").strip()
+            clean_speech = self.adapt_honorific_to_caller(clean_speech)
+            if not clean_speech:
+                return b"", text
+
+            cleaned = clean_for_speech(clean_speech)
+            normalized = normalize_numbers_to_english(cleaned)
+            if not normalized.strip():
+                return b"", text
+
+            synth_res = await self._synthesize_chunk_audio(normalized)
+            audio_bytes = synth_res.get("audio_bytes", b"") if synth_res else b""
+            return audio_bytes, normalized
+
+        async def _tts_worker():
+            nonlocal first_audio_time
+            while True:
+                item = await phrase_queue.get()
+                if item is None:
+                    phrase_queue.task_done()
+                    break
+                if self.state == ConversationState.INTERRUPTED and self.is_speaking:
+                    phrase_queue.task_done()
+                    break
+                try:
+                    if isinstance(item, asyncio.Task):
+                        audio_bytes, normalized = await item
+                    else:
+                        audio_bytes, normalized = await _prefetch_chunk(item)
+
+                    if audio_bytes and self.send_audio_callback and not (self.state == ConversationState.INTERRUPTED and self.is_speaking):
+                        self.set_state(ConversationState.SPEAKING)
+                        self.speaking_start_time = time.perf_counter()
+                        self.is_speaking = True
+                        self.current_speaking_text = normalized
+                        if getattr(self, "turn_first_audio_time", None) is None:
+                            self.turn_first_audio_time = time.perf_counter()
+                        if first_audio_time is None:
+                            first_audio_time = time.perf_counter()
+
+                        if asyncio.iscoroutinefunction(self.send_audio_callback):
+                            await self.send_audio_callback(audio_bytes, normalized)
+                        else:
+                            self.send_audio_callback(audio_bytes, normalized)
+                except Exception as ex:
+                    logger.warning(f"Error in pipelined TTS worker chunk: {ex}")
+                finally:
+                    phrase_queue.task_done()
+
+        tts_worker_task = asyncio.create_task(_tts_worker())
+
+        try:
+            # Keep prompt compact (last 4 messages) for sub-700ms instant LLM first-token generation
+            recent_messages = self.messages[-4:] if len(self.messages) > 4 else self.messages
+
+            if self.primary_llm == "gemini":
+                # Primary: Google Gemini LLM streaming
+                async for gchunk in self.gemini_service.stream_chat(
                     messages=recent_messages,
                     system_prompt=self._system_prompt,
-                    max_tokens=60
+                    temperature=0.3,
+                    max_tokens=65
                 ):
                     if self.state == ConversationState.INTERRUPTED:
                         break
@@ -466,29 +944,22 @@ CRITICAL PHONE CALL RULES:
                         for phrase in phrases:
                             if self.state == ConversationState.INTERRUPTED:
                                 break
-                            await self._synthesize_and_send_chunk(
-                                phrase, turn_start_time, first_audio_time is None
-                            )
-                            if first_audio_time is None:
-                                first_audio_time = time.perf_counter()
-            else:
-                # 1. Stream response tokens from OpenAI
-                llm_stream = self.openai_service.stream_conversation_turn(
-                    messages=self.messages,
-                    system_prompt=self._system_prompt,
-                    enable_tools=True
-                )
+                            synth_task = asyncio.create_task(_prefetch_chunk(phrase))
+                            await phrase_queue.put(synth_task)
 
-                async for event in llm_stream:
+            else:
+                # Fallback: Gemini LLM streaming
+                async for gchunk in self.gemini_service.stream_chat(
+                    messages=recent_messages,
+                    system_prompt=self._system_prompt,
+                    temperature=0.3,
+                    max_tokens=65
+                ):
                     if self.state == ConversationState.INTERRUPTED:
                         break
-
-                    ev_type = event.get("type")
-
-                    # Handle text token
-                    if ev_type == "token":
-                        token = event.get("token", "")
-                        if event.get("first_token"):
+                    tok = gchunk.get("token", "")
+                    if tok:
+                        if gchunk.get("first_token"):
                             first_token_time = time.perf_counter()
                             llm_first_token_ms = (first_token_time - turn_start_time) * 1000
                             if self.send_event_callback:
@@ -502,62 +973,42 @@ CRITICAL PHONE CALL RULES:
                                 except Exception:
                                     pass
 
-                        full_reply_tokens.append(token)
-
-                        # Sentence boundary detection
-                        phrases = chunker.process_token(token)
+                        full_reply_tokens.append(tok)
+                        phrases = chunker.process_token(tok)
                         for phrase in phrases:
                             if self.state == ConversationState.INTERRUPTED:
                                 break
-                            await self._synthesize_and_send_chunk(
-                                phrase, turn_start_time, first_audio_time is None
-                            )
-                            if first_audio_time is None:
-                                first_audio_time = time.perf_counter()
-
-                    # Handle Tool Call
-                    elif ev_type == "tool_call":
-                        self.set_state(ConversationState.TOOL_EXECUTION)
-                        tool_name = event.get("name")
-                        tool_args = event.get("arguments", {})
-                        await self._execute_tool(tool_name, tool_args)
-
-                    # Handle Error / Insufficient Quota
-                    elif ev_type == "error":
-                        self.use_groq_primary = True
-                        logger.warning("Routing turn through ultra-low latency Groq fallback.")
-                        async for gchunk in self.fallback_groq.stream_chat(
-                            messages=self.messages,
-                            system_prompt=self._system_prompt,
-                            max_tokens=60
-                        ):
-                            tok = gchunk.get("token", "")
-                            if tok:
-                                full_reply_tokens.append(tok)
-                                phrases = chunker.process_token(tok)
-                                for p in phrases:
-                                    await self._synthesize_and_send_chunk(
-                                        p, turn_start_time, first_audio_time is None
-                                    )
-                                    if first_audio_time is None:
-                                        first_audio_time = time.perf_counter()
+                            synth_task = asyncio.create_task(_prefetch_chunk(phrase))
+                            await phrase_queue.put(synth_task)
 
             # Flush any remaining tokens in chunker
-            if self.state != ConversationState.INTERRUPTED:
+            if not (self.state == ConversationState.INTERRUPTED and self.is_speaking):
                 remaining_phrases = chunker.flush()
                 for p in remaining_phrases:
-                    await self._synthesize_and_send_chunk(p, turn_start_time, first_audio_time is None)
-                    if first_audio_time is None:
-                        first_audio_time = time.perf_counter()
+                    synth_task = asyncio.create_task(_prefetch_chunk(p))
+                    await phrase_queue.put(synth_task)
 
             # Fallback if no tokens generated
-            if not full_reply_tokens and self.state != ConversationState.INTERRUPTED:
-                fallback_msg = "అవునండి, నేను వింటున్నాను, చెప్పండి అండి." if self.language in ["te", "telugu"] else "Yes, I am listening, please go ahead."
+            if not full_reply_tokens and not (self.state == ConversationState.INTERRUPTED and self.is_speaking):
+                title = self.caller_title or "సార్"
+                fallback_msg = f"అవును {title}, నేను వింటున్నాను, చెప్పండి {title}." if self.language in ["te", "telugu"] else "Yes, I am listening, please go ahead."
+                fallback_msg = self.adapt_honorific_to_caller(fallback_msg)
                 full_reply_tokens.append(fallback_msg)
-                await self._synthesize_and_send_chunk(fallback_msg, turn_start_time, True)
+                synth_task = asyncio.create_task(_prefetch_chunk(fallback_msg))
+                await phrase_queue.put(synth_task)
+
+            # Signal worker that all phrases have been queued and wait for completion
+            await phrase_queue.put(None)
+            if tts_worker_task:
+                await tts_worker_task
 
             # Finalize turn
             complete_text = normalize_numbers_to_english("".join(full_reply_tokens).strip())
+            complete_text = self.adapt_honorific_to_caller(complete_text)
+            should_disconnect = bool(getattr(self, "explicit_hangup_requested", False))
+            if "[END_CALL]" in complete_text or "[end_call]" in complete_text.lower():
+                complete_text = complete_text.replace("[END_CALL]", "").replace("[end_call]", "").strip()
+
             if complete_text:
                 self.messages.append({"role": "assistant", "content": complete_text})
                 self.transcript_history.append({
@@ -580,6 +1031,9 @@ CRITICAL PHONE CALL RULES:
                             await res
                     except Exception:
                         pass
+
+            if should_disconnect and self.trigger_hangup_callback:
+                asyncio.create_task(self.trigger_hangup_callback(12.0))
 
             # Telemetry persistence
             turn_end_time = time.perf_counter()
@@ -625,13 +1079,103 @@ CRITICAL PHONE CALL RULES:
             self.is_speaking = False
             logger.error(f"[Call {self.call_id}] Error in agent turn: {e}", exc_info=True)
             self.set_state(ConversationState.LISTENING)
+        finally:
+            if tts_worker_task and not tts_worker_task.done():
+                tts_worker_task.cancel()
+
+    async def _synthesize_chunk_audio(self, text: str) -> Optional[Dict[str, Any]]:
+        """Synthesize chunk using sweetest Indic TTS (Sarvam Bulbul 'suhani' or Cartesia)."""
+        primary_tts = getattr(settings, "PRIMARY_TTS", "cartesia").lower()
+        target_vid = self.voice_id or getattr(settings, "DEFAULT_VOICE_ID", "07bc462a-c644-49f1-baf7-82d5599131be")
+        from server.services.voice.cartesia_service import CartesiaTTSService
+        is_cartesia_quota_exhausted = getattr(CartesiaTTSService, "_cartesia_quota_exhausted", False)
+        use_sarvam = (
+            primary_tts == "sarvam"
+            or is_cartesia_quota_exhausted
+            or str(target_vid).startswith("sarvam-")
+        )
+
+        synth_res = None
+        if use_sarvam:
+            # 1. Direct Sarvam Bulbul:v3 synthesis with sweet melodic 'suhani'
+            try:
+                sarvam_vid = target_vid if str(target_vid).startswith("sarvam-") else "sarvam-te-suhani"
+                res = await self.sarvam_tts.synthesize_speech(
+                    text=text,
+                    voice_id=sarvam_vid,
+                    language=self.language or "te",
+                    pitch=0.12,
+                    pace=1.12
+                )
+                if res.get("audio_bytes"):
+                    raw_audio = res["audio_bytes"]
+                    if self.output_mode in ("twilio", "plivo"):
+                        source_rate = res.get("sample_rate", 22050)
+                        mulaw_bytes = AudioCodecService.convert_cartesia_to_twilio(raw_audio, source_format="wav", source_rate=source_rate)
+                        synth_res = {"audio_bytes": mulaw_bytes}
+                    else:
+                        synth_res = {"audio_bytes": raw_audio}
+            except Exception as e:
+                logger.warning(f"Sarvam direct TTS notice: {e}")
+
+            if not synth_res or not synth_res.get("audio_bytes"):
+                # Fallback to Cartesia if Sarvam is unavailable
+                try:
+                    res = await self.cartesia_tts.synthesize(
+                        text=text,
+                        voice_id=getattr(settings, "CARTESIA_PRIMARY_VOICE_ID", "cf061d8b-a752-4865-81a2-57570a6e0565"),
+                        language=self.language or "te",
+                        output_mode=self.output_mode,
+                        speed=self.speed
+                    )
+                    if res.get("audio_bytes"):
+                        synth_res = res
+                except Exception as e:
+                    logger.warning(f"Cartesia fallback notice: {e}")
+        else:
+            # Primary Cartesia with Sarvam fallback
+            try:
+                res = await self.cartesia_tts.synthesize(
+                    text=text,
+                    voice_id=target_vid,
+                    language=self.language or "te",
+                    output_mode=self.output_mode,
+                    speed=self.speed
+                )
+                if res.get("audio_bytes"):
+                    synth_res = res
+            except Exception as e:
+                logger.warning(f"Cartesia primary notice: {e}")
+
+            if not synth_res or not synth_res.get("audio_bytes"):
+                try:
+                    res = await self.sarvam_tts.synthesize_speech(
+                        text=text,
+                        voice_id="sarvam-te-suhani",
+                        language=self.language or "te",
+                        pitch=0.12,
+                        pace=1.00
+                    )
+                    if res.get("audio_bytes"):
+                        raw_audio = res["audio_bytes"]
+                        if self.output_mode in ("twilio", "plivo"):
+                            source_rate = res.get("sample_rate", 22050)
+                            mulaw_bytes = AudioCodecService.convert_cartesia_to_twilio(raw_audio, source_format="wav", source_rate=source_rate)
+                            synth_res = {"audio_bytes": mulaw_bytes}
+                        else:
+                            synth_res = {"audio_bytes": raw_audio}
+                except Exception as e:
+                    logger.warning(f"Sarvam fallback notice: {e}")
+
+        return synth_res
 
     async def _synthesize_and_send_chunk(self, text_chunk: str, turn_start_time: float, is_first: bool) -> None:
-        """Synthesize text chunk via Cartesia Sonic and push directly to audio callback."""
+        """Synthesize text chunk via sweetest Indic TTS and push directly to audio callback."""
         if not text_chunk or not text_chunk.strip() or self.state == ConversationState.INTERRUPTED:
             return
 
-        cleaned = clean_for_speech(text_chunk.strip())
+        text_chunk = self.adapt_honorific_to_caller(text_chunk.strip())
+        cleaned = clean_for_speech(text_chunk)
         normalized = normalize_numbers_to_english(cleaned)
         if not normalized.strip():
             return
@@ -641,15 +1185,9 @@ CRITICAL PHONE CALL RULES:
         self.is_speaking = True
         self.current_speaking_text = normalized
 
-        synth_res = await self.cartesia_service.synthesize(
-            text=normalized,
-            voice_id=self.voice_id,
-            language=self.language,
-            output_mode=self.output_mode,
-            speed=self.speed
-        )
+        synth_res = await self._synthesize_chunk_audio(normalized)
 
-        audio_bytes = synth_res.get("audio_bytes", b"")
+        audio_bytes = synth_res.get("audio_bytes", b"") if synth_res else b""
         if audio_bytes and self.send_audio_callback and self.state != ConversationState.INTERRUPTED:
             if getattr(self, "turn_first_audio_time", None) is None:
                 self.turn_first_audio_time = time.perf_counter()
@@ -677,10 +1215,10 @@ CRITICAL PHONE CALL RULES:
                     source="AI Voice Call",
                     status="qualified",
                     pipeline_stage="qualified",
-                    intent=args.get("interest", "Property Inquiry"),
+                    intent=args.get("interest", "Client Inquiry"),
                     budget=args.get("budget", ""),
                     requirements=[args.get("interest", "")] if args.get("interest") else [],
-                    next_action=args.get("notes", "Follow up regarding site visit")
+                    next_action=args.get("notes", "Follow up regarding customer inquiry")
                 )
                 self.db.add(lead)
                 self.db.commit()
@@ -691,10 +1229,10 @@ CRITICAL PHONE CALL RULES:
                 from server.models import Task
                 task = Task(
                     workspace_id=ws_id,
-                    title=f"Site Visit: {args.get('customer_name', 'Customer')} ({args.get('date', '')} at {args.get('time', '')})",
+                    title=f"Appointment / Consultation: {args.get('customer_name', 'Customer')} ({args.get('date', '')} at {args.get('time', '')})",
                     status="todo",
                     priority="high",
-                    notes=f"Appointment Type: {args.get('appointment_type', 'site_visit')}. Notes: {args.get('notes', '')}"
+                    notes=f"Appointment Type: {args.get('appointment_type', 'consultation')}. Notes: {args.get('notes', '')}"
                 )
                 self.db.add(task)
                 self.db.commit()
@@ -720,10 +1258,8 @@ CRITICAL PHONE CALL RULES:
         if self.active_turn_task and not self.active_turn_task.done():
             self.active_turn_task.cancel()
 
-        await self.cartesia_service.close()
-
         # Generate summary
-        summary_data = await self.openai_service.generate_call_summary(self.transcript_history)
+        summary_data = await self.gemini_service.generate_call_summary(self.transcript_history)
 
         # Update Call record if DB is attached
         if self.db:

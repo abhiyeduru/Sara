@@ -246,3 +246,8 @@ class AssemblyAISTTService:
             self.ws = None
         self._audio_buffer.clear()
         logger.info("AssemblyAI STT service closed.")
+
+    async def disconnect(self) -> None:
+        """Alias for close()."""
+        await self.close()
+

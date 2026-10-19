@@ -87,7 +87,7 @@ export default function TestConsole({ agent, currentMetrics }) {
           <div className="text-2xl font-bold font-mono text-white">
             {liveMetrics.tts_first_audio_ms > 0 ? `${liveMetrics.tts_first_audio_ms} ms` : '—'}
           </div>
-          <p className="text-[10px] text-sara-500 mt-1">Cartesia Sonic-2</p>
+          <p className="text-[10px] text-sara-500 mt-1">Sarvam AI bulbul:v3</p>
         </div>
 
         <div className="glass-panel p-4 rounded-xl border border-white/10 bg-white/5">

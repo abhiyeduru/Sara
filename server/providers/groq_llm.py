@@ -14,18 +14,24 @@ def generate_grounded_offline_reply(user_query: str, system_prompt: Optional[str
     sp = (system_prompt or "").lower()
     is_telugu = any(ch in q for ch in ["హ", "ల", "న", "ద", "ర", "మ", "క", "య", "ం", "ు", "ి"]) or any(t in q for t in ["andi", "garu", "cheppandi", "enti", "unda", "unnara", "namaste", "namaskaram", "hello"]) or ("telugu" in sp or "te" in sp)
 
-    if "site visit" in q or "visit" in q:
-        return "తప్పకుండా, ఈ weekend ఉచిత site visit ప్లాన్ చేద్దామా?" if is_telugu else "Sure! We can arrange a free site visit this weekend."
+    title = "సార్"
+    if "మేడం" in sp or "female" in sp:
+        title = "మేడం"
+    elif "సార్" in sp or "male" in sp:
+        title = "సార్"
+
+    if "site visit" in q or "visit" in q or "appointment" in q:
+        return f"తప్పకుండా {title}, మీకు ఎప్పుడు వీలవుతుందో చెప్తారా?" if is_telugu else "Certainly! When would be a convenient time for you?"
 
     if any(t in q for t in ["price", "cost", "budget", "entha", "rate"]):
-        return "Shankarpally villa plots ₹20 లక్షల నుండి ఉన్నాయి. మీ బడ్జెట్ ఎంతండి?" if is_telugu else "Shankarpally plots start from ₹20 Lakhs. What is your budget?"
+        return f"ఖచ్చితంగా {title}, మీ బడ్జెట్ ఎంత ఉండొచ్చో చెప్తారా?" if is_telugu else "Certainly! May I know what your preferred budget range is?"
 
     if any(t in q for t in ["hello", "hi", "హలో", "who", "evaru", "cheppandi"]):
-        return "హలో అండి! ABC Properties నుండి మాట్లాడుతున్నాను. మీ requirement చెప్పండి." if is_telugu else "Hello! Calling from ABC Properties. What property are you looking for?"
+        return f"నమస్కారం {title}! నేను సారా. మీకు ఎలా సహాయపడగలను?" if is_telugu else "Hello! This is Sara. How may I assist you today?"
 
     if is_telugu:
-        return "అవునండి, నేను వింటున్నాను. మీ requirement గురించి చెప్పండి."
-    return "Yes, I am listening. What type of property are you looking for?"
+        return f"అవును {title}, నేను వింటున్నాను. దయచేసి చెప్పండి."
+    return "Yes, I am listening. Please let me know your requirements."
 
 class GroqLLM(LLMProvider):
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):

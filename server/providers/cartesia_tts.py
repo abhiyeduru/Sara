@@ -13,12 +13,28 @@ logger = logging.getLogger(__name__)
 # Curated list of high-quality tested voices with fallback metadata
 POPULAR_VOICES = [
     {
+        "id": "07bc462a-c644-49f1-baf7-82d5599131be",
+        "name": "SARA Cartesia Telugu (Sindhu - Primary Sweet & Clear)",
+        "gender": "female",
+        "style": "Sweet, Warm & Conversational",
+        "language": "te",
+        "description": "Primary native Cartesia Telugu voice with sweet tone, crystal clarity, and natural conversational delivery."
+    },
+    {
+        "id": "cf061d8b-a752-4865-81a2-57570a6e0565",
+        "name": "SARA Cartesia Telugu (Ramya - Alternative Welcoming)",
+        "gender": "female",
+        "style": "Warm & Welcoming",
+        "language": "te",
+        "description": "Alternative native Cartesia Telugu female voice: Warm, welcoming, and gentle delivery that puts callers at ease."
+    },
+    {
         "id": "330c4fa0-1da3-4c55-8e97-951bfd724e20",
-        "name": "SARA Cartesia Telugu (Sarika - Calm & Sweet Spirit)",
+        "name": "SARA Cartesia Telugu (Sarika - Calm Spirit)",
         "gender": "female",
         "style": "Sweet, Calm & Conversational",
         "language": "te",
-        "description": "Native Cartesia Telugu voice with sweet laidback tone and gentle rhythm, perfect for natural conversation."
+        "description": "Native Cartesia Telugu voice with calm tone and gentle rhythm."
     },
     {
         "id": "3a8e6fea-81e5-4d4d-8755-86093146cdb8",
@@ -174,7 +190,7 @@ class CartesiaTTS(TTSProvider):
         if speaker:
             target_speaker = speaker
         elif "te" in lang_norm:
-            target_speaker = "kavitha" # SARA Telugu Crystal (Sweet, Melodic & Gentle)
+            target_speaker = "suhani" # Sweetest native Telugu female voice
         elif "hi" in lang_norm:
             target_speaker = "aditya"
         else:
@@ -182,21 +198,13 @@ class CartesiaTTS(TTSProvider):
 
         # Sweet Melodic Pitch & Pacing Tuning
         pitch = 0.0
-        if target_speaker == "kavitha":
-            pitch = 0.06 # Melodic, sweet, gentle feminine pitch
-            pace = 0.98  # Relaxed, warm, natural cadence
-            target_lang = "te-IN"
-        elif target_speaker == "kavya":
-            pitch = 0.05
-            pace = 0.96
-            target_lang = "te-IN"
-        elif "te" in lang_norm:
-            pitch = 0.05
-            pace = 0.98
+        if target_speaker in ["suhani", "kavitha", "kavya"] or "te" in lang_norm:
+            pitch = 0.12 # Silky sweet, charming melodic pitch
+            pace = 1.00  # Energetic, natural conversational pace
             target_lang = "te-IN"
         elif "hi" in lang_norm:
             target_lang = "hi-IN"
-            pace = 1.0
+            pace = 1.08
         else:
             target_lang = "en-IN"
             pace = 1.0
@@ -263,7 +271,6 @@ class CartesiaTTS(TTSProvider):
         t = normalize_numbers_to_english(t)
 
         # Common terms in voice agent prompts
-        t = re.sub(r'\bABC Properties\b', 'ఏబీసీ ప్రాపర్టీస్', t, flags=re.IGNORECASE)
         t = re.sub(r'\bSARA\b', 'సారా', t, flags=re.IGNORECASE)
         t = re.sub(r'\bGachibowli\b', 'గచ్చిబౌలి', t, flags=re.IGNORECASE)
         t = re.sub(r'\bKondapur\b', 'కొండాపూర్', t, flags=re.IGNORECASE)
@@ -284,15 +291,18 @@ class CartesiaTTS(TTSProvider):
         self,
         text: str,
         voice_id: Optional[str] = None,
-        language: Optional[str] = "en"
+        language: Optional[str] = "en",
+        output_mode: Optional[str] = "browser",
+        speed: Optional[str] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """
-        Synthesize text into WAV audio bytes using Cartesia sonic-preview or Sarvam AI.
+        Synthesize text into WAV or mulaw audio bytes using Cartesia sonic-preview.
         Measures exact time to first audio bytes (TTFA).
         """
         import re
         start_time = time.perf_counter()
-        target_voice = voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+        target_voice = voice_id or settings.DEFAULT_VOICE_ID or "07bc462a-c644-49f1-baf7-82d5599131be"
 
         # Check if text contains alphanumeric or Indic characters
         if not text or not any(c.isalnum() or ('\u0C00' <= c <= '\u0C7F') or ('\u0900' <= c <= '\u097F') for c in text):
@@ -311,7 +321,12 @@ class CartesiaTTS(TTSProvider):
         has_roman_telugu = any(marker in text_lower for marker in telugu_roman_markers)
         is_telugu = (
             (language and "te" in language.lower()) or
-            ("te" in target_voice.lower() or target_voice in ["3a8e6fea-81e5-4d4d-8755-86093146cdb8", "330c4fa0-1da3-4c55-8e97-951bfd724e20", "07bc462a-c644-49f1-baf7-82d5599131be"]) or
+            ("te" in target_voice.lower() or target_voice in [
+                "07bc462a-c644-49f1-baf7-82d5599131be",
+                "cf061d8b-a752-4865-81a2-57570a6e0565",
+                "3a8e6fea-81e5-4d4d-8755-86093146cdb8",
+                "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+            ]) or
             bool(re.search(r'[\u0C00-\u0C7F]', text)) or
             has_roman_telugu
         )
@@ -325,15 +340,16 @@ class CartesiaTTS(TTSProvider):
             self.api_key = current_cartesia_key
             CartesiaTTS._cartesia_exhausted = False
 
-        # When user requests Cartesia voices (Sarika 330c4fa0..., Vidya 3a8e6fea..., etc.), use Cartesia sonic-preview
+        # Cartesia sonic-preview natively supports Telugu (te) with Sindhu and Ramya in ~380ms!
         if not is_sarvam and self.api_key and not CartesiaTTS._cartesia_exhausted:
-            synth_model = "sonic-preview" if (is_telugu or (language and "te" in language.lower())) else "sonic-2"
-
-            synth_lang = "te" if (is_telugu or (language and "te" in language.lower())) else (language or "en")
-            
-            cartesia_voice_id = target_voice
-            if cartesia_voice_id == "07bc462a-c644-49f1-baf7-82d5599131be":
-                cartesia_voice_id = "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+            if is_telugu or (language and "te" in language.lower()):
+                synth_model = "sonic-preview"
+                synth_lang = "te"
+                cartesia_voice_id = target_voice if target_voice in ["07bc462a-c644-49f1-baf7-82d5599131be", "cf061d8b-a752-4865-81a2-57570a6e0565"] else "07bc462a-c644-49f1-baf7-82d5599131be"
+            else:
+                synth_model = "sonic-2"
+                synth_lang = "en"
+                cartesia_voice_id = target_voice
 
             # Phonetically normalize Telugu text for sweet natural enunciation
             synth_text = self._normalize_telugu_speech_text(text) if is_telugu else text
@@ -345,24 +361,29 @@ class CartesiaTTS(TTSProvider):
             }
             voice_config = {
                 "mode": "id",
-                "id": cartesia_voice_id
-            }
-            # Inject sweet, gentle, melodic emotional timbre and natural pacing for Telugu
-            if is_telugu:
-                voice_config["__experimental_controls"] = {
-                    "speed": -0.06,  # Relaxed natural cadence allowing soft Telugu vowel elongation
-                    "emotion": ["positivity:highest"]  # Infuses warm, sweet, welcoming vocal timbre
+                "id": cartesia_voice_id,
+                "__experimental_controls": {
+                    "speed": "fast"
                 }
+            }
+
+            # Select output format
+            is_telephony = output_mode in ("twilio", "plivo")
+            out_format = {
+                "container": "raw",
+                "encoding": "pcm_mulaw",
+                "sample_rate": 8000
+            } if is_telephony else {
+                "container": "wav",
+                "encoding": "pcm_s16le",
+                "sample_rate": 24000
+            }
 
             payload = {
                 "model_id": synth_model,
                 "transcript": synth_text,
                 "voice": voice_config,
-                "output_format": {
-                    "container": "wav",
-                    "encoding": "pcm_s16le",
-                    "sample_rate": 24000
-                },
+                "output_format": out_format,
                 "language": synth_lang
             }
             try:
@@ -417,3 +438,9 @@ class CartesiaTTS(TTSProvider):
         if gender:
             return [v for v in voices if v.get("gender", "").lower() == gender.lower()]
         return voices
+
+    synthesize = synthesize_speech
+
+
+CartesiaTTSProvider = CartesiaTTS
+

@@ -555,9 +555,9 @@ export default function CampaignsStudio({ onNavigate }) {
                   onChange={(e) => setSelectedVoice(e.target.value)}
                   style={{ fontSize: 13 }}
                 >
-                  <option value="330c4fa0-1da3-4c55-8e97-951bfd724e20">Priya — Telugu & English (Cartesia Sonic)</option>
-                  <option value="3a8e6fea-81e5-4d4d-8755-86093146cdb8">Lakshmi — Indian English (Cartesia Sonic)</option>
-                  <option value="563605b0-aa1e-4509-a78c-02cf584742a7">Arjun — Conversational Professional (Cartesia Sonic)</option>
+                  <option value="sarvam-te-kavitha">🌸 Kavitha — Telugu Sweet, Gentle & Polite (Sarvam AI)</option>
+                  <option value="sarvam-te-suhani">✨ Suhani — Telugu Silky Sweet & Melodic (Sarvam AI)</option>
+                  <option value="sarvam-te-pooja">🎙️ Pooja — Telugu Conversational Warm (Sarvam AI)</option>
                 </select>
               </div>
             </div>
@@ -634,8 +634,8 @@ export default function CampaignsStudio({ onNavigate }) {
                 }}>
                   <Volume2 size={36} color="#FFFFFF" />
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 15, color: '#17112B' }}>Priya — Indic Multilingual</div>
-                <div style={{ fontSize: 12, color: '#645E78', marginTop: 2 }}>Cartesia Sonic Ultra-Fast Model</div>
+                <div style={{ fontWeight: 700, fontSize: 15, color: '#17112B' }}>Kavitha — Telugu Sweet & Polite</div>
+                <div style={{ fontSize: 12, color: '#645E78', marginTop: 2 }}>Sarvam AI bulbul:v3 Neural Engine</div>
               </div>
 
               {/* Engine Specs */}
@@ -647,7 +647,7 @@ export default function CampaignsStudio({ onNavigate }) {
                 </div>
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: '#7E22CE', textTransform: 'uppercase' }}>LLM Core</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>Groq 70B</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: '#17112B', marginTop: 2 }}>Gemini 2.5</div>
                   <div style={{ fontSize: 11, color: '#9D93B8', marginTop: 2 }}>Llama 3.3 Versatile</div>
                 </div>
                 <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: '12px 14px', borderRadius: 10 }}>

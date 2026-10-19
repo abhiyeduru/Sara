@@ -4,48 +4,6 @@ import { Bot, Phone, Play, MoreHorizontal, PlusCircle, Search, Filter,
 import SkeletonLoader from '../common/SkeletonLoader';
 import MascotDisplay from './MascotDisplay';
 
-const DEFAULT_EMPLOYEES = [
-  {
-    id: 'emp_sara_exec',
-    name: 'Sara',
-    role: 'Executive Business Assistant & Outreach Lead',
-    department: 'Sales & Operations',
-    status: 'active',
-    mascot: 'glasses',
-    total_tasks: 142,
-    total_calls: 388,
-    performance_score: 98,
-    mission: 'Autonomous business assistant handling lead qualification, scheduling, and executive operations.',
-    skills: [{ name: 'Multilingual Voice AI' }, { name: 'CRM Integration' }, { name: 'Appointment Booking' }]
-  },
-  {
-    id: 'emp_kiet_sales',
-    name: 'Kiet',
-    role: 'Senior Outbound Sales Specialist',
-    department: 'Sales & Outreach',
-    status: 'active',
-    mascot: 'kamran',
-    total_tasks: 89,
-    total_calls: 214,
-    performance_score: 94,
-    mission: 'Specialized outbound cold dialer and deal closing agent for property & fitness campaigns.',
-    skills: [{ name: 'Direct Plivo Calling' }, { name: 'Objection Handling' }, { name: 'Instant Follow-up' }]
-  },
-  {
-    id: 'emp_priya_support',
-    name: 'Priya',
-    role: 'Multilingual Customer Care Specialist',
-    department: 'Customer Support',
-    status: 'active',
-    mascot: 'afro',
-    total_tasks: 110,
-    total_calls: 305,
-    performance_score: 96,
-    mission: '24/7 multilingual customer care agent handling inquiries in English, Telugu, and Hindi.',
-    skills: [{ name: 'Telugu & English Speech' }, { name: 'Ticket Resolution' }, { name: 'Sentiment Analysis' }]
-  }
-];
-
 function getMascotKey(e) {
   if (e.mascot) return e.mascot;
   const name = (e.name || '').toLowerCase();
@@ -70,13 +28,13 @@ export default function Employees({ onNavigate }) {
       const res = await fetch('/api/v1/employees');
       if (res.ok) {
         const data = await res.json();
-        setEmployees(data.data ? data.data : DEFAULT_EMPLOYEES);
+        setEmployees(data.data || []);
       } else {
-        setEmployees(DEFAULT_EMPLOYEES);
+        setEmployees([]);
       }
     } catch (err) {
       console.error('Error fetching employees:', err);
-      setEmployees(DEFAULT_EMPLOYEES);
+      setEmployees([]);
     } finally {
       setLoading(false);
     }

@@ -11,33 +11,52 @@ from sqlalchemy.orm import Session
 from server.config import settings
 from server.database import SessionLocal
 from server.models import (
-    VoiceAgent, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User,
+    VoiceAgent, AIEmployee, ConversationSession, SessionMessage, ConversationState, LatencyMetric, User,
     Workspace, BusinessProfile
 )
 from server.engine.conversation_manager import ConversationManager
 from server.engine.chunker import SentenceChunker
-from server.providers.sarvam_stt import SarvamSTT
-from server.providers.openai_llm import OpenAILLM
-from server.providers.groq_llm import GroqLLM
-from server.providers.cartesia_tts import CartesiaTTS
-
+from server.providers.gemini_llm import GeminiLLM
 from server.providers.sarvam_tts import SarvamTTS
+from server.providers.sarvam_stt import SarvamSTT
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Voice Stream"])
 
 from server.providers.assemblyai_stt import AssemblyAISTT
 from server.providers.deepgram_stt import DeepgramSTT
+from server.providers.cartesia_stt import CartesiaSTT
 
 class UnifiedSTT:
-    def __init__(self, assemblyai: AssemblyAISTT, deepgram: DeepgramSTT, sarvam: SarvamSTT):
+    def __init__(self, cartesia: CartesiaSTT, sarvam: SarvamSTT, assemblyai: AssemblyAISTT, deepgram: DeepgramSTT):
+        self.cartesia = cartesia
+        self.sarvam = sarvam
         self.assemblyai = assemblyai
         self.deepgram = deepgram
-        self.sarvam = sarvam
 
     async def transcribe(self, audio_bytes: bytes, language_hint: Optional[str] = None) -> Dict[str, Any]:
-        # 1. AssemblyAI is the Primary STT Provider
-        if getattr(settings, "PRIMARY_STT", "assemblyai") == "assemblyai" and self.assemblyai.api_key:
+        primary_stt = getattr(settings, "PRIMARY_STT", "sarvam").lower()
+
+        # 1. Sarvam AI STT (Native Indic/Telugu specialist — highly accurate)
+        if (primary_stt == "sarvam" or primary_stt == "cartesia") and getattr(self.sarvam, "api_key", None):
+            try:
+                res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
+                if res.get("transcript"):
+                    return res
+            except Exception as e:
+                logger.warning(f"Sarvam STT notice: {e}")
+
+        # 2. Cartesia Ink STT
+        if getattr(self.cartesia, "api_key", None):
+            try:
+                res = await self.cartesia.transcribe(audio_bytes, language_hint=language_hint)
+                if res.get("transcript"):
+                    return res
+            except Exception as e:
+                logger.warning(f"Cartesia STT notice: {e}")
+
+        # 3. AssemblyAI STT
+        if self.assemblyai.api_key:
             try:
                 res = await self.assemblyai.transcribe(audio_bytes, language_hint=language_hint)
                 if res.get("transcript"):
@@ -45,7 +64,7 @@ class UnifiedSTT:
             except Exception as e:
                 logger.warning(f"AssemblyAI STT notice: {e}")
 
-        # 2. Deepgram STT Provider
+        # 4. Deepgram STT
         if self.deepgram.api_key:
             try:
                 res = await self.deepgram.transcribe(audio_bytes, language_hint=language_hint)
@@ -54,44 +73,51 @@ class UnifiedSTT:
             except Exception as e:
                 logger.warning(f"Deepgram STT notice: {e}")
 
-        # 3. Fallback to Sarvam / Groq Whisper
-        try:
-            res = await self.sarvam.transcribe(audio_bytes, language_hint=language_hint)
-            if res.get("transcript") and not res.get("error"):
-                return res
-        except Exception as e:
-            logger.warning(f"Secondary STT notice: {e}")
+        # Final attempt with Cartesia if not already tried
+        if getattr(self.cartesia, "api_key", None):
+            return await self.cartesia.transcribe(audio_bytes, language_hint=language_hint)
 
-        return await self.sarvam._fallback_groq(audio_bytes, time.perf_counter(), language_hint=language_hint)
+        return {"transcript": "", "detected_language": "te", "confidence": 0.0, "latency_ms": 0.0}
 
-stt_provider = UnifiedSTT(AssemblyAISTT(), DeepgramSTT(), SarvamSTT())
-llm_provider = OpenAILLM() if settings.PRIMARY_LLM == "openai" else GroqLLM()
+stt_provider = UnifiedSTT(CartesiaSTT(), SarvamSTT(), AssemblyAISTT(), DeepgramSTT())
+llm_provider = GeminiLLM()
+from server.providers.cartesia_tts import CartesiaTTS
 from server.providers.edge_tts_provider import EdgeTTSProvider
 
-sarvam_tts = SarvamTTS()
 cartesia_tts = CartesiaTTS()
+sarvam_tts = SarvamTTS()
 edge_tts_provider = EdgeTTSProvider()
 
 class UnifiedTTS:
-    def __init__(self, sarvam: SarvamTTS, cartesia: CartesiaTTS, edge: EdgeTTSProvider):
-        self.sarvam = sarvam
+    def __init__(self, cartesia: CartesiaTTS, sarvam: SarvamTTS, edge: EdgeTTSProvider):
         self.cartesia = cartesia
+        self.sarvam = sarvam
         self.edge = edge
 
-    async def synthesize_speech(self, text: str, voice_id: str, language: str = "en") -> Dict[str, Any]:
+    async def synthesize_speech(self, text: str, voice_id: str, language: str = "te", output_mode: str = "browser") -> Dict[str, Any]:
+        target_voice = voice_id or getattr(settings, "CARTESIA_PRIMARY_VOICE_ID", "07bc462a-c644-49f1-baf7-82d5599131be")
+        target_lang = get_synth_lang(text) if (not language or language == "en") else language
+
+        # 1. Primary: Cartesia TTS (voice 07bc462a-c644-49f1-baf7-82d5599131be)
         try:
-            if voice_id and (voice_id.startswith("sarvam-") or "sarvam" in voice_id.lower()):
-                res = await self.sarvam.synthesize_speech(text=text, voice_id=voice_id, language=language)
-                if res.get("audio_bytes"):
-                    return res
-            res = await self.cartesia.synthesize_speech(text=text, voice_id=voice_id, language=language)
+            res = await self.cartesia.synthesize_speech(text=text, voice_id=target_voice, language=target_lang, output_mode=output_mode)
             if res.get("audio_bytes"):
                 return res
         except Exception as e:
-            logger.warning(f"Primary TTS notice: {e}")
-        return await self.edge.synthesize_speech(text=text, voice_id=voice_id, language=language)
+            logger.warning(f"Cartesia TTS notice: {e}")
 
-tts_provider = UnifiedTTS(sarvam_tts, cartesia_tts, edge_tts_provider)
+        # 2. Secondary fallback: Sarvam AI bulbul:v3
+        try:
+            res = await self.sarvam.synthesize_speech(text=text, voice_id="sarvam-te-kavitha", language=target_lang)
+            if res.get("audio_bytes"):
+                return res
+        except Exception as e:
+            logger.warning(f"Sarvam TTS notice: {e}")
+
+        # 3. Edge Neural TTS Fallback
+        return await self.edge.synthesize_speech(text=text, voice_id=target_voice, language=target_lang)
+
+tts_provider = UnifiedTTS(cartesia_tts, sarvam_tts, edge_tts_provider)
 synthesize_speech = tts_provider.synthesize_speech
 
 
@@ -110,7 +136,7 @@ from server.engine.normalizer import normalize_numbers_to_english
 async def voice_websocket_endpoint(
     websocket: WebSocket,
     agent_id: str,
-    user_id: Optional[str] = Query("user_business_owner_1")
+    user_id: Optional[str] = Query(None)
 ):
     await websocket.accept()
     db: Session = SessionLocal()
@@ -119,68 +145,95 @@ async def voice_websocket_endpoint(
     manager: Optional[ConversationManager] = None
 
     try:
-        # 1. Fetch Agent configuration
+        # 1. Fetch Employee / Agent configuration
+        ai_emp = None
+        if agent_id and agent_id != "agent_sara_default":
+            ai_emp = db.query(AIEmployee).filter(AIEmployee.id == agent_id).first()
+        if not ai_emp:
+            ai_emp = db.query(AIEmployee).filter(AIEmployee.name.ilike("%sara%")).first() or db.query(AIEmployee).first()
+
         agent = None
         if agent_id and agent_id != "agent_sara_default":
             agent = db.query(VoiceAgent).filter(VoiceAgent.id == agent_id).first()
         if not agent:
             agent = db.query(VoiceAgent).first()
 
+        emp_name = ai_emp.name if ai_emp else (agent.name if agent else "SARA")
+        active_voice_id = getattr(ai_emp, 'voice_id', None) or getattr(agent, 'voice_id', None) or getattr(settings, 'CARTESIA_PRIMARY_VOICE_ID', '07bc462a-c644-49f1-baf7-82d5599131be')
 
-        if not agent:
-            # Fallback in-memory SARA agent
-            class FallbackAgent:
-                id = "agent_sara_default"
-                user_id = "user_business_owner_1"
-                name = "SARA"
-                role_title = "Property Advisor"
-                business_type = "Real Estate"
-                voice_id = "sarvam-te-pooja"
-                voice_name = "Pooja"
-                primary_language = "te"
-                generated_prompt = None
-                faqs = []
-            agent = FallbackAgent()
-
-        # Fetch business context dynamically
+        # Fetch dynamic business context
         biz_name = "మా సంస్థ"
+        biz_summary = ""
         try:
             ws = db.query(Workspace).first()
-            if ws and ws.name:
-                biz_name = ws.name
+            if ws:
+                if ws.name:
+                    biz_name = ws.name
+                if ws.settings and isinstance(ws.settings, dict):
+                    bp_data = ws.settings.get("business_profile") or {}
+                    if bp_data.get("business_name"):
+                        biz_name = bp_data["business_name"]
+                    prods = bp_data.get("products_services") or []
+                    prod_str = ", ".join([f"{p.get('name')} (ధర: {p.get('price')})" for p in prods if isinstance(p, dict)])
+                    biz_summary = f"Business: {biz_name}. Type: {bp_data.get('business_type', '')}. Products/Services: {prod_str}."
             bp = db.query(BusinessProfile).first()
             if bp and bp.business_name:
                 biz_name = bp.business_name
         except Exception:
             pass
 
-        # 2. Get or generate prompt
-        system_prompt = agent.generated_prompt.full_prompt if getattr(agent, 'generated_prompt', None) else (
-            f"You are SARA, an ultra-intelligent, remarkably sweet, polite, and respectful AI representative for {biz_name}. "
-            "You speak natively in conversational Telugu and English with pristine clarity, blending common English terms naturally. "
-            "Always maintain a sweet, pleasant, and helpful demeanor. Always address the customer with high respect as అండీ (andi), "
-            "using polite phrases like 'నమస్కారం అండి', 'చెప్పండి అండి', 'ఖచ్చితంగా అండి', 'తప్పకుండా చేస్తాను అండి'. "
-            f"Speak accurately based on {biz_name}'s offerings and answer their questions gracefully."
-        )
-        greeting_prompt = agent.generated_prompt.greeting_prompt if getattr(agent, 'generated_prompt', None) else f"నమస్కారం అండీ! నేను సారా. {biz_name} కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
-        faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])]
+        # 2. Compile system prompt following user prompt rules
+        system_prompt = f"""# SARA AI — TELUGU VOICE AGENT SYSTEM PROMPT
+
+## 1. Identity and Language
+You are Sara, a friendly, professional female AI voice assistant for business and real-estate calls representing {biz_name}.
+Your primary language is Telugu, with natural Andhra Pradesh and Telangana conversational styles.
+- Speak fluent, grammatically correct Telugu.
+- Understand Telugu, English, and Telugu-English mixed speech.
+- Respond in the same language the customer uses.
+- When the customer speaks Telugu, prioritize Telugu in your response.
+- Use simple, natural spoken Telugu rather than formal literary Telugu.
+- Never generate random, unrelated, or meaningless sentences.
+
+## 2. Accurate Customer Understanding
+- Respond only to what the customer actually says.
+- Never invent customer responses, preferences, or intentions.
+- If the audio is unclear, politely ask: "క్షమించండి, మీరు చెప్పింది సరిగ్గా వినిపించలేదు. దయచేసి ఇంకొకసారి చెప్పగలరా?"
+- If no speech is detected, wait briefly and follow the configured no-response policy.
+- Do not treat silence or an empty transcript as customer consent.
+
+## 3. Natural Telugu Responses
+- Use correct Telugu grammar and natural word order.
+- Keep spoken responses short, strictly 1–2 sentences.
+- Speak with warmth, silky sweet politeness, and respectful 'అండీ'.
+- Preserve English business terms when they sound natural in Telugu conversation.
+- Pronounce names, locations, prices, and dates clearly.
+- After each question, stop speaking and listen.
+
+## 4. Business & Real-Estate Calls
+- Follow the configured business objective for {biz_name}.
+- Ask one question at a time.
+- Collect customer requirements naturally.
+- Use only verified information from the business knowledge base and CRM.
+- Never invent prices, offers, property availability, or appointments.
+- Confirm important details before taking action.
+{biz_summary}"""
+
+        greeting_prompt = "హలో! నమస్కారం. నేను సారా మాట్లాడుతున్నాను. మీరు ఇప్పుడు ఒక నిమిషం మాట్లాడగలరా?"
+        faq_list = [{"question": f.question, "answer": f.answer, "category": f.category} for f in getattr(agent, 'faqs', [])] if agent else []
 
         # 3. Create persistent ConversationSession in DB (safe fallback)
         session_id = f"sess_{uuid.uuid4().hex[:12]}"
         try:
-            # Check user exists
-            usr = db.query(User).filter(User.id == agent.user_id).first() if hasattr(agent, 'user_id') else None
-            if not usr:
-                usr = db.query(User).first()
-            target_user_id = usr.id if usr else "user_business_owner_1"
+            usr = db.query(User).first()
+            target_user_id = user_id or (usr.id if usr else "user_default")
 
-            # Check agent exists in DB before linking FK
-            db_agent = db.query(VoiceAgent).filter(VoiceAgent.id == getattr(agent, 'id', None)).first()
+            db_agent = db.query(VoiceAgent).first()
             if db_agent:
                 session_record = ConversationSession(
                     agent_id=db_agent.id,
                     user_id=target_user_id,
-                    active_language=getattr(agent, 'primary_language', 'te') or "te",
+                    active_language="te",
                     current_stage="GREETING",
                     status="active"
                 )
@@ -207,33 +260,28 @@ async def voice_websocket_endpoint(
             system_prompt=system_prompt,
             greeting_prompt=greeting_prompt,
             faqs=faq_list,
-            voice_id=getattr(agent, 'voice_id', None) or "330c4fa0-1da3-4c55-8e97-951bfd724e20",
+            voice_id=active_voice_id,
             llm_provider=llm_provider,
             tts_provider=tts_provider,
             stt_provider=stt_provider,
-            initial_language=getattr(agent, 'primary_language', 'te') or "te"
+            initial_language="te"
         )
 
         # Notify frontend that session has started
         await websocket.send_json({
             "type": "session.started",
             "session_id": session_record.id if session_record else session_id,
-            "agent_name": agent.name,
+            "agent_name": emp_name,
             "greeting": greeting_prompt,
-            "voice_id": agent.voice_id,
+            "voice_id": active_voice_id,
             "stage": manager.stage
         })
 
-        # Select voice based on agent configuration
-        greeting_voice = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
-        if agent.primary_language == "hi" and not agent.voice_id:
-            greeting_voice = "4459a9a5-69d6-4680-b970-e13dc51845b6"
-
-        # Synthesize and send initial greeting
+        # Synthesize and send initial greeting with sweet voice
         greeting_audio = await synthesize_speech(
             text=greeting_prompt,
-            voice_id=greeting_voice,
-            language=agent.primary_language or "en"
+            voice_id=active_voice_id,
+            language=get_synth_lang(greeting_prompt)
         )
         if greeting_audio.get("audio_bytes"):
             b64_audio = base64.b64encode(greeting_audio["audio_bytes"]).decode("utf-8")
@@ -275,7 +323,7 @@ async def voice_websocket_endpoint(
                     is_agent_te = agent.primary_language == "te"
                     prompt_text = "మీరు లైన్‌లో ఉన్నారా అండీ? నేను మీకు ఏ విధంగా సహాయపడగలను?" if is_agent_te else "Are you still there? Please let me know how I can help."
                     try:
-                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "sarvam-te-kavitha"
                         tts_res = await synthesize_speech(
                             text=prompt_text,
                             voice_id=voice_to_use,
@@ -296,7 +344,7 @@ async def voice_websocket_endpoint(
                     is_agent_te = agent.primary_language == "te"
                     closing_text = "మమ్మల్ని సంప్రదించినందుకు ధన్యవాదాలు అండీ. మీకు ఎప్పుడు కావాలన్నా మళ్ళీ మాట్లాడవచ్చు. సెలవు!" if is_agent_te else "Thank you for contacting us. You can reconnect whenever you're ready. Have a great day!"
                     try:
-                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+                        voice_to_use = agent.voice_id or settings.DEFAULT_VOICE_ID or "sarvam-te-kavitha"
                         tts_res = await synthesize_speech(
                             text=closing_text,
                             voice_id=voice_to_use,
@@ -382,7 +430,7 @@ async def voice_websocket_endpoint(
                 audio_bytes = base64.b64decode(audio_b64)
                 await websocket.send_json({"type": "stt.started"})
 
-                hint = manager.active_language or agent.primary_language or "en"
+                hint = manager.active_language or getattr(agent, "voice_language", None) or "te"
                 stt_res = await stt_provider.transcribe(audio_bytes, language_hint=hint)
                 user_text = stt_res.get("transcript", "").strip()
                 stt_latency = stt_res.get("latency_ms", 0.0)
@@ -458,14 +506,12 @@ async def voice_websocket_endpoint(
             manager.messages.append({"role": "user", "content": user_text})
 
             # Select native neural voice based on language
-            active_voice_id = agent.voice_id or manager.voice_id or settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
-            if detected_lang == "hi" and not agent.voice_id:
-                active_voice_id = "4459a9a5-69d6-4680-b970-e13dc51845b6"
+            active_voice_id = getattr(ai_emp, 'voice_id', None) or getattr(agent, 'voice_id', None) or manager.voice_id or getattr(settings, 'CARTESIA_PRIMARY_VOICE_ID', '07bc462a-c644-49f1-baf7-82d5599131be')
 
             # Low-Latency Streaming LLM -> Sentence Chunker -> TTS
             await websocket.send_json({"type": "llm.started"})
-            # Ultra-low latency streaming chunker (min 2 words for rapid Time-To-First-Audio)
-            chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=12)
+            # Phrase chunker configured for rapid TTFA without fragmentation
+            chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=12)
 
             full_response_text = []
             first_token_time = None
@@ -480,6 +526,50 @@ async def voice_websocket_endpoint(
                 temperature=0.4,
                 max_tokens=250
             )
+
+            phrase_queue: asyncio.Queue = asyncio.Queue()
+
+            async def _ws_tts_worker():
+                nonlocal first_audio_sent, first_audio_time, tts_first_audio_ms
+                while True:
+                    phrase_item = await phrase_queue.get()
+                    if phrase_item is None:
+                        phrase_queue.task_done()
+                        break
+                    if manager.is_interrupted:
+                        phrase_queue.task_done()
+                        break
+
+                    phrase_item = normalize_numbers_to_english(phrase_item)
+                    target_synth_lang = get_synth_lang(phrase_item)
+                    tts_start = time.perf_counter()
+                    try:
+                        tts_res = await synthesize_speech(
+                            text=phrase_item,
+                            voice_id=active_voice_id,
+                            language=target_synth_lang
+                        )
+                        tts_dur = (time.perf_counter() - tts_start) * 1000
+
+                        if tts_res.get("audio_bytes") and not manager.is_interrupted:
+                            if not first_audio_sent:
+                                first_audio_sent = True
+                                first_audio_time = time.perf_counter()
+                                tts_first_audio_ms = tts_dur
+
+                            b64_audio = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
+                            await websocket.send_json({
+                                "type": "tts.audio",
+                                "audio": b64_audio,
+                                "text": phrase_item,
+                                "chunk_latency_ms": round(tts_dur, 2)
+                            })
+                    except Exception as err:
+                        logger.warning(f"Error synthesizing websocket phrase: {err}")
+                    finally:
+                        phrase_queue.task_done()
+
+            tts_task = asyncio.create_task(_ws_tts_worker())
 
             async for chunk in llm_stream:
                 if manager.is_interrupted:
@@ -504,51 +594,21 @@ async def voice_websocket_endpoint(
                     for phrase in ready_phrases:
                         if manager.is_interrupted:
                             break
-
-                        # Ensure all numerals and currency units are in English
-                        phrase = normalize_numbers_to_english(phrase)
-                        target_synth_lang = get_synth_lang(phrase)
-                        tts_start = time.perf_counter()
-                        tts_res = await synthesize_speech(
-                            text=phrase,
-                            voice_id=active_voice_id,
-                            language=target_synth_lang
-                        )
-                        tts_dur = (time.perf_counter() - tts_start) * 1000
-
-                        if tts_res.get("audio_bytes"):
-                            if not first_audio_sent:
-                                first_audio_sent = True
-                                first_audio_time = time.perf_counter()
-                                tts_first_audio_ms = tts_dur
-
-                            b64_audio = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
-                            await websocket.send_json({
-                                "type": "tts.audio",
-                                "audio": b64_audio,
-                                "text": phrase,
-                                "chunk_latency_ms": round(tts_dur, 2)
-                            })
+                        await phrase_queue.put(phrase)
 
             # Flush any remaining tokens in chunker
             if not manager.is_interrupted:
                 remaining_phrases = chunker.flush()
                 for phrase in remaining_phrases:
-                    phrase = normalize_numbers_to_english(phrase)
-                    target_synth_lang = get_synth_lang(phrase)
-                    tts_res = await synthesize_speech(
-                        text=phrase,
-                        voice_id=active_voice_id,
-                        language=target_synth_lang
-                    )
-                    if tts_res.get("audio_bytes"):
-                        b64_audio = base64.b64encode(tts_res["audio_bytes"]).decode("utf-8")
-                        await websocket.send_json({
-                            "type": "tts.audio",
-                            "audio": b64_audio,
-                            "text": phrase,
-                            "chunk_latency_ms": round(tts_res.get("latency_ms", 0), 2)
-                        })
+                    await phrase_queue.put(phrase)
+
+            # Signal worker to finalize and await completion
+            await phrase_queue.put(None)
+            if tts_task:
+                try:
+                    await tts_task
+                except asyncio.CancelledError:
+                    pass
 
             complete_agent_reply = normalize_numbers_to_english("".join(full_response_text).strip())
             manager.messages.append({"role": "assistant", "content": complete_agent_reply})

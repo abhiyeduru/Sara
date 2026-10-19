@@ -2,18 +2,23 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Mic, MicOff, Volume2, Sparkles, MessageSquare, Send, PhoneCall,
   RotateCcw, Zap, ArrowLeft, Bot, CheckCircle2, ChevronRight, Activity,
-  Clock, Play, Pause, ExternalLink, Sliders
+  Clock, Play, Pause, ExternalLink, Sliders, Download
 } from 'lucide-react';
 import { AudioStreamer } from '../../services/audioStreamer';
 import { GooeyOrb } from './GooeyOrb';
 
 const CURATED_VOICES = [
-  { id: '330c4fa0-1da3-4c55-8e97-951bfd724e20', name: 'SARA Sarika (Sweet & Calm)', lang: 'te', provider: 'Cartesia', desc: 'Native Telugu with gentle rhythm and natural sweetness' },
-  { id: '3a8e6fea-81e5-4d4d-8755-86093146cdb8', name: 'SARA Vidya (Empathetic)', lang: 'te', provider: 'Cartesia', desc: 'Warm, reassuring Telugu advisor tone' },
-  { id: '4459a9a5-69d6-4680-b970-e13dc51845b6', name: 'SARA Hindi (Native Voice)', lang: 'hi', provider: 'Cartesia', desc: 'Warm conversational Hindi with clear diction' },
-  { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar (English Recommended)', lang: 'en', provider: 'Cartesia Sonic-2', desc: 'Ultra-low latency, crisp consultative tone' },
-  { id: '62ae83ad-4f6a-430b-af41-a9bede9286ca', name: 'Gemma (Friendly & Helpful)', lang: 'en', provider: 'Cartesia Sonic-2', desc: 'Approachable customer engagement' },
-  { id: '47c38ca4-5f35-497b-b1a3-415245fb35e1', name: 'Daniel (Executive Male)', lang: 'en', provider: 'Cartesia Sonic-2', desc: 'Authoritative, calm sales tone' },
+  { id: '07bc462a-c644-49f1-baf7-82d5599131be', name: 'Sindhu — Telugu Sweet & Natural (Cartesia Primary)', lang: 'te', provider: 'Cartesia', desc: 'Primary sweet, warm, clear female voice with natural Indian conversational delivery and crystal clarity.' },
+  { id: 'cf061d8b-a752-4865-81a2-57570a6e0565', name: 'Ramya — Telugu Warm & Welcoming (Cartesia Alt)', lang: 'te', provider: 'Cartesia', desc: 'Alternative sweet and welcoming female voice with pristine Telugu pronunciation and natural conversational cadence.' },
+  { id: 'sarvam-te-kavitha', name: 'Kavitha (Telugu Sweet, Gentle & Polite)', lang: 'te', provider: 'Sarvam AI', desc: 'Sweetest, polite, gentle native Telugu voice with pristine articulation, respectful cadence, and silky warmth' },
+  { id: 'sarvam-te-suhani', name: 'Suhani (Telugu Silky Sweet & Melodic)', lang: 'te', provider: 'Sarvam AI', desc: 'Exceptionally sweet, melodic, gentle and charming native Telugu female voice' },
+  { id: 'sarvam-te-roopa', name: 'Roopa (Telugu Sweet & Soothing)', lang: 'te', provider: 'Sarvam AI', desc: 'Gentle, soothing and sweet Telugu voice with melodious tone' },
+  { id: 'sarvam-te-priya', name: 'Priya (Telugu Cheerful & Sweet)', lang: 'te', provider: 'Sarvam AI', desc: 'Bright, sweet and enthusiastic native Telugu voice that builds instant rapport' },
+  { id: 'sarvam-te-pooja', name: 'Pooja (Telugu Warm & Sweet)', lang: 'te', provider: 'Sarvam AI', desc: 'Warm, respectful native Telugu voice with silky cadence and smooth conversational flow' },
+  { id: 'sarvam-te-neha', name: 'Neha (Telugu Sweet & Empathetic)', lang: 'te', provider: 'Sarvam AI', desc: 'Sweet, caring and empathetic tone with crystal clear Telugu diction' },
+  { id: 'sarvam-te-simran', name: 'Simran (Telugu & English Sweet)', lang: 'te', provider: 'Sarvam AI', desc: 'Natural, confident, sweet bilingual voice for Telugu and Indian English' },
+  { id: 'sarvam-te-shruti', name: 'Shruti (Telugu Articulate & Sweet)', lang: 'te', provider: 'Sarvam AI', desc: 'Crisp, articulate and sweet professional Telugu voice' },
+  { id: 'sarvam-te-kavya', name: 'Kavya (Telugu Friendly & Approachable)', lang: 'te', provider: 'Sarvam AI', desc: 'Warm, cheerful, approachable native Telugu voice' },
 ];
 
 export default function VoiceScreen({ agent, onClose, onNavigate }) {
@@ -37,8 +42,8 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   const [interimText, setInterimText] = useState('');
   const chatEndRef = useRef(null);
 
-  // Voice Settings & Language (Default to Telugu 'te')
-  const [selectedVoiceId, setSelectedVoiceId] = useState(agent?.voice_id || '330c4fa0-1da3-4c55-8e97-951bfd724e20');
+  // Voice Settings & Language (Default to Telugu 'te' with Cartesia primary sweet voice)
+  const [selectedVoiceId, setSelectedVoiceId] = useState(agent?.voice_id || '07bc462a-c644-49f1-baf7-82d5599131be');
   const [selectedLanguage, setSelectedLanguage] = useState(agent?.voice_language || 'te');
   const [previewingVoice, setPreviewingVoice] = useState(null);
   const previewAudioRef = useRef(null);
@@ -57,6 +62,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   const [phoneCallMessage, setPhoneCallMessage] = useState('');
   const [phoneCallStatus, setPhoneCallStatus] = useState(null);
   const [activeCallId, setActiveCallId] = useState(null);
+  const [hasRecording, setHasRecording] = useState(false);
   const [showLiveTranslation, setShowLiveTranslation] = useState(true);
 
   // Provider Health & Billing
@@ -124,9 +130,15 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           setInterimText(t.text);
         } else {
           setInterimText('');
+          const isAgent = t.role === 'agent' || t.role === 'assistant';
           setTranscripts(prev => [
             ...prev,
-            { speaker: 'You', role: 'user', text: t.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+            {
+              speaker: isAgent ? (activeEmployee?.name || 'Sara') : 'You',
+              role: isAgent ? 'assistant' : 'user',
+              text: t.text,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
           ]);
         }
       },
@@ -235,23 +247,15 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
   // Live Phone Call Transcript Real-Time Synchronizer
   useEffect(() => {
     if (!activeCallId) return;
-    let notFoundCount = 0;
-    const interval = setInterval(() => {
-      if (notFoundCount >= 5) {
-        clearInterval(interval);
-        return;
-      }
-      fetch(`/api/v1/calls/${activeCallId}/transcript`)
-        .then(r => {
-          if (r.status === 404) {
-            notFoundCount++;
-            return null;
-          }
-          return r.json();
-        })
-        .then(data => {
+
+    const interval = setInterval(async () => {
+      try {
+        const token = localStorage.getItem('token') || localStorage.getItem('auth_token');
+        const headers = token ? { 'Authorization': `Bearer ${token}` } : {};
+        const res = await fetch(`/api/v1/calls/${activeCallId}/transcript`, { headers });
+        if (res.ok) {
+          const data = await res.json();
           if (data && Array.isArray(data.transcript) && data.transcript.length > 0) {
-            notFoundCount = 0;
             setTranscripts(data.transcript.map(t => ({
               speaker: (t.speaker === 'customer' || t.role === 'user') ? 'You (Caller)' : (t.speaker || activeEmployee?.name || 'Sara'),
               role: t.role || ((t.speaker === 'customer') ? 'user' : 'assistant'),
@@ -259,14 +263,22 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
               time: t.timestamp ? new Date(t.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
             })));
           }
-        })
-        .catch(() => {
-          notFoundCount++;
-        });
-    }, 2000);
+        }
+
+        // Check if audio recording is ready (WAV file created on disk)
+        if (!hasRecording) {
+          const recRes = await fetch(`/api/v1/calls/${activeCallId}/recording`, { method: 'HEAD', headers });
+          if (recRes.status === 200 || recRes.status === 206) {
+            setHasRecording(true);
+          }
+        }
+      } catch (err) {
+        // Continue polling silently during call
+      }
+    }, 1500);
 
     return () => clearInterval(interval);
-  }, [activeCallId, activeEmployee?.name]);
+  }, [activeCallId, activeEmployee?.name, hasRecording]);
 
   // Handle Phone Call Trigger
   const handleTriggerPhoneCall = async (e) => {
@@ -292,6 +304,7 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
         setPhoneCallStatus('connected');
         if (data.call_id) {
           setActiveCallId(data.call_id);
+          setHasRecording(false);
           setRightPanelTab('chat');
         }
         setPhoneCallMessage(`Call placed! SID: ${data.call_sid || data.twilio_sid || 'Plivo_Active'}`);
@@ -352,19 +365,19 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
           <div style={{ display: 'flex', gap: 20 }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-              <strong>STT:</strong> {providersHealth.assemblyai?.ready ? 'AssemblyAI Pro' : 'Deepgram Nova-3'}
+              <strong>STT:</strong> Sarvam AI Realtime (saaras:v3)
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-              <strong>TTS:</strong> Cartesia Sonic (Ready)
+              <strong>TTS:</strong> Sarvam AI Sweet bulbul:v3
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-              <strong>LLM:</strong> OpenAI gpt-4o-mini
+              <strong>LLM:</strong> Google Gemini Intelligence
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
-              <strong>Telephony:</strong> Plivo India Voice (+91)
+              <strong>Telephony:</strong> Plivo (+91 80 6552 2007)
             </span>
           </div>
         </div>
@@ -706,11 +719,13 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 </div>
                 <div style={{ padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Call Cap</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{billingInfo.call_limit_minutes || 10} min max</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', marginTop: 2 }}>{billingInfo.call_limit_minutes || 5} min max</div>
                 </div>
                 <div style={{ padding: '8px 10px', background: '#fff', borderRadius: 8, border: '1px solid var(--border)', textAlign: 'center' }}>
                   <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase' }}>Balance</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981', marginTop: 2 }}>₹{Number(billingInfo.balance || 0).toLocaleString('en-IN')}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: '#10b981', marginTop: 2 }}>
+                    {billingInfo.is_unlimited || billingInfo.plan === 'unlimited' ? '∞ Unlimited' : `₹${Number(billingInfo.balance || 0).toLocaleString('en-IN')}`}
+                  </div>
                 </div>
               </div>
 
@@ -803,24 +818,51 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', display: 'flex', alignItems: 'center', gap: 6 }}>
-                      <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981', boxShadow: '0 0 8px #10b981' }} />
-                      Call Audio Recording
+                      <span style={{
+                        width: 8, height: 8, borderRadius: '50%',
+                        background: hasRecording ? '#10b981' : '#f59e0b',
+                        boxShadow: hasRecording ? '0 0 8px #10b981' : '0 0 6px #f59e0b'
+                      }} />
+                      {hasRecording ? 'Call Audio Recording' : 'Recording in Progress...'}
                     </span>
-                    <a
-                      href={`/api/v1/calls/${activeCallId}/recording`}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', textDecoration: 'none' }}
-                    >
-                      Download WAV ↗
-                    </a>
+                    {hasRecording && (
+                      <a
+                        href={`/api/v1/calls/${activeCallId}/recording?download=true`}
+                        download={`recording_${activeCallId}.wav`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          color: '#ffffff',
+                          background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
+                          padding: '4px 10px',
+                          borderRadius: 6,
+                          textDecoration: 'none',
+                          boxShadow: '0 2px 6px rgba(124, 58, 237, 0.25)',
+                          transition: 'transform 0.15s ease'
+                        }}
+                        title="Download WAV Recording to device"
+                      >
+                        <Download size={13} />
+                        Download WAV
+                      </a>
+                    )}
                   </div>
-                  <audio
-                    controls
-                    src={`/api/v1/calls/${activeCallId}/recording`}
-                    style={{ width: '100%', height: 36, marginTop: 4, borderRadius: 8 }}
-                  />
+                  {hasRecording ? (
+                    <audio
+                      controls
+                      src={`/api/v1/calls/${activeCallId}/recording`}
+                      style={{ width: '100%', height: 38, marginTop: 6, borderRadius: 8 }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: 11.5, color: '#64748b', fontStyle: 'italic', padding: '6px 2px' }}>
+                      🎙️ Audio recording will be available here when call finishes.
+                    </div>
+                  )}
                 </div>
+
               )}
             </div>
           )}

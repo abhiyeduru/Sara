@@ -121,11 +121,11 @@ class CRMSyncService:
         # Extract parsed intelligence
         summary_text = summary_data.get("summary") or (call.summary if call else "") or "Call completed with customer."
         sentiment = summary_data.get("sentiment") or (call.sentiment if call else "") or "Positive"
-        intent = summary_data.get("intent") or (call.intent if call else "") or "Real Estate Property Enquiry"
+        intent = summary_data.get("intent") or (call.intent if call else "") or "Client Service Enquiry"
         outcome = summary_data.get("outcome") or (call.outcome if call else "") or "Qualified"
         lead_quality = int(summary_data.get("lead_quality") or 4)
         lead_score = int(summary_data.get("lead_score") or (lead_quality * 20))
-        next_action = summary_data.get("action_items", ["Follow up via WhatsApp"])[0] if isinstance(summary_data.get("action_items"), list) and summary_data.get("action_items") else "Follow up with property brochure"
+        next_action = summary_data.get("action_items", ["Follow up via WhatsApp"])[0] if isinstance(summary_data.get("action_items"), list) and summary_data.get("action_items") else "Follow up with client enquiry details"
         extracted_reqs = summary_data.get("extracted_requirements") or []
 
         # Customer name

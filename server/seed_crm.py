@@ -13,25 +13,8 @@ from server.models import (
 )
 
 def seed():
-    init_db()
-    db = SessionLocal()
-    try:
-        user = db.query(User).filter(User.id == "user_business_owner_1").first()
-        if not user:
-            user = User(
-                id="user_business_owner_1",
-                email="owner@sara.ai",
-                display_name="Abhiram Yeduru",
-                role="admin"
-            )
-            db.add(user)
-            db.commit()
-
-        # Check if already seeded
-        existing_cust = db.query(Customer).filter(Customer.user_id == user.id).first()
-        if existing_cust:
-            print("CRM already seeded, refreshing sample data...")
-            # We can retain or append
+    print("Seed CRM dummy seeding is permanently disabled. Only real customer and call data are preserved.")
+    return
         
         # 1. Pipeline
         pipeline = db.query(CustomerPipeline).filter(CustomerPipeline.user_id == user.id).first()

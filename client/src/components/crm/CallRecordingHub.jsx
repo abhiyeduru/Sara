@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { crmApi } from "../../services/crmApi";
+import { Download } from "lucide-react";
 
 export default function CallRecordingHub({ onSelectCustomer }) {
   const [calls, setCalls] = useState([]);
@@ -140,13 +141,24 @@ export default function CallRecordingHub({ onSelectCustomer }) {
                   </span>
                 </div>
 
-                <button
-                  onClick={handleTriggerAnalysis}
-                  disabled={analyzing}
-                  className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md shadow-emerald-950/30 flex items-center gap-1.5 transition-all"
-                >
-                  <span>⚡</span> {analyzing ? "Analyzing..." : "Re-Analyze AI"}
-                </button>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`/api/crm/calls/${callDetail.id}/recording/stream?download=true`}
+                    download={`recording_${callDetail.id}.wav`}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs border border-slate-700 flex items-center gap-1.5 transition-all text-decoration-none"
+                    title="Download WAV Audio Recording"
+                  >
+                    <Download size={13} />
+                    <span>Download WAV</span>
+                  </a>
+                  <button
+                    onClick={handleTriggerAnalysis}
+                    disabled={analyzing}
+                    className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-semibold text-xs shadow-md shadow-emerald-950/30 flex items-center gap-1.5 transition-all"
+                  >
+                    <span>⚡</span> {analyzing ? "Analyzing..." : "Re-Analyze AI"}
+                  </button>
+                </div>
               </div>
 
               {/* HTML5 Audio Player */}

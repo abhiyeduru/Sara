@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Phone, Play, Pause, PhoneCall, Clock, TrendingUp, DollarSign,
-  Users, ChevronRight, Mic, MicOff, PhoneOff, MessageSquare, RefreshCw, Volume2 } from 'lucide-react';
+  Users, ChevronRight, Mic, MicOff, PhoneOff, MessageSquare, RefreshCw, Volume2, Download } from 'lucide-react';
 import SkeletonLoader from '../common/SkeletonLoader';
 
 export default function VoiceCalls({ onNavigate }) {
@@ -226,13 +226,36 @@ export default function VoiceCalls({ onNavigate }) {
 
             {/* Audio Recording */}
             {activeCallDetail.recording_url && (
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 600, color:'var(--text-primary)', marginBottom: 6, display:'flex', alignItems:'center', gap: 6 }}>
-                  <Volume2 size={14} color="var(--primary)" /> Call Recording
+              <div style={{ padding: '12px 14px', borderRadius: 8, background: 'var(--bg-secondary, #f8fafc)', border: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color:'var(--text-primary)', marginBottom: 8, display:'flex', alignItems:'center', justifyContent: 'space-between' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <Volume2 size={14} color="var(--primary)" /> Call Audio Recording
+                  </span>
+                  <a
+                    href={`${activeCallDetail.recording_url}${activeCallDetail.recording_url.includes('?') ? '&' : '?'}download=true`}
+                    download={`recording_${activeCallDetail.id || 'call'}.wav`}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      fontSize: 11,
+                      fontWeight: 700,
+                      color: '#ffffff',
+                      background: 'linear-gradient(135deg, #7c3aed 0%, #6366f1 100%)',
+                      padding: '3px 8px',
+                      borderRadius: 6,
+                      textDecoration: 'none',
+                      boxShadow: '0 1px 4px rgba(124, 58, 237, 0.2)'
+                    }}
+                    title="Download WAV Recording"
+                  >
+                    <Download size={12} /> Download WAV
+                  </a>
                 </div>
-                <audio controls src={activeCallDetail.recording_url} style={{ width:'100%', height: 36 }} />
+                <audio controls src={activeCallDetail.recording_url} style={{ width:'100%', height: 36, borderRadius: 6 }} />
               </div>
             )}
+
 
             {/* Transcript */}
             <div style={{ flex: 1, minHeight: 200, display:'flex', flexDirection:'column' }}>

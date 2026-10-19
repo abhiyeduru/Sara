@@ -259,66 +259,9 @@ class OpenAIVoiceService:
         )
 
         from server.config import settings
-        use_groq = getattr(settings, "PRIMARY_LLM", "groq").lower() == "groq"
-
-        if use_groq:
-            try:
-                from server.providers.groq_llm import GroqLLM
-                groq_llm = GroqLLM()
-                if groq_llm.client:
-                    loop = asyncio.get_running_loop()
-                    def run_groq():
-                        return groq_llm.client.chat.completions.create(
-                            model=groq_llm.model,
-                            messages=[
-                                {"role": "system", "content": "You are a professional call intelligence analyzer. Output valid JSON only with keys: summary, sentiment, intent, outcome, lead_quality, extracted_requirements, action_items."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=0.2,
-                            max_tokens=400,
-                            response_format={"type": "json_object"}
-                        )
-                    g_resp = await loop.run_in_executor(None, run_groq)
-                    g_text = g_resp.choices[0].message.content or "{}"
-                    return json.loads(g_text)
-            except Exception as ge:
-                logger.warning(f"Groq summary failed: {ge}")
-
-        try:
-            resp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": "You are a professional call intelligence analyzer. Output valid JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.2,
-                response_format={"type": "json_object"}
-            )
-            content = resp.choices[0].message.content or "{}"
-            return json.loads(content)
-        except Exception as e:
-            logger.warning(f"Could not generate call summary via OpenAI: {e}. Falling back to Groq...")
-            try:
-                from server.providers.groq_llm import GroqLLM
-                groq_llm = GroqLLM()
-                if groq_llm.client:
-                    loop = asyncio.get_running_loop()
-                    def run_groq():
-                        return groq_llm.client.chat.completions.create(
-                            model=groq_llm.model,
-                            messages=[
-                                {"role": "system", "content": "You are a professional call intelligence analyzer. Output valid JSON only with keys: summary, sentiment, intent, outcome, lead_quality, extracted_requirements, action_items."},
-                                {"role": "user", "content": prompt}
-                            ],
-                            temperature=0.2,
-                            max_tokens=400,
-                            response_format={"type": "json_object"}
-                        )
-                    g_resp = await loop.run_in_executor(None, run_groq)
-                    g_text = g_resp.choices[0].message.content or "{}"
-                    return json.loads(g_text)
-            except Exception as ge:
-                logger.warning(f"Groq summary fallback failed: {ge}")
+        from server.providers.gemini_llm import GeminiLLM
+        gemini = GeminiLLM()
+        return await gemini.generate_call_summary(transcript_items)
 
             return {
                 "summary": f"Completed conversation ({len(transcript_items)} turns).",

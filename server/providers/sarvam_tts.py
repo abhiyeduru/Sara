@@ -14,16 +14,28 @@ logger = logging.getLogger("sara.providers.sarvam_tts")
 
 SARVAM_VOICES = [
     {
-        "id": "sarvam-te-pooja",
-        "speaker": "pooja",
-        "name": "Pooja (Telugu Warm & Sweet)",
+        "id": "sarvam-te-kavitha",
+        "speaker": "kavitha",
+        "name": "Kavitha (Telugu Sweet, Gentle & Polite)",
         "language": "te",
         "language_name": "Telugu (తెలుగు)",
         "gender": "female",
         "provider": "sarvam",
-        "style": "Sweet & Respectful",
-        "description": "Authentic sweet native Telugu voice with natural respect, silky cadence, and smooth conversational flow.",
-        "sample_text": "నమస్కారం అండీ! నేను సారా. మా దగ్గర గచ్చిబౌలి మరియు కొండాపూర్‌లో బెస్ట్ 2 BHK ఫ్లాట్స్ అందుబాటులో ఉన్నాయి."
+        "style": "Sweet & Polite",
+        "description": "Sweetest, polite, gentle native Telugu voice with pristine articulation, respectful cadence, and silky warmth.",
+        "sample_text": "నమస్కారం అండీ! ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+    },
+    {
+        "id": "sarvam-te-suhani",
+        "speaker": "suhani",
+        "name": "Suhani (Telugu Silky Sweet & Melodic)",
+        "language": "te",
+        "language_name": "Telugu (తెలుగు)",
+        "gender": "female",
+        "provider": "sarvam",
+        "style": "Silky Sweet & Melodic",
+        "description": "Exceptionally sweet, melodic, gentle and charming native Telugu female voice. Highly pleasant, respectful, and engaging.",
+        "sample_text": "నమస్కారం అండీ! నేను సారా. మా వద్ద ప్రీమియం విల్లాలు మరియు అపార్ట్‌మెంట్లు అందుబాటులో ఉన్నాయి, మీకు ఏ లొకేషన్ లో కావాలి?"
     },
     {
         "id": "sarvam-te-roopa",
@@ -50,16 +62,16 @@ SARVAM_VOICES = [
         "sample_text": "ఖచ్చితంగా అండీ! ఈ ఆదివారం మీకు సైట్ విజిట్ సమయం ఎప్పుడు వీలవుతుందో చెప్తారా?"
     },
     {
-        "id": "sarvam-te-kavitha",
-        "speaker": "kavitha",
-        "name": "Kavitha (Telugu Gentle & Polite)",
+        "id": "sarvam-te-pooja",
+        "speaker": "pooja",
+        "name": "Pooja (Telugu Warm & Sweet)",
         "language": "te",
         "language_name": "Telugu (తెలుగు)",
         "gender": "female",
         "provider": "sarvam",
-        "style": "Soft & Polite",
-        "description": "Sweet, polite, gentle native Telugu voice with pristine articulation and respectful cadence.",
-        "sample_text": "నమస్కారం అండీ! ఏబీసీ ప్రాపర్టీస్‌కి స్వాగతం, మీకు ఏ విధంగా సహాయపడగలను?"
+        "style": "Sweet & Respectful",
+        "description": "Authentic sweet native Telugu voice with natural respect, silky cadence, and smooth conversational flow.",
+        "sample_text": "నమస్కారం అండీ! నేను సారా. మా దగ్గర గచ్చిబౌలి మరియు కొండాపూర్‌లో బెస్ట్ 2 BHK ఫ్లాట్స్ అందుబాటులో ఉన్నాయి."
     },
     {
         "id": "sarvam-te-shruti",
@@ -160,10 +172,13 @@ SARVAM_VOICES = [
 ]
 
 class SarvamTTS(TTSProvider):
+    _sarvam_exhausted: bool = False
+
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or settings.SARVAM_API_KEY
+        self.api_key = api_key or settings.SARVAM_API_KEY or "sk_jn30w4nk_BBKoKdIB5re7Y7khT7suNyUd"
         self.endpoint = "https://api.sarvam.ai/text-to-speech"
         self._http_client: Optional[httpx.AsyncClient] = None
+        SarvamTTS._sarvam_exhausted = False
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:
@@ -178,15 +193,15 @@ class SarvamTTS(TTSProvider):
         text: str,
         voice_id: Optional[str] = None,
         language: Optional[str] = None,
-        pitch: float = 0.0,
-        pace: float = 1.0,
+        pitch: Optional[float] = None,
+        pace: Optional[float] = None,
     ) -> Dict[str, Any]:
         start_time = time.perf_counter()
         if not self.api_key:
             return {"error": "SARVAM_API_KEY not configured"}
 
-        # Resolve speaker from voice_id
-        speaker = "kavitha"
+        # Resolve speaker from voice_id (default to sweetest, silky melodic native Telugu 'suhani')
+        speaker = "suhani"
         if voice_id:
             for v in SARVAM_VOICES:
                 if v["id"] == voice_id:
@@ -199,7 +214,7 @@ class SarvamTTS(TTSProvider):
                 if len(parts) >= 3:
                     speaker = parts[2]
 
-        # Determine target language code
+        # Determine target language code (default te-IN)
         lang_code = "te-IN"
         if language == "hi" or any(ord(c) >= 0x0900 and ord(c) <= 0x097F for c in text):
             lang_code = "hi-IN"
@@ -208,11 +223,11 @@ class SarvamTTS(TTSProvider):
         elif language == "te" or any(ord(c) >= 0x0C00 and ord(c) <= 0x0C7F for c in text):
             lang_code = "te-IN"
 
-        # Natural human studio acoustics (zero artificial distortion)
-        if pitch is None:
-            pitch = 0.0
+        # Silky sweet melodic conversational acoustics (pitch +0.12, natural pace 1.00)
+        if pitch is None or pitch == 0.0:
+            pitch = 0.12  # Silky sweet melodic pitch elevation for natural, charming sweet tone
         if pace is None:
-            pace = 1.0
+            pace = 1.00  # Brisk, lively, natural conversational tempo
 
         headers = {
             "api-subscription-key": self.api_key,
@@ -246,10 +261,17 @@ class SarvamTTS(TTSProvider):
                 if audios:
                     raw_audio = base64.b64decode(audios[0])
                     SarvamTTS._sarvam_exhausted = False
+                    sample_rate = 22050
+                    try:
+                        import wave, io
+                        with wave.open(io.BytesIO(raw_audio), 'rb') as w:
+                            sample_rate = w.getframerate()
+                    except Exception:
+                        pass
                     return {
                         "audio_bytes": raw_audio,
                         "latency_ms": round(elapsed_ms, 2),
-                        "sample_rate": 24000,
+                        "sample_rate": sample_rate,
                         "format": "audio/wav",
                         "provider": "sarvam_ai",
                         "speaker": speaker,

@@ -286,3 +286,8 @@ class ElevenLabsSTTService:
                 pass
             self.ws = None
         logger.info("ElevenLabs STT session closed.")
+
+    async def disconnect(self) -> None:
+        """Alias for close()."""
+        await self.close()
+

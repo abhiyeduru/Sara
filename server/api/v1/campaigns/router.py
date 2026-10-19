@@ -13,7 +13,10 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+import io
+import csv
+import json
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, UploadFile, File, Form
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -274,10 +277,9 @@ async def trigger_quick_call(
         f"4. State all numbers, timings, and prices clearly in English.\n"
     )
 
-    valid_uuid = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    clean_voice = str(body.voice_id or "").strip().lower()
-    if not re.match(valid_uuid, clean_voice):
-        clean_voice = settings.DEFAULT_VOICE_ID or "330c4fa0-1da3-4c55-8e97-951bfd724e20"
+    clean_voice = str(body.voice_id or "").strip()
+    if not clean_voice or clean_voice == "330c4fa0-1da3-4c55-8e97-951bfd724e20":
+        clean_voice = settings.DEFAULT_VOICE_ID or "sarvam-te-kavitha"
 
     target_lang = body.language or "te"
 
@@ -640,3 +642,386 @@ async def pause_campaign(
     camp.status = "paused"
     db.commit()
     return {"success": True, "campaign_id": camp.id, "status": "paused"}
+
+
+@router.post("/bulk-upload")
+async def upload_bulk_leads_excel(
+    file: Optional[UploadFile] = File(None),
+    raw_data: Optional[str] = Form(None),
+    sheet_url: Optional[str] = Form(None),
+    mapped_leads: Optional[str] = Form(None),
+    campaign_name: str = Form("Excel Bulk Leads Campaign"),
+    employee_id: Optional[str] = Form(None),
+    instruction: Optional[str] = Form(""),
+    max_retries: int = Form(3),
+    auto_start: bool = Form(True),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Upload Excel (.xlsx/.xls) or CSV sheet of contacts for an AI Employee.
+    Auto-imports all rows and initiates auto-calling queue with 2-3 retry policy.
+    """
+    ws = get_user_workspace(db, user)
+    parsed_leads = []
+
+    # 1. First priority: Pre-mapped customized leads from frontend
+    if mapped_leads:
+        import json
+        try:
+            items = json.loads(mapped_leads)
+            if isinstance(items, list):
+                for it in items:
+                    raw_ph = str(it.get("phone", "")).strip()
+                    digits = re.sub(r"[^\d]", "", raw_ph)
+                    if len(digits) >= 8:
+                        parsed_leads.append({
+                            "name": str(it.get("name") or "Prospect").strip(),
+                            "phone": raw_ph,
+                            "notes": str(it.get("notes") or "").strip()
+                        })
+        except Exception as e:
+            logger.warning(f"Failed to parse mapped_leads JSON: {e}")
+
+    # 2. Or fetch from Sheet URL / Google Sheets link
+    elif sheet_url:
+        import urllib.request
+        clean_url = sheet_url.strip()
+        if "docs.google.com/spreadsheets" in clean_url and "/edit" in clean_url:
+            clean_url = re.sub(r"/edit.*$", "/export?format=csv", clean_url)
+        try:
+            req = urllib.request.Request(clean_url, headers={"User-Agent": "Mozilla/5.0 (Sara-AI-Importer)"})
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                raw_csv = resp.read().decode("utf-8", errors="ignore")
+                lines = [l.strip() for l in raw_csv.splitlines() if l.strip()]
+                if lines:
+                    reader = csv.reader(lines)
+                    rows = list(reader)
+                    if rows:
+                        headers = [c.strip().lower() for c in rows[0]]
+                        name_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["name", "customer", "client", "lead"])), 0)
+                        phone_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["phone", "mobile", "contact", "number", "tel"])), 1 if len(headers) > 1 else 0)
+                        notes_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["note", "city", "location", "requirement", "budget"])), 2 if len(headers) > 2 else -1)
+
+                        for r in rows[1:]:
+                            if not r:
+                                continue
+                            name_val = r[name_idx].strip() if name_idx < len(r) else "Prospect"
+                            phone_val = r[phone_idx].strip() if phone_idx < len(r) else ""
+                            notes_val = r[notes_idx].strip() if notes_idx >= 0 and notes_idx < len(r) else ""
+                            if phone_val and len(re.sub(r"[^\d]", "", phone_val)) >= 8:
+                                parsed_leads.append({"name": name_val or "Prospect", "phone": phone_val, "notes": notes_val})
+        except Exception as e:
+            logger.warning(f"Error fetching sheet from URL {sheet_url}: {e}")
+            raise HTTPException(status_code=400, detail=f"Could not load leads from URL: {str(e)}")
+
+    # 3. Or parse from uploaded Excel / CSV file
+    elif file:
+        contents = await file.read()
+        filename = (file.filename or "").lower()
+
+        if filename.endswith(".xlsx") or filename.endswith(".xls"):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(contents), data_only=True)
+            sheet = wb.active
+            rows = list(sheet.iter_rows(values_only=True))
+            if rows:
+                headers = [str(c or "").strip().lower() for c in rows[0]]
+                name_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["name", "customer", "client", "lead"])), 0)
+                phone_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["phone", "mobile", "contact", "number", "tel"])), 1 if len(headers) > 1 else 0)
+                notes_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["note", "city", "location", "requirement", "budget", "tag"])), 2 if len(headers) > 2 else -1)
+
+                for r in rows[1:]:
+                    if not r or all(c is None for c in r):
+                        continue
+                    name_val = str(r[name_idx] or "").strip() if name_idx < len(r) and r[name_idx] is not None else "Prospect"
+                    phone_val = str(r[phone_idx] or "").strip() if phone_idx < len(r) and r[phone_idx] is not None else ""
+                    notes_val = str(r[notes_idx] or "").strip() if notes_idx >= 0 and notes_idx < len(r) and r[notes_idx] is not None else ""
+
+                    if phone_val and len(re.sub(r"[^\d]", "", phone_val)) >= 8:
+                        parsed_leads.append({"name": name_val or "Prospect", "phone": phone_val, "notes": notes_val})
+        else:
+            text = contents.decode("utf-8", errors="ignore")
+            lines = [l.strip() for l in text.splitlines() if l.strip()]
+            if lines:
+                reader = csv.reader(lines)
+                rows = list(reader)
+                if rows:
+                    headers = [c.strip().lower() for c in rows[0]]
+                    name_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["name", "customer", "client", "lead"])), 0)
+                    phone_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["phone", "mobile", "contact", "number", "tel"])), 1 if len(headers) > 1 else 0)
+                    notes_idx = next((i for i, h in enumerate(headers) if any(k in h for k in ["note", "city", "location", "requirement", "budget"])), 2 if len(headers) > 2 else -1)
+
+                    for r in rows[1:]:
+                        if not r:
+                            continue
+                        name_val = r[name_idx].strip() if name_idx < len(r) else "Prospect"
+                        phone_val = r[phone_idx].strip() if phone_idx < len(r) else ""
+                        notes_val = r[notes_idx].strip() if notes_idx >= 0 and notes_idx < len(r) else ""
+                        if phone_val and len(re.sub(r"[^\d]", "", phone_val)) >= 8:
+                            parsed_leads.append({"name": name_val or "Prospect", "phone": phone_val, "notes": notes_val})
+
+    # 4. Or fallback to raw CSV/text string
+    elif raw_data:
+        lines = [l.strip() for l in raw_data.splitlines() if l.strip()]
+        for line in lines:
+            parts = [p.strip().replace('"', '') for p in line.split(",")]
+            if len(parts) >= 2:
+                if any(parts[0].lower().startswith(h) for h in ["name", "lead", "client"]) and any(parts[1].lower().startswith(p) for p in ["phone", "mobile", "number", "tel"]):
+                    continue
+                digits = re.sub(r"[^\d]", "", parts[1])
+                if len(digits) >= 8:
+                    parsed_leads.append({
+                        "name": parts[0] or "Prospect",
+                        "phone": parts[1],
+                        "notes": parts[2] if len(parts) > 2 else ""
+                    })
+
+    if not parsed_leads:
+        raise HTTPException(status_code=400, detail="No valid phone numbers found in file. Please ensure sheet contains Name and Phone columns.")
+
+    # 3. Resolve AI Employee to assign
+    emp = None
+    if employee_id:
+        emp = db.query(AIEmployee).filter(
+            (AIEmployee.id == employee_id) | (AIEmployee.name.ilike(f"%{employee_id}%"))
+        ).first()
+    if not emp:
+        emp = db.query(AIEmployee).filter(AIEmployee.workspace_id == ws.id).first()
+    if not emp:
+        emp = db.query(AIEmployee).first()
+    emp_id = emp.id if emp else None
+    emp_name = emp.name if emp else "Sara"
+
+    # 4. Create Campaign in DB
+    clean_retries = max(1, min(max_retries, 5))  # Clamp between 1 and 5 (default 3)
+    camp = Campaign(
+        workspace_id=ws.id,
+        ai_employee_id=emp_id,
+        name=campaign_name or f"Excel Leads — {emp_name}",
+        description=f"Auto-imported {len(parsed_leads)} leads from Excel with {clean_retries}-attempt retry policy.",
+        channel="voice",
+        status="running" if auto_start else "scheduled",
+        total_leads=len(parsed_leads),
+        call_rules={
+            "max_retries": clean_retries,
+            "retry_on_no_answer": True,
+            "instruction": instruction or emp.mission if emp else "",
+            "ai_employee_name": emp_name
+        }
+    )
+    db.add(camp)
+    db.commit()
+    db.refresh(camp)
+
+    # 5. Insert each lead into DB
+    created_c_leads = []
+    for item in parsed_leads:
+        raw_p = item["phone"]
+        digits = re.sub(r"[^\d+]", "", raw_p)
+        if not digits.startswith("+"):
+            digits = f"+91{digits}" if len(digits) == 10 else f"+{digits}"
+
+        lead_rec = Lead(
+            workspace_id=ws.id,
+            name=item["name"],
+            phone=digits,
+            status="new",
+            source=f"Excel: {camp.name}",
+            lead_score=70,
+            requirements=[item.get("notes", "")]
+        )
+        db.add(lead_rec)
+        db.flush()
+
+        c_lead = CampaignLead(
+            campaign_id=camp.id,
+            lead_id=lead_rec.id,
+            status="pending",
+            attempts=0
+        )
+        db.add(c_lead)
+        db.flush()
+        created_c_leads.append({
+            "id": c_lead.id,
+            "lead_id": lead_rec.id,
+            "name": lead_rec.name,
+            "phone": lead_rec.phone,
+            "notes": item.get("notes", ""),
+            "status": "pending",
+            "attempts": 0,
+            "max_retries": clean_retries
+        })
+
+    db.commit()
+    logger.info(f"Bulk leads imported: {len(parsed_leads)} contacts created for campaign '{camp.name}'")
+
+    return {
+        "success": True,
+        "campaign_id": camp.id,
+        "campaign_name": camp.name,
+        "ai_employee": emp_name,
+        "total_imported": len(parsed_leads),
+        "max_retries": clean_retries,
+        "leads": created_c_leads
+    }
+
+
+@router.post("/{campaign_id}/dial-next")
+async def dial_next_campaign_lead(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Dispatches call to the next pending lead.
+    If a previous call was not answered or busy, checks retry rule:
+    retries up to max_retries (2-3 times) before marking as unreachable.
+    """
+    camp = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    call_rules = camp.call_rules or {}
+    max_retries = call_rules.get("max_retries", 3)
+
+    # 1. Find next lead needing a call: pending or retrying
+    c_lead = db.query(CampaignLead).filter(
+        CampaignLead.campaign_id == campaign_id,
+        CampaignLead.status.in_(["pending", "retrying"]),
+        CampaignLead.attempts < max_retries
+    ).order_by(CampaignLead.attempts.asc(), CampaignLead.created_at.asc()).first()
+
+    if not c_lead:
+        # Check if all leads have been completed
+        pending_count = db.query(CampaignLead).filter(
+            CampaignLead.campaign_id == campaign_id,
+            CampaignLead.status.in_(["pending", "retrying"])
+        ).count()
+        if pending_count == 0:
+            camp.status = "completed"
+            db.commit()
+        return {
+            "success": True,
+            "has_more": False,
+            "message": "All bulk leads processed or reached maximum retry attempts.",
+            "campaign_status": camp.status
+        }
+
+    lead = db.query(Lead).filter(Lead.id == c_lead.lead_id).first()
+    if not lead:
+        c_lead.status = "skipped"
+        db.commit()
+        return {"success": False, "message": "Lead record not found."}
+
+    # Increment attempt count
+    c_lead.attempts += 1
+    current_attempt = c_lead.attempts
+
+    # Resolve AI employee
+    emp_id = camp.ai_employee_id
+    if not emp_id:
+        ws = get_user_workspace(db, user)
+        first_emp = db.query(AIEmployee).filter(AIEmployee.workspace_id == ws.id).first()
+        if not first_emp:
+            first_emp = db.query(AIEmployee).first()
+        emp_id = first_emp.id if first_emp else None
+
+    # Initiate outbound call through CallService
+    try:
+        call_res = CallService.initiate_outbound_call(
+            db=db,
+            user=user,
+            employee_id=emp_id,
+            to_number=lead.phone,
+            lead_id=lead.id
+        )
+
+        c_lead.call_id = call_res.get("call_id")
+        call_status = call_res.get("status", "initiated")
+        is_sim = call_res.get("is_simulated", False)
+
+        if is_sim:
+            # In simulation / test mode, realistically demonstrate the retry policy and connection
+            if current_attempt < max_retries and (camp.called or 0) % 2 == 1:
+                c_lead.status = "retrying"
+                c_lead.outcome = f"NO_ANSWER (Attempt {current_attempt}/{max_retries})"
+            else:
+                c_lead.status = "connected"
+                c_lead.outcome = "CONNECTED"
+                camp.connected = (camp.connected or 0) + 1
+        elif call_status in ["connected", "in-progress", "completed"]:
+            c_lead.status = "connected"
+            c_lead.outcome = "CONNECTED"
+            camp.connected = (camp.connected or 0) + 1
+        elif call_status in ["busy", "no-answer", "failed", "unanswered"]:
+            if current_attempt < max_retries:
+                c_lead.status = "retrying"
+                c_lead.outcome = f"NO_ANSWER (Attempt {current_attempt}/{max_retries})"
+            else:
+                c_lead.status = "unreachable"
+                c_lead.outcome = f"UNREACHABLE (Tried {max_retries} times)"
+                camp.failed = (camp.failed or 0) + 1
+        else:
+            c_lead.status = "calling"
+
+        camp.called = (camp.called or 0) + 1
+        db.commit()
+
+        return {
+            "success": True,
+            "has_more": True,
+            "lead_id": lead.id,
+            "lead_name": lead.name,
+            "phone": lead.phone,
+            "attempt": current_attempt,
+            "max_retries": max_retries,
+            "call_id": c_lead.call_id,
+            "call_status": call_status,
+            "lead_status": c_lead.status,
+            "is_simulated": call_res.get("is_simulated", False),
+            "message": f"Calling {lead.name} ({lead.phone}) — Attempt {current_attempt} of {max_retries}."
+        }
+    except Exception as e:
+        logger.error(f"Error auto-dialing lead {lead.id}: {e}")
+        if current_attempt < max_retries:
+            c_lead.status = "retrying"
+            c_lead.outcome = f"RETRYING ({current_attempt}/{max_retries})"
+        else:
+            c_lead.status = "failed"
+            c_lead.outcome = "FAILED"
+        db.commit()
+        return {
+            "success": False,
+            "error": str(e),
+            "lead_name": lead.name,
+            "phone": lead.phone,
+            "attempt": current_attempt,
+            "max_retries": max_retries
+        }
+
+
+@router.get("/{campaign_id}/leads")
+async def get_campaign_leads(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Get all leads for a campaign with live call attempts, status and outcomes."""
+    c_leads = db.query(CampaignLead).filter(CampaignLead.campaign_id == campaign_id).all()
+    results = []
+    for cl in c_leads:
+        lead = db.query(Lead).filter(Lead.id == cl.lead_id).first()
+        results.append({
+            "id": cl.id,
+            "lead_id": cl.lead_id,
+            "name": lead.name if lead else "Prospect",
+            "phone": lead.phone if lead else "",
+            "status": cl.status,
+            "attempts": cl.attempts,
+            "outcome": cl.outcome,
+            "call_id": cl.call_id,
+            "created_at": cl.created_at.isoformat() if cl.created_at else None
+        })
+    return {"data": results}
+

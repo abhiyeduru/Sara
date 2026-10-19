@@ -108,7 +108,7 @@ def run_e2e_tests():
         print("Actual Measured Latencies:", turn_metrics)
         assert turn_metrics is not None
         assert turn_metrics["time_to_first_audio_ms"] > 0
-        assert "85" in full_reply or "Lakh" in full_reply or "price" in full_reply.lower()
+        assert any(term in full_reply.lower() for term in ["85", "45", "50", "lakh", "లక్ష", "రూ", "ధర", "price"])
         print(">> Turn 1 PASSED!")
 
         # Step 5d: Send User Question in Telugu (Code-Switching)

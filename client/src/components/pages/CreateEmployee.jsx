@@ -23,7 +23,7 @@ const generateAIScript = (roleTitle, languagesArray) => {
 
   let stepsList = [];
 
-  if (roleLower.includes('real estate') || roleLower.includes('property') || roleLower.includes('caller')) {
+  if (roleLower.includes('real estate') || roleLower.includes('property') || roleLower.includes('realty')) {
     opening = isTelugu
       ? 'హలో అండి, {Lead Name} తో మాట్లాడుతున్నానా? నేను ప్రాపర్టీ గైడ్ నుండి ఫర్హాన్ ని.'
       : isHindi
@@ -60,11 +60,17 @@ const generateAIScript = (roleTitle, languagesArray) => {
       { id: 's4', shortTitle: 'WhatsApp VIP Pass', content: isTelugu ? 'మీరు వచ్చే సమయానికి VIP పాస్ వాట్సాప్ చేస్తాను అండి.' : 'Send VIP pass via WhatsApp.' }
     ];
   } else {
+    opening = isTelugu
+      ? 'హలో అండి, {Lead Name} గారేనా మాట్లాడేది? నేను కస్టమర్ అడ్వైజరీ టీమ్ నుండి మాట్లాడుతున్నాను.'
+      : isHindi
+      ? 'नमस्ते {Lead Name} जी, मैं कस्टमर एडवाइजरी टीम से बात कर रही हूँ।'
+      : 'Hello {Lead Name}, calling regarding your enquiry with our team.';
     stepsList = [
-      { id: 's1', shortTitle: 'Introduce & Context', content: `Introduce company and reference inquiry in ${langText}.` },
-      { id: 's2', shortTitle: 'Qualify Needs', content: 'Ask qualifying questions regarding budget and requirements.' },
-      { id: 's3', shortTitle: 'Schedule Action', content: 'Propose next step or consultation appointment.' },
-      { id: 's4', shortTitle: 'Confirm & Close', content: 'Confirm details and send follow-up on WhatsApp.' }
+      { id: 's1', shortTitle: '1. Introduce & Context', content: isTelugu ? 'నమస్కారం అండి! మీరు మా సేవల గురించి విచారించారు కదా, వివరాలు పంచుకోవడానికి కాల్ చేశాను.' : 'Introduce yourself and reference their recent enquiry.' },
+      { id: 's2', shortTitle: '2. Understand Requirements', content: isTelugu ? 'మీ ప్రస్తుత అవసరం ఏమిటో మరియు మీరు ఏ రకమైన సొల్యూషన్ చూస్తున్నారో చెప్పగలరా అండి?' : 'Ask qualifying questions regarding requirements and preferences.' },
+      { id: 's3', shortTitle: '3. Present Offerings', content: isTelugu ? 'మీ అవసరానికి తగినట్లుగా మా వద్ద అనుకూలమైన ప్యాకేజీలు మరియు క్వాలిటీ సపోర్ట్ అందుబాటులో ఉన్నాయి.' : 'Explain tailored packages and key benefits.' },
+      { id: 's4', shortTitle: '4. Schedule Meeting / Next Steps', content: isTelugu ? 'మన టీమ్ తో డీటైల్డ్ డిస్కషన్ లేదా కన్సల్టేషన్ ప్లాన్ చేద్దామా అండి?' : 'Propose next step or consultation appointment.' },
+      { id: 's5', shortTitle: '5. Confirm & Close', content: isTelugu ? 'సరే అండి, వివరాలన్నీ మీకు వాట్సాప్ చేస్తాను. ధన్యవాదాలు!' : 'Confirm details and send follow-up summary.' }
     ];
   }
 

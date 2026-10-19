@@ -119,23 +119,49 @@ export default function AskSara({ onNavigate }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  function sendMessage(text) {
+  async function sendMessage(text) {
     const msg = text || input;
     if (!msg.trim()) return;
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: msg }]);
+    const updatedHistory = [...messages, { role: 'user', content: msg }];
+    setMessages(updatedHistory);
     setLoading(true);
-    setTimeout(() => {
+
+    try {
+      const res = await fetch('/api/v1/voice/chat/simulate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: msg,
+          history: messages.map(m => ({
+            role: m.role === 'sara' ? 'assistant' : m.role,
+            content: m.content
+          }))
+        })
+      });
+      const data = await res.json();
+      const reply = data.reply || data.response || `I understand your query regarding "${msg}". How else can I assist with your workspace today?`;
       setMessages(prev => [...prev, {
         role: 'sara',
-        content: `I understand you're asking about "${msg}". Let me analyze your workplace data... Based on your live metrics, your AI employees have completed 348 calls today with a 36.2% conversion rate and 126 new leads generated. Your team is performing 18% above the weekly baseline.`,
+        content: reply,
         actions: [
           { label: 'View detailed report', icon: BarChart3, target: 'analytics' },
           { label: 'View Workflows', icon: GitBranch, target: 'workflows' },
         ]
       }]);
+    } catch (err) {
+      console.error('AskSara Gemini error:', err);
+      setMessages(prev => [...prev, {
+        role: 'sara',
+        content: `I received your question: "${msg}". I am here to help you manage your AI employees, business campaigns, and client calls!`,
+        actions: [
+          { label: 'View detailed report', icon: BarChart3, target: 'analytics' },
+          { label: 'View Workflows', icon: GitBranch, target: 'workflows' },
+        ]
+      }]);
+    } finally {
       setLoading(false);
-    }, 1200);
+    }
   }
 
   function handleReset() {

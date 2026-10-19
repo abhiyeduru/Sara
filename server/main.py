@@ -8,7 +8,7 @@ import threading
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import FastAPI, Query, Depends
+from fastapi import FastAPI, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from server.config import settings
-from server.database import engine, get_db, init_db
+from server.database import engine, get_db, init_db, SessionLocal
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(
@@ -68,11 +68,11 @@ def health_check():
     """Health check validating DB connectivity."""
     db_ok = False
     try:
-        db: Session = next(get_db())
-        db.execute(text("SELECT 1"))
-        db_ok = True
-    except Exception:
-        pass
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception as e:
+        logger.error(f"Health check error: {e}", exc_info=True)
 
     db_type = "PostgreSQL" if "postgres" in str(engine.url) else "SQLite"
     return {
@@ -125,11 +125,13 @@ app.include_router(admin_router)
 @app.get("/space/google/callback", tags=["Authentication & Onboarding"], include_in_schema=False)
 @app.get("/space/google/callback/", tags=["Authentication & Onboarding"], include_in_schema=False)
 async def space_google_oauth_callback(
+    request: Request,
     code: Optional[str] = Query(None),
     error: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    return await google_oauth_callback(code=code, error=error, db=db)
+    return await google_oauth_callback(request=request, code=code, error=error, state=state, db=db)
 from server.api.v1.calls.exotel_webhooks import router as exotel_webhooks_router
 
 app.include_router(exotel_webhooks_router)
@@ -188,9 +190,12 @@ if os.path.exists(CLIENT_DIST):
 
 if __name__ == "__main__":
     import uvicorn
+    reload_enabled = os.getenv("RELOAD", "false").lower() == "true"
     uvicorn.run(
         "server.main:app",
         host=settings.HOST,
         port=settings.PORT,
-        reload=True,
+        reload=reload_enabled,
+        reload_dirs=["server"] if reload_enabled else None,
+        reload_excludes=["server/storage/*", "storage/*", "*.wav", "*.mp3", "*.db", "*.log", "sara.db*", "test_*", "*cache*", ".system_generated/*"] if reload_enabled else None,
     )

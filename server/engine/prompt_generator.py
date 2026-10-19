@@ -22,15 +22,15 @@ class PromptGenerator:
         languages: Optional[List[str]] = None
     ) -> Dict[str, str]:
         business_info = business_info or {
-            "business_name": "ABC Properties",
-            "description": "ABC Properties is a premier real estate company operating in Hyderabad.",
-            "locations": ["Gachibowli", "Kondapur", "Kokapet"],
-            "services": ["2 BHK", "3 BHK", "Villas", "Site Visits"],
+            "business_name": "SARA AI",
+            "description": "Autonomous AI workforce and client consultation operations.",
+            "locations": ["India"],
+            "services": ["Client Consultation", "Inquiry Resolution", "Appointment Scheduling"],
             "operating_hours": "9:00 AM – 7:00 PM IST",
-            "contact_info": "+91 9876543210 / info@abcproperties.example.com",
-            "important_policies": "Transparent pricing, zero hidden brokerage."
+            "contact_info": "contact@sara.ai",
+            "important_policies": "Transparent communication, customer-first service."
         }
-        services = services or ["2 BHK", "3 BHK", "Luxury Villas", "Site visit booking"]
+        services = services or ["Client Consultation", "Inquiry Resolution", "Appointment Scheduling"]
         faqs = faqs or []
         rules = rules or [
             "Never invent prices or discounts not listed in business knowledge.",
@@ -93,7 +93,7 @@ CRITICAL NUMBER & PRICE PRONUNCIATION RULE (ALWAYS USE ENGLISH NUMBERS):
 
 CRITICAL STOPPING & END-OF-TALK RULE:
 - When the caller says 'stop', 'chalu', 'bye', 'thanks', 'thank you', 'that is all', 'nothing else', 'inka vaddu', 'inkem ledu', or indicates they are done talking:
-  * Say ONE warm, polite farewell (e.g. 'ధన్యవాదాలు అండీ, సెలవు! మీకు ఏదైనా అవసరమైతే మళ్ళీ సంప్రదించండి.' or in English 'Thank you, have a great day!').
+  * Say ONE warm, polite farewell (e.g. 'ధన్యవాదాలు సార్/మేడం, సెలవు! మీకు ఏదైనా అవసరమైతే మళ్ళీ సంప్రదించండి.' or in English 'Thank you, have a great day!').
   * Conclude immediately. Do NOT ask any follow-up questions."""
 
         # 4. Multilingual & Code-Switching Policy
@@ -105,7 +105,7 @@ CRITICAL STOPPING & END-OF-TALK RULE:
   * English and Indian English accents
   * Code-mixed sentences (e.g. 'Sunday afternoon 2 PM ki site visit arrange chey')
 - LANGUAGE MATCHING RULE:
-  * When caller speaks Telugu or Romanized Telugu: reply in pure, sweet, polite spoken Telugu. ALWAYS address them respectfully with 'అండీ' (andi), e.g. 'నమస్కారం అండీ', 'ఖచ్చితంగా అండీ', 'ధన్యవాదాలు అండీ'.
+  * When caller speaks Telugu or Romanized Telugu: reply in pure, sweet, polite spoken Telugu. If caller is female/girl address as 'మేడం' (Madam); if male/man address as 'సార్' (Sir). DO NOT repeat 'అండీ' in every sentence!
   * ALWAYS speak and write numbers, prices, and BHK in English (e.g. '85 Lakhs', '3.5 Crores', '2 BHK', '2 PM').
   * When caller speaks English: reply warmly and concisely in English.
   * When caller speaks Hindi: reply respectfully in Hindi."""
@@ -130,7 +130,7 @@ CRITICAL RULES FOR UNDERSTANDING & ACCURACY:
 3. HANDLING LOCATIONS & UNCOVERED AREAS:
    - Check our Covered Locations ({locations_str}).
    - If the caller asks for an area we DO NOT have (such as KPHB, Kukatpally, Secunderabad, etc.), POLITELY CLARIFY that we currently do not have projects there, and mention our covered locations.
-   - Example in Telugu: 'క్షమించండి అండీ, ప్రస్తుతం మాకు అక్కడ ప్రాజెక్టులు లేవు. మా ప్రాజెక్టులు గచ్చిబౌలి, కొండాపూర్, మరియు కోకాపేట్‌లో అందుబాటులో ఉన్నాయి. వాటి వివరాలు చెప్పమంటారా అండీ?'
+   - Example in Telugu: 'క్షమించండి, ప్రస్తుతం మాకు అక్కడ ప్రాజెక్టులు లేవు. మా ప్రాజెక్టులు గచ్చిబౌలి, కొండాపూర్, మరియు కోకాపేట్‌లో అందుబాటులో ఉన్నాయి. వాటి వివరాలు చెప్పమంటారా?'
 4. STOPPING THE TALK: When the caller concludes or says goodbye, provide a polite closing and stop immediately."""
 
         # 6. Rules & Restrictions
@@ -173,9 +173,9 @@ Remember: Output strictly spoken text suitable for real-time text-to-speech audi
 
         biz_name = business_info.get("business_name", "our company")
         primary_svc = services[0] if services else "our services"
-        is_telugu_primary = ("te" in languages and len(languages) == 1) or (languages and languages[0] == "te")
+        is_telugu_primary = ("te" in languages and len(languages) == 1) or (languages and languages[0] == "te") or agent_name.lower() == "sara"
         if is_telugu_primary:
-            greeting_prompt = f"నమస్కారం అండీ! {biz_name} కి స్వాగతం. నేను {agent_name}, మీకు ఏ విధంగా సహాయపడగలను?"
+            greeting_prompt = "హలో! నమస్కారం. నేను సారా మాట్లాడుతున్నాను. మీరు ఇప్పుడు ఒక నిమిషం మాట్లాడగలరా?"
         else:
             greeting_prompt = f"నమస్కారం అండీ! {biz_name} కి స్వాగతం. నేను {agent_name}. How can I assist you today?"
 

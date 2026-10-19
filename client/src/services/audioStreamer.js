@@ -301,6 +301,15 @@ export class AudioStreamer {
     checkLevel();
   }
 
+  async startMicrophone(agentId = null) {
+    this.unlockAudio();
+    return this.startMic(agentId);
+  }
+
+  stopMicrophone(options) {
+    return this.stopMic(options);
+  }
+
   async startMic(agentId = null) {
     if (agentId) this.agentId = agentId;
     if (!this.agentId) this.agentId = 'agent_sara_default';
@@ -389,23 +398,25 @@ export class AudioStreamer {
 
         this.bargeInHits = 0;
 
-        // Continuously adapt ambient noise floor baseline
+        // Continuously adapt ambient noise floor baseline with safety clamp
         if (!this.speechDetected) {
-          this.noiseFloor = this.noiseFloor * 0.97 + rms * 0.03;
+          const clampedRms = Math.min(rms, 0.02);
+          this.noiseFloor = this.noiseFloor * 0.98 + clampedRms * 0.02;
+          this.noiseFloor = Math.min(0.012, Math.max(0.001, this.noiseFloor));
         }
 
-        // Dynamic thresholds adapting to caller's background environment
-        const dynamicSpeechThreshold = Math.max(0.004, this.noiseFloor * 2.2);
-        const dynamicSilenceThreshold = Math.max(0.0025, this.noiseFloor * 1.4);
+        // Dynamic thresholds calibrated for crystal clear detection of quiet or normal voice
+        const dynamicSpeechThreshold = Math.max(0.003, Math.min(0.015, this.noiseFloor * 1.7));
+        const dynamicSilenceThreshold = Math.max(0.0018, Math.min(0.010, this.noiseFloor * 1.2));
 
         // Record incoming human voice samples
         for (let i = 0; i < inputData.length; i++) {
           this.recordedSamples.push(inputData[i]);
         }
 
-        // Rolling Pre-Speech Ring Buffer: Keep only last 180ms of audio before speech starts
-        // Prevents accumulating multi-second dead silence that adds lag to STT models
-        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.18);
+        // Rolling Pre-Speech Ring Buffer: Keep last 300ms of audio before speech starts
+        // Ensures the first syllable ("హలో", "నమస్కారం", "Hello") is completely captured
+        const preSpeechMaxSamples = Math.round((this.audioContext?.sampleRate || 16000) * 0.30);
         if (!this.speechDetected && this.recordedSamples.length > preSpeechMaxSamples) {
           this.recordedSamples = this.recordedSamples.slice(-preSpeechMaxSamples);
         }
@@ -637,6 +648,14 @@ export class AudioStreamer {
     switch (data.type) {
       case 'session.started':
         this.updateState('idle');
+        break;
+
+      case 'stt.started':
+        this.updateState('thinking');
+        break;
+
+      case 'llm.started':
+        this.updateState('thinking');
         break;
 
       case 'stt.final':

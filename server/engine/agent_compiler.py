@@ -2,7 +2,7 @@ import re
 import json
 import logging
 from typing import Dict, Any, List, Optional
-from server.providers.groq_llm import GroqLLM
+from server.providers.gemini_llm import GeminiLLM
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,7 @@ class AgentCompiler:
         detected_tools = AgentCompiler.detect_tools(natural_input, all_doc_content)
 
         # Step 2: Use LLM for NLU Business Context Extraction
-        llm = GroqLLM()
+        llm = GeminiLLM()
 
         extraction_system_prompt = """You are the Saadhyam AI Agent Architect & Compiler.
 Your role is to compile natural language business owner instructions and uploaded documents
@@ -142,27 +142,27 @@ LANGUAGE PREFERENCE: {language_preference}
 Output strictly a JSON object with this exact structure:
 {{
   "agent_name": "SARA",
-  "role_title": "Real Estate Sales Executive",
-  "department": "Sales",
-  "mission": "Qualify leads, answer pricing, and book site visits.",
+  "role_title": "Business Client Advisor",
+  "department": "Customer Advisory",
+  "mission": "Assist callers, qualify needs, and schedule next steps.",
   "business_info": {{
     "business_name": "Company Name",
     "description": "Company description",
-    "industry": "Real Estate",
-    "locations": ["Gachibowli", "Kondapur"],
-    "services_offered": ["2 BHK", "3 BHK", "Site Visits"],
+    "industry": "Industry Type",
+    "locations": ["Locations"],
+    "services_offered": ["Service 1", "Service 2"],
     "operating_hours": "9:00 AM – 7:00 PM IST",
     "contact_info": "+91 9876543210",
-    "important_policies": "Transparent pricing, cab pickup"
+    "important_policies": "Verified customer service, transparent terms"
   }},
   "responsibilities": [
     "Greet and qualify leads",
-    "Quote verified prices",
-    "Book site visits"
+    "Explain offerings and pricing",
+    "Book appointments or next steps"
   ],
   "tasks": [
-    "Collect budget and location",
-    "Schedule visit slot in calendar"
+    "Collect caller requirements",
+    "Schedule appointment in calendar"
   ],
   "business_rules": [
     "Never invent unverified prices",
@@ -174,7 +174,7 @@ Output strictly a JSON object with this exact structure:
     "steps": [
       {{"step": 1, "title": "Greet & Qualify", "name": "Greet & Qualify", "detail": "Warm intro and ask requirement", "action": "Warm intro and ask requirement"}},
       {{"step": 2, "title": "Recommend Solution", "name": "Recommend Solution", "detail": "Quote verified prices and features", "action": "Quote verified prices and features"}},
-      {{"step": 3, "title": "Book Site Visit", "name": "Book Site Visit", "detail": "Confirm convenient time slot with cab pickup", "action": "Confirm convenient time slot with cab pickup"}}
+      {{"step": 3, "title": "Book Appointment", "name": "Book Appointment", "detail": "Confirm convenient time slot", "action": "Confirm convenient time slot"}}
     ],
     "branches": [
       {{"condition": "Human Requested", "action": "Connect to senior team member"}},
@@ -182,7 +182,7 @@ Output strictly a JSON object with this exact structure:
     ]
   }},
   "permissions": {{
-    "auto_execute": ["Answer inquiries", "Book site visits"],
+    "auto_execute": ["Answer inquiries", "Book appointments"],
     "human_approval_required": ["Discounts above 10%"],
     "human_only": ["Legal contracts", "Refunds"]
   }},
@@ -191,24 +191,42 @@ Output strictly a JSON object with this exact structure:
     "Response time < 1 second"
   ],
   "faqs": [
-    {{"question": "What is the starting price for a 2 BHK?", "answer": "The starting price for a 2 BHK is 85 Lakhs in Gachibowli and Kondapur.", "category": "Pricing"}},
-    {{"question": "Can I schedule a site visit?", "answer": "Yes, absolutely! We organize site visits daily between 10 AM and 6 PM with complimentary cab pickup.", "category": "Booking"}}
+    {{"question": "What services do you offer?", "answer": "We provide verified professional services and dedicated consultation.", "category": "Services"}},
+    {{"question": "How do I schedule an appointment?", "answer": "I can arrange that for you right now. What time is convenient for you?", "category": "Booking"}}
   ]
 }}
 Do NOT output markdown or backticks."""
 
         try:
-            res = llm.client.chat.completions.create(
-                model=llm.model,
-                messages=[
-                    {"role": "system", "content": extraction_system_prompt},
-                    {"role": "user", "content": extraction_user_prompt}
-                ],
-                temperature=0.1,
-                max_tokens=900
-            )
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
 
-            raw = res.choices[0].message.content.strip()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    raw = executor.submit(
+                        asyncio.run,
+                        llm.generate_response(
+                            user_message=extraction_user_prompt,
+                            system_prompt=extraction_system_prompt,
+                            max_tokens=900,
+                            temperature=0.1
+                        )
+                    ).result()
+            else:
+                raw = loop.run_until_complete(
+                    llm.generate_response(
+                        user_message=extraction_user_prompt,
+                        system_prompt=extraction_system_prompt,
+                        max_tokens=900,
+                        temperature=0.1
+                    )
+                )
+
             if "<think>" in raw and "</think>" in raw:
                 raw = raw.split("</think>")[-1].strip()
             if raw.startswith("```"):
@@ -218,32 +236,39 @@ Do NOT output markdown or backticks."""
             parsed = json.loads(raw)
         except Exception as e:
             logger.error(f"Failed to parse LLM extraction into JSON: {e}")
-            # Robust heuristic fallback
+            # Dynamic heuristic fallback derived from actual natural input
+            biz_match = re.search(r"Business:\s*([^\(\n]+)", natural_input)
+            ind_match = re.search(r"\(([^)]+)\)", natural_input)
+            ins_match = re.search(r"Instruction:\s*(.*)", natural_input, re.DOTALL)
+
+            inferred_biz = biz_match.group(1).strip() if biz_match else "our business"
+            inferred_ind = ind_match.group(1).strip() if ind_match else "Professional Services"
+
             parsed = {
                 "agent_name": "SARA",
-                "role_title": "Sales & Support Executive",
-                "department": "Sales",
-                "mission": "Handle customer inquiries, qualify needs, and arrange site visits or next steps.",
+                "role_title": f"{inferred_ind} Client Advisor",
+                "department": "Client Services",
+                "mission": f"Assist callers for {inferred_biz}, understand customer needs, and guide them to next steps.",
                 "business_info": {
-                    "business_name": "ABC Properties",
-                    "description": "Leading enterprise providing premium services.",
-                    "industry": "Real Estate",
-                    "locations": ["Gachibowli", "Kondapur", "Kokapet"],
-                    "services_offered": ["2 BHK", "3 BHK", "Luxury Villas", "Site Visits"],
+                    "business_name": inferred_biz,
+                    "description": f"Verified business in {inferred_ind} dedicated to high-quality customer experience.",
+                    "industry": inferred_ind,
+                    "locations": ["Hyderabad"],
+                    "services_offered": [f"Standard {inferred_ind} Services", "Consultation & Support"],
                     "operating_hours": "9:00 AM – 7:00 PM IST",
-                    "contact_info": "+91 9876543210 / contact@abcproperties.example.com",
-                    "important_policies": "Transparent pricing, zero hidden brokerage, complimentary cab pickup."
+                    "contact_info": "+91 9876543210",
+                    "important_policies": "Transparent pricing, verified customer service, dedicated support."
                 },
                 "responsibilities": [
                     "Promptly greet and assist incoming callers",
-                    "Understand customer budget, requirements, and location preferences",
-                    "Provide verified pricing and property recommendations",
-                    "Schedule site visits with complimentary cab pickup"
+                    f"Understand caller requirements for {inferred_biz}",
+                    "Provide verified pricing and service recommendations",
+                    "Schedule appointments or trials"
                 ],
                 "tasks": [
-                    "Collect caller name and budget",
-                    "Check inventory availability",
-                    "Schedule visit slot in calendar"
+                    "Collect caller name and requirement",
+                    "Explain offerings and pricing",
+                    "Schedule appointment or follow-up"
                 ],
                 "business_rules": [
                     "Never invent prices or inventory not listed in knowledge",
@@ -254,9 +279,9 @@ Do NOT output markdown or backticks."""
                     "trigger": "Customer Call / Lead Inquiry",
                     "steps": [
                         {"step": 1, "title": "Greet & Identify Need", "name": "Greet & Identify Need", "detail": "Warm intro and ask requirement", "action": "Warm intro and ask requirement"},
-                        {"step": 2, "title": "Qualify Details", "name": "Qualify Details", "detail": "Clarify location, property type, and budget", "action": "Clarify location, property type, and budget"},
+                        {"step": 2, "title": "Qualify Details", "name": "Qualify Details", "detail": "Clarify specific need and budget", "action": "Clarify specific need and budget"},
                         {"step": 3, "title": "Recommend Solution", "name": "Recommend Solution", "detail": "Quote verified prices and features", "action": "Quote verified prices and features"},
-                        {"step": 4, "title": "Book Site Visit", "name": "Book Site Visit", "detail": "Confirm convenient time slot with cab pickup", "action": "Confirm convenient time slot with cab pickup"}
+                        {"step": 4, "title": "Schedule Appointment", "name": "Schedule Appointment", "detail": "Confirm convenient time slot", "action": "Confirm convenient time slot"}
                     ],
                     "branches": [
                         {"condition": "Human Requested", "action": "Connect to senior team member"},
@@ -264,14 +289,14 @@ Do NOT output markdown or backticks."""
                     ]
                 },
                 "permissions": {
-                    "auto_execute": ["Answer inquiries", "Quote verified prices", "Book site visits"],
+                    "auto_execute": ["Answer inquiries", "Quote verified prices", "Schedule appointments"],
                     "human_approval_required": ["Discounts above 10%", "Custom payment plans"],
                     "human_only": ["Legal contracts", "Refunds"]
                 },
-                "kpis": ["Fast response under 1s", "Site visit bookings", "Lead qualification rate"],
+                "kpis": ["Fast response under 1s", "Appointment bookings", "Lead qualification rate"],
                 "faqs": [
-                    {"question": "What is the starting price for a 2 BHK?", "answer": "The starting price for a 2 BHK is 85 Lakhs in Gachibowli and Kondapur.", "category": "Pricing"},
-                    {"question": "Where are your projects located?", "answer": "Our projects are located in Gachibowli, Kondapur, and Kokapet.", "category": "Locations"}
+                    {"question": f"What services does {inferred_biz} offer?", "answer": f"{inferred_biz} provides professional {inferred_ind} services and customer support.", "category": "Services"},
+                    {"question": "How can I book an appointment?", "answer": "I can schedule an appointment for you right away. What day and time works best for you?", "category": "Booking"}
                 ]
             }
 
@@ -317,8 +342,8 @@ Do NOT output markdown or backticks."""
                 "kpis": parsed.get("kpis", [])
             },
             "business": {
-                "company_name": biz_info.get("business_name", "ABC Properties"),
-                "industry": biz_info.get("industry", "Real Estate"),
+                "company_name": biz_info.get("business_name", "SARA AI"),
+                "industry": biz_info.get("industry", "Professional Services"),
                 "locations": biz_info.get("locations", []),
                 "services": biz_info.get("services_offered", []),
                 "operating_hours": biz_info.get("operating_hours", "9:00 AM – 7:00 PM IST"),
@@ -423,7 +448,7 @@ Do NOT output markdown or backticks."""
 - Ask only ONE question at a time to maintain conversational pacing.
 - NEVER output <think> tags or internal monologues. Output ONLY spoken response words.
 - LANGUAGE MATCHING:
-  * When caller speaks Telugu or Romanized Telugu (e.g. 'kavali', 'entha', 'unnaaya'): reply in sweet, polite spoken Telugu using respectful 'అండీ' (andi).
+  * When caller speaks Telugu or Romanized Telugu (e.g. 'kavali', 'entha', 'unnaaya'): reply in sweet, polite spoken Telugu. If female caller address as 'మేడం' (Madam); if male caller address as 'సార్' (Sir). DO NOT repeat 'అండీ' repeatedly!
   * When caller speaks English: reply warmly and concisely in English.
   * When caller speaks Hindi: reply respectfully in Hindi.
 
@@ -433,14 +458,14 @@ Do NOT output markdown or backticks."""
 
 8. STOPPING & CONVERSATION CONCLUSION
 - When the caller says 'stop', 'chalu', 'bye', 'thanks', 'thank you', 'nothing else', 'inka vaddu', 'inkem ledu', or indicates they are done talking:
-  * Deliver ONE warm, polite farewell (e.g. 'ధన్యవాదాలు అండీ, సెలవు! మీకు ఏదైనా అవసరమైతే మళ్ళీ సంప్రదించండి.' or 'Thank you, have a great day!').
+  * Deliver ONE warm, polite farewell (e.g. 'ధన్యవాదాలు, సెలవు! మీకు ఏదైనా అవసరమైతే మళ్ళీ సంప్రదించండి.' or 'Thank you, have a great day!').
   * Stop speaking immediately. Do not ask any follow-up questions.
 
 9. OPERATIONAL RULES & ESCALATION
 {rules_list}
 - If caller asks for areas outside covered locations ({locations_str}), politely clarify that we do not have projects there and mention our covered locations.
 - If caller demands a human manager or asks for discounts above 10%, state:
-  'ఖచ్చితంగా అండీ, నేను మిమ్మల్ని మా సీనియర్ టీమ్ మెంబర్‌తో కనెక్ట్ చేస్తాను.' (or 'I will connect you with our senior representative right away.').
+  'ఖచ్చితంగా, నేను మిమ్మల్ని మా సీనియర్ టీమ్ మెంబర్‌తో కనెక్ట్ చేస్తాను.' (or 'I will connect you with our senior representative right away.').
 
 Remember: Output strictly spoken text suitable for real-time text-to-speech audio."""
         return prompt.strip()

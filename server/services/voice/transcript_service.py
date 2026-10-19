@@ -9,8 +9,7 @@ from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 
 from server.models import Call, Lead, Task, CreditAccount, CreditTransaction
-from server.providers.groq_llm import GroqLLM
-from server.providers.openai_llm import OpenAILLM
+from server.providers.gemini_llm import GeminiLLM
 from server.config import settings
 
 logger = logging.getLogger("sara.voice.transcript")
@@ -64,7 +63,7 @@ JSON ONLY:"""
 
         analysis_result = {}
         try:
-            llm = GroqLLM() if settings.GROQ_API_KEY else OpenAILLM()
+            llm = GeminiLLM()
             raw_response = await llm.generate_response(
                 system_prompt="You are a strict JSON data extractor.",
                 user_message=analysis_prompt,

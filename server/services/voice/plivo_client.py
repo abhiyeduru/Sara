@@ -72,7 +72,7 @@ class PlivoClient:
         if not self.is_configured:
             raise ValueError("Plivo credentials (PLIVO_AUTH_ID, PLIVO_AUTH_TOKEN) are not set in environment.")
         if self._client is None:
-            self._client = plivo.RestClient(auth_id=self.auth_id, auth_token=self.auth_token)
+            self._client = plivo.RestClient(auth_id=self.auth_id, auth_token=self.auth_token, timeout=25)
         return self._client
 
     def initiate_call(
@@ -107,7 +107,21 @@ class PlivoClient:
             kwargs["ring_method"] = "POST"
 
         logger.info(f"Plivo: Initiating outbound call from {clean_from} -> {clean_to} (answer_url={answer_url})")
-        resp = client.calls.create(**kwargs)
+        resp = None
+        last_error = None
+        import time
+        for attempt in range(1, 3):
+            try:
+                resp = client.calls.create(**kwargs)
+                break
+            except Exception as e:
+                last_error = e
+                logger.warning(f"Plivo outbound call attempt {attempt} failed: {e}")
+                if attempt < 2:
+                    time.sleep(1.0)
+
+        if resp is None:
+            raise last_error
 
         request_uuid = getattr(resp, "request_uuid", None)
         message = getattr(resp, "message", "call initiated")
@@ -208,5 +222,34 @@ class PlivoClient:
             logger.error(f"Error fetching Plivo account summary: {e}")
             return {"configured": True, "error": str(e), "auth_id": self.auth_id}
 
+    def update_application_urls(self, public_base_url: str) -> bool:
+        """Update Plivo XML application answer_url & hangup_url with current tunnel URL."""
+        if not self.is_configured or not public_base_url:
+            return False
+        try:
+            import httpx
+            import time
+            app_id = "21196592909953411"
+            url = f"https://api.plivo.com/v1/Account/{self.auth_id}/Application/{app_id}/"
+            update_data = {
+                "answer_url": f"{public_base_url}/api/v1/voice/plivo/inbound",
+                "answer_method": "POST",
+                "hangup_url": f"{public_base_url}/api/v1/voice/plivo/hangup",
+                "hangup_method": "POST"
+            }
+            for attempt in range(1, 4):
+                r = httpx.post(url, auth=(self.auth_id, self.auth_token), json=update_data, timeout=8)
+                if r.status_code in (200, 202):
+                    logger.info(f"✅ Plivo application {app_id} answer_url synced to: {public_base_url}/api/v1/voice/plivo/inbound")
+                    return True
+                if attempt < 3:
+                    time.sleep(1.5)
+            logger.warning(f"Plivo application update notice: {r.status_code} {r.text}")
+            return False
+        except Exception as e:
+            logger.warning(f"Error syncing Plivo application URL: {e}")
+            return False
+
 
 plivo_client = PlivoClient()
+

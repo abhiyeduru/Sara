@@ -26,9 +26,17 @@ def test_admin_governance_and_sync():
     print("🛡️  TESTING SARA AI ADMIN GOVERNANCE & MINUTES SYNC")
     print("========================================================\n")
 
+    # Step 0: Admin Authentication
+    print("Step 0: Authenticating with Admin Portal...")
+    login_res = client.post("/api/v1/admin/auth/login", json={"email": "admin@saadhyam.com", "password": "sara_superadmin_secret_2026"})
+    assert login_res.status_code == 200, f"Login failed: {login_res.text}"
+    admin_token = login_res.json()["admin_token"]
+    headers = {"X-Admin-Token": admin_token}
+    print(f"  ✓ Admin Authenticated! Token generated.")
+
     # 1. Admin Platform Stats
     print("Step 1: Testing GET /api/v1/admin/stats...")
-    stats_res = client.get("/api/v1/admin/stats")
+    stats_res = client.get("/api/v1/admin/stats", headers=headers)
     assert stats_res.status_code == 200, f"Stats failed: {stats_res.text}"
     stats_data = stats_res.json()
     assert "metrics" in stats_data
@@ -36,11 +44,12 @@ def test_admin_governance_and_sync():
     assert "total_users" in stats_data["metrics"]
     assert "total_minutes_available" in stats_data["metrics"]
     print(f"  ✓ Platform Stats OK: {stats_data['metrics']['total_users']} users, {stats_data['metrics']['total_minutes_available']} minutes available.")
-    print(f"  ✓ Rate per minute: ₹{stats_data['metrics']['rate_per_minute']}")
+    print(f"  ✓ Rate per minute: ₹{stats_data['metrics']['rate_per_minute']} (5 credits = 1 min)")
+    assert stats_data['metrics']['rate_per_minute'] == 5.0, f"Expected 5.0, got {stats_data['metrics']['rate_per_minute']}"
 
     # 2. List All Platform Users
     print("\nStep 2: Testing GET /api/v1/admin/users...")
-    users_res = client.get("/api/v1/admin/users")
+    users_res = client.get("/api/v1/admin/users", headers=headers)
     assert users_res.status_code == 200, f"Users failed: {users_res.text}"
     users_data = users_res.json()
     assert "users" in users_data

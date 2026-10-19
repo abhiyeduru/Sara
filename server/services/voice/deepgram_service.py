@@ -89,7 +89,7 @@ class DeepgramSTTService:
             "smart_format=true",
             "interim_results=true",
             "vad_events=true",
-            "endpointing=250",
+            "endpointing=380",
             "utterance_end_ms=1000",
             f"language={lang_param}",
         ]
@@ -111,7 +111,7 @@ class DeepgramSTTService:
         fallback_url = (
             f"wss://api.deepgram.com/v1/listen?model=nova-3&encoding={self.encoding}"
             f"&sample_rate={self.sample_rate}&channels={self.channels}&smart_format=true"
-            f"&interim_results=true&vad_events=true&endpointing=250&language={lang}"
+            f"&interim_results=true&vad_events=true&endpointing=380&language={lang}"
         )
 
         urls = [primary_url]
@@ -259,6 +259,11 @@ class DeepgramSTTService:
                 pass
             self.ws = None
         logger.info("Deepgram STT service closed.")
+
+    async def disconnect(self) -> None:
+        """Alias for close()."""
+        await self.close()
+
 
 
 if __name__ == "__main__":

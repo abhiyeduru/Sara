@@ -7,6 +7,9 @@ import {
 export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
   const [userName, setUserName] = useState(user?.name || user?.email?.split('@')[0] || '');
   const [companyName, setCompanyName] = useState('');
+  const [industry, setIndustry] = useState('Professional Services');
+  const [customIndustry, setCustomIndustry] = useState('');
+  const [offerings, setOfferings] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,20 +38,28 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
       }
     } catch (_) {}
 
-    // Smart default business payload (auto-configured for the user)
+    const resolvedIndustry = industry === 'Other' && customIndustry.trim() 
+      ? customIndustry.trim() 
+      : (industry || 'Business Services');
+
+    const parsedOfferings = offerings.trim()
+      ? offerings.split(',').map(s => s.trim()).filter(Boolean).map(name => ({ name, price: 'Custom Quote' }))
+      : [
+          { name: 'Primary Service / Offering', price: 'Contact Us' },
+          { name: 'Complimentary Consultation', price: 'Free' }
+        ];
+
+    // Smart dynamic business payload configured for the user's specific business
     const payload = {
       business_name: companyName.trim(),
-      industry: 'Professional Services & Consulting',
+      industry: resolvedIndustry,
       phone: phone.trim(),
       website: '',
       locations: ['Hyderabad'],
       operating_hours: '09:00 AM – 09:00 PM IST',
-      calling_instruction: `Whenever a new lead comes, call them. Introduce ${companyName.trim()}, understand their requirements, explain our offerings, and schedule an appointment.`,
-      products_services: [
-        { name: 'Standard Service Package', price: '₹9,999' },
-        { name: 'Complimentary Consultation / Trial', price: 'Free' }
-      ],
-      voice_preference: 'te-IN-Standard-A'
+      calling_instruction: `Whenever a new lead calls or arrives, greet them warmly. Introduce ${companyName.trim()}, ask their requirements regarding our ${resolvedIndustry} offerings, explain what we provide (${offerings.trim() || 'our core services'}), and schedule an appointment or next step.`,
+      products_services: parsedOfferings,
+      voice_preference: 'sarvam-te-kavitha'
     };
 
     const startTime = Date.now();
@@ -456,12 +467,94 @@ export default function BusinessOnboardingModal({ user, onComplete, onBack }) {
                   onChange={(e) => setCompanyName(e.target.value)}
                   onFocus={() => setFocusedField('companyName')}
                   onBlur={() => setFocusedField(null)}
-                  placeholder="e.g. KVR Fitness, ABC Realty, or Saadhyam"
+                  placeholder="e.g. Acme Tech, KVR Fitness, Apollo Dental"
                   style={getInputStyle('companyName')}
                 />
               </div>
 
-              {/* Field 3: Phone Number */}
+              {/* Field 3: Industry & Category */}
+              <div>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#17112B',
+                    marginBottom: 7,
+                  }}
+                >
+                  <Sparkles size={14} color="#9333EA" />
+                  <span>Business Category / Industry</span>
+                  <span style={{ color: '#EC4899' }}>*</span>
+                </label>
+                <select
+                  value={industry}
+                  onChange={(e) => setIndustry(e.target.value)}
+                  onFocus={() => setFocusedField('industry')}
+                  onBlur={() => setFocusedField(null)}
+                  style={{
+                    ...getInputStyle('industry'),
+                    cursor: 'pointer',
+                    appearance: 'auto'
+                  }}
+                >
+                  <option value="Professional Services">Professional Services & Consulting</option>
+                  <option value="Real Estate">Real Estate & Properties</option>
+                  <option value="Fitness & Gym">Fitness, Gym & Wellness</option>
+                  <option value="Healthcare">Healthcare & Clinics</option>
+                  <option value="Education & Coaching">Education, College & Coaching</option>
+                  <option value="Restaurant & Food">Restaurant & Food Services</option>
+                  <option value="IT & Software">IT, Software & Digital Solutions</option>
+                  <option value="Retail & E-commerce">Retail & E-commerce</option>
+                  <option value="Automotive">Automotive & Dealerships</option>
+                  <option value="Salon & Spa">Salon, Spa & Beauty</option>
+                  <option value="Other">Other / Custom Industry</option>
+                </select>
+                {industry === 'Other' && (
+                  <input
+                    value={customIndustry}
+                    onChange={(e) => setCustomIndustry(e.target.value)}
+                    placeholder="Enter your specific business type..."
+                    style={{ ...getInputStyle('customIndustry'), marginTop: 8 }}
+                  />
+                )}
+              </div>
+
+              {/* Field 4: Business Offerings & Products */}
+              <div>
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontSize: 13,
+                    fontWeight: 600,
+                    color: '#17112B',
+                    marginBottom: 7,
+                  }}
+                >
+                  <Sparkles size={14} color="#9333EA" />
+                  <span>What does your business offer?</span>
+                  <span style={{ fontSize: 11, color: '#8A82A0', fontWeight: 400 }}>(e.g. products, services)</span>
+                </label>
+                <textarea
+                  rows={2}
+                  value={offerings}
+                  onChange={(e) => setOfferings(e.target.value)}
+                  onFocus={() => setFocusedField('offerings')}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="e.g. Annual Gym Pass, Personal Training, Diet Consulting"
+                  style={{
+                    ...getInputStyle('offerings'),
+                    resize: 'none',
+                    lineHeight: 1.45
+                  }}
+                />
+              </div>
+
+              {/* Field 5: Phone Number */}
               <div>
                 <label
                   style={{

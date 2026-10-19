@@ -19,23 +19,23 @@ logger = logging.getLogger("sara.voice.billing")
 
 
 class CallBillingService:
-    RATE_PER_MINUTE_INR = 6.0        # ₹6 per minute
-    MIN_BALANCE_REQUIRED = 6.0       # Minimum ₹6.00 to initiate any call
-    DEFAULT_CALL_LIMIT_MINUTES = 10  # Default 10 minutes max per call
-    MIN_CALL_LIMIT_MINUTES = 5       # Minimum allowable call limit setting
+    RATE_PER_MINUTE_INR = 5.0        # ₹5 per minute (5 credits = 1 minute)
+    MIN_BALANCE_REQUIRED = 5.0       # Minimum ₹5.00 (5 credits) to initiate any call
+    DEFAULT_CALL_LIMIT_MINUTES = 5   # Default 5 minutes max per call
+    MIN_CALL_LIMIT_MINUTES = 1       # Minimum allowable call limit setting
     MAX_CALL_LIMIT_MINUTES = 10      # Maximum allowable call limit setting
 
     @classmethod
     def calculate_cost(cls, duration_seconds: int) -> Tuple[int, float]:
         """
-        Calculate billable minutes and total cost in INR.
-        Every minute costs ₹6 (minimum 1 minute if call was connected).
+        Calculate billable minutes and total cost in INR/credits.
+        5 credits = 1 min (₹5.00 per minute).
         Example:
-          - 25s  -> 1 min  -> ₹6.00
-          - 60s  -> 1 min  -> ₹6.00
-          - 65s  -> 2 min  -> ₹12.00
-          - 300s -> 5 min  -> ₹30.00
-          - 600s -> 10 min -> ₹60.00
+          - 25s  -> 1 min  -> 5 credits (₹5.00)
+          - 60s  -> 1 min  -> 5 credits (₹5.00)
+          - 65s  -> 2 min  -> 10 credits (₹10.00)
+          - 300s -> 5 min  -> 25 credits (₹25.00)
+          - 600s -> 10 min -> 50 credits (₹50.00)
         """
         dur = max(0, int(duration_seconds or 0))
         if dur <= 0:
@@ -111,9 +111,10 @@ class CallBillingService:
         Verify if caller has sufficient balance (>= ₹6.00) and calculate max allowable duration.
         """
         account = cls.get_user_credit_account(db, workspace_or_user_id)
+        is_unlimited = bool(account and (account.plan == "unlimited" or (account.balance and account.balance >= 100000)))
         balance = account.balance if account else 0.0
 
-        if balance < cls.MIN_BALANCE_REQUIRED:
+        if not is_unlimited and balance < cls.MIN_BALANCE_REQUIRED:
             return {
                 "allowed": False,
                 "balance": balance,
@@ -121,17 +122,20 @@ class CallBillingService:
                 "detail": f"Insufficient credit balance (₹{balance:,.2f}). Minimum ₹{cls.MIN_BALANCE_REQUIRED:.2f} required for a 1-minute call. Please top up your wallet."
             }
 
-        # Configured limit in minutes (5 to 10 min)
+        # Configured limit in minutes (5 min)
         configured_limit_min = cls.get_call_limit_minutes(db, workspace_or_user_id)
-        # Max minutes allowed by balance
-        balance_max_min = math.floor(balance / cls.RATE_PER_MINUTE_INR)
-        # Effective limit is the smaller of the two
-        effective_limit_min = min(configured_limit_min, balance_max_min)
+        if is_unlimited:
+            effective_limit_min = configured_limit_min
+        else:
+            balance_max_min = math.floor(balance / cls.RATE_PER_MINUTE_INR)
+            effective_limit_min = min(configured_limit_min, balance_max_min)
+
         effective_limit_sec = max(60, effective_limit_min * 60)
 
         return {
             "allowed": True,
             "balance": balance,
+            "is_unlimited": is_unlimited,
             "rate": cls.RATE_PER_MINUTE_INR,
             "configured_limit_minutes": configured_limit_min,
             "effective_limit_minutes": effective_limit_min,
@@ -173,7 +177,10 @@ class CallBillingService:
 
         balance_after = 0.0
         if account and cost > 0:
-            account.balance = max(0.0, round(account.balance - cost, 2))
+            if account.plan == "unlimited" or account.balance >= 500000:
+                account.balance = 999999.0
+            else:
+                account.balance = max(0.0, round(account.balance - cost, 2))
             account.total_consumed = round(account.total_consumed + cost, 2)
             balance_after = account.balance
 

@@ -30,34 +30,34 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
   // Form State
   const [formData, setFormData] = useState({
     name: 'SARA',
-    role_title: 'Real Estate Assistant',
-    business_type: 'Real Estate',
-    service_type: 'Property enquiries',
-    selectedServices: ['Property enquiries', 'Pricing questions', 'Site visit booking'],
-    business_name: 'ABC Properties',
-    description: 'ABC Properties is a premier real estate company operating in Hyderabad.',
-    locations: 'Gachibowli, Kondapur, Kokapet',
-    operating_hours: '9:00 AM – 7:00 PM IST',
-    contact_info: '+91 9876543210 / contact@abcproperties.example.com',
-    important_policies: 'Transparent pricing, no hidden brokerage for direct buyers.',
+    role_title: 'Senior Client Advisory Specialist',
+    business_type: 'Custom Business',
+    service_type: 'Client Inquiries',
+    selectedServices: ['Client Inquiries', 'Pricing & Offerings', 'Consultation Scheduling'],
+    business_name: 'My Business',
+    description: 'We are a premier business providing high-quality products and professional client services.',
+    locations: 'Hyderabad, Telangana',
+    operating_hours: '9:00 AM – 8:00 PM IST',
+    contact_info: '+91 9876543210 / contact@mybusiness.example.com',
+    important_policies: 'Transparent pricing, prompt client support, dedicated satisfaction.',
     personality: 'Professional & Friendly',
     communication_style: 'Concise',
     sales_behavior: 'Consultative',
     languages: ['te'],
-    voice_id: '330c4fa0-1da3-4c55-8e97-951bfd724e20',
+    voice_id: '07bc462a-c644-49f1-baf7-82d5599131be',
     voice_gender: 'female',
-    voice_name: 'SARA Cartesia Telugu (Sarika - Calm & Sweet Spirit)',
+    voice_name: 'SARA Cartesia Telugu (Sindhu - Primary Sweet & Clear)',
     faqs: [
-      { question: 'What is the starting price for a 2 BHK?', answer: 'The starting price for a 2 BHK is ₹85 Lakhs.', category: 'Pricing', priority: 1 },
-      { question: 'Where are your projects located?', answer: 'Our projects are located in Gachibowli, Kondapur, and Kokapet.', category: 'Locations', priority: 1 },
-      { question: 'Can I schedule a site visit?', answer: 'Yes! We arrange site visits daily between 10 AM and 6 PM.', category: 'Booking', priority: 1 }
+      { question: 'What services or products do you offer?', answer: 'We offer comprehensive customized solutions tailored to your specific requirements. I can explain our full offerings right now.', category: 'Offerings', priority: 1 },
+      { question: 'How can I schedule a consultation or meeting?', answer: 'I can reserve a convenient meeting or consultation slot for you with our specialist team today.', category: 'Booking', priority: 1 },
+      { question: 'What are your operating timings?', answer: 'We are available to assist you Monday through Saturday between 9:00 AM and 8:00 PM IST.', category: 'Timings', priority: 2 }
     ],
     rules: [
       'Never invent prices or discounts not listed in business knowledge.',
-      'Never promise unavailable inventory or unverified offers.',
+      'Always address the client respectfully and understand their exact requirement.',
       'If information is unavailable, politely offer human representative assistance.',
       'Never mention internal AI models or architecture.',
-      'Ask one question at a time to maintain conversational flow.'
+      'Ask one question at a time to maintain natural conversational flow.'
     ]
   });
 
@@ -71,12 +71,31 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
 
   async function loadInitialData() {
     try {
-      const [catData, voiceData] = await Promise.all([
+      const [catData, voiceData, bizRes] = await Promise.all([
         api.getCategories().catch(() => ({})),
-        api.getVoices().catch(() => [])
+        api.getVoices().catch(() => []),
+        fetch('/api/v1/campaigns/business-profile').then(r => r.json()).catch(() => ({}))
       ]);
       setCategories(catData);
       setVoices(voiceData);
+
+      // Dynamically auto-populate if user has already configured a business
+      const activeBiz = bizRes?.data;
+      if (activeBiz && activeBiz.business_name) {
+        setFormData(prev => ({
+          ...prev,
+          business_name: activeBiz.business_name || prev.business_name,
+          business_type: activeBiz.industry || prev.business_type,
+          role_title: `${activeBiz.business_name} Client Specialist`,
+          locations: (activeBiz.locations && activeBiz.locations.join(', ')) || prev.locations,
+          operating_hours: activeBiz.operating_hours || prev.operating_hours,
+          contact_info: activeBiz.phone || prev.contact_info,
+          description: `${activeBiz.business_name} specializes in ${activeBiz.industry || 'premium services'}.`,
+          selectedServices: activeBiz.products_services?.length > 0 
+            ? activeBiz.products_services.map(p => p.name) 
+            : prev.selectedServices
+        }));
+      }
     } catch (err) {
       console.error('Error loading builder metadata:', err);
     }
@@ -156,9 +175,9 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
       return;
     }
 
-    const isTelugu = voiceId && (voiceId.includes('te') || voiceId.includes('telugu') || voiceId === '3a8e6fea-81e5-4d4d-8755-86093146cdb8' || voiceId === '330c4fa0-1da3-4c55-8e97-951bfd724e20' || voiceId === '07bc462a-c644-49f1-baf7-82d5599131be');
+    const isTelugu = voiceId && (voiceId.includes('te') || voiceId.includes('telugu') || voiceId === '3a8e6fea-81e5-4d4d-8755-86093146cdb8' || voiceId === '330c4fa0-1da3-4c55-8e97-951bfd724e20' || voiceId === '07bc462a-c644-49f1-baf7-82d5599131be' || voiceId === 'cf061d8b-a752-4865-81a2-57570a6e0565');
     const previewText = isTelugu 
-      ? "నమస్కారం అండీ! నేను సారా మీ తెలుగు వాయిస్ అసిస్టెంట్ ని. మీకు ఏ విధంగా సహాయపడగలను?"
+      ? "హలో! నమస్కారం. నేను సారా మాట్లాడుతున్నాను. మీరు ఇప్పుడు ఒక నిమిషం మాట్లాడగలరా?"
       : "Hello! I am SARA, your real-time AI voice representative. How can I help you today?";
     const lang = isTelugu ? 'te' : 'en';
 
@@ -631,15 +650,15 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
               {(voices.length > 0 ? voices : [
-                { id: '330c4fa0-1da3-4c55-8e97-951bfd724e20', name: 'SARA Cartesia Telugu (Sarika - Calm & Sweet Spirit)', gender: 'female', style: 'Sweet, Calm & Conversational', description: 'Official Cartesia Telugu neural voice with sweet laidback tone and gentle rhythm, perfect for friendly dialogue.' },
-                { id: '3a8e6fea-81e5-4d4d-8755-86093146cdb8', name: 'SARA Cartesia Telugu (Vidya - Empathetic Voice)', gender: 'female', style: 'Gentle & Reassuring', description: 'Official Cartesia Telugu neural voice with gentle, sweet, reassuring tone designed to build trust.' },
-                { id: 'sarvam-te-pooja', name: 'SARA Telugu Sweet (Pooja - Native Sweet Voice)', gender: 'female', style: 'Sweet & Respectful', description: 'Pure authentic sweet native Telugu voice with natural respect and sweet cadence.' },
-                { id: 'sarvam-te-kavitha', name: 'SARA Telugu Crystal (Kavitha - Sweet & Crystal Clear)', gender: 'female', style: 'Sweet & Crystal Clear', description: 'Crystal-clear sweet native Telugu voice with pristine articulation.' },
-                { id: 'sarvam-te-kavya', name: 'SARA Telugu Friendly (Kavya - Conversational)', gender: 'female', style: 'Warm & Cheerful', description: 'Approachable, warm native Telugu voice for customer engagement.' },
-                { id: 'db6b0ed5-d5d3-463d-ae85-518a07d3c2b4', name: 'Skylar (English Recommended)', gender: 'female', style: 'Warm & Professional', description: 'Crystal clear neural voice ideal for corporate representatives.' }
+                { id: 'sarvam-te-kavitha', name: 'SARA Telugu Sweet (Kavitha - Sweet, Gentle & Polite)', gender: 'female', style: 'Sweet & Polite', description: 'Pure authentic sweet native Telugu voice with gentle, melodic lift and respectful cadence.' },
+                { id: 'sarvam-te-suhani', name: 'SARA Telugu Silky (Suhani - Silky Sweet & Melodic)', gender: 'female', style: 'Silky Sweet & Melodic', description: 'Harmonious, sweet native Telugu voice calibrated for friendly, welcoming dialogue.' },
+                { id: 'sarvam-te-pooja', name: 'SARA Telugu Warm (Pooja - Native Sweet Voice)', gender: 'female', style: 'Sweet & Respectful', description: 'Pure authentic sweet native Telugu voice with natural respect and conversational warmth.' },
+                { id: 'sarvam-te-kavya', name: 'SARA Telugu Cheerful (Kavya - Conversational)', gender: 'female', style: 'Warm & Cheerful', description: 'Approachable, cheerful native Telugu voice for customer engagement.' },
+                { id: 'sarvam-hi-priya', name: 'SARA Hindi Sweet (Priya - Conversational Warm)', gender: 'female', style: 'Sweet & Polite', description: 'Warm and respectful native Hindi voice with gentle cadence.' },
+                { id: 'sarvam-en-ishita', name: 'SARA Indian English (Ishita - Corporate Sweet)', gender: 'female', style: 'Warm & Professional', description: 'Crystal clear Indian English neural voice ideal for corporate sales.' }
               ]).map(v => {
                 const isSelected = formData.voice_id === v.id;
-                const isTelugu = (v.language === 'te') || v.id.includes('te') || v.id.includes('telugu') || v.id === '3a8e6fea-81e5-4d4d-8755-86093146cdb8' || v.id === '330c4fa0-1da3-4c55-8e97-951bfd724e20' || v.id === '07bc462a-c644-49f1-baf7-82d5599131be';
+                const isTelugu = (v.language === 'te') || v.id.includes('te') || v.id.includes('telugu');
                 return (
                   <div
                     key={v.id}
@@ -731,7 +750,7 @@ export default function AgentBuilder({ onAgentCreated, onSelectAgent }) {
             </div>
             <h2 className="text-2xl font-bold text-white mb-2">Ready to Deploy {formData.name}</h2>
             <p className="text-xs text-sara-400 max-w-md mx-auto mb-8">
-              Your voice agent is configured with business intelligence, custom Cartesia voice <span className="text-white font-medium">({formData.voice_name})</span>, multilingual code-switching in <span className="text-white font-medium">{formData.languages.join(', ').toUpperCase()}</span>, and real-time streaming pipeline.
+              Your voice agent is configured with business intelligence, sweet Sarvam AI voice <span className="text-white font-medium">({formData.voice_name})</span>, multilingual code-switching in <span className="text-white font-medium">{formData.languages.join(', ').toUpperCase()}</span>, and real-time streaming pipeline.
             </p>
 
             <button

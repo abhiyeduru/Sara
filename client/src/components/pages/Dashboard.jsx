@@ -1,13 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
   TrendingUp, Bot, Phone, Users, CheckSquare, Zap,
-  AlertCircle, Clock, ChevronRight, Play, PlusCircle, Sparkles, RefreshCw, Mic, IndianRupee, UsersRound
+  AlertCircle, Clock, ChevronRight, Play, PlusCircle, Sparkles, RefreshCw, Mic, IndianRupee, UsersRound,
+  FileSpreadsheet
 } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import SkeletonLoader from '../common/SkeletonLoader';
+import SetupNotificationBanner from '../employee-builder/SetupNotificationBanner';
+import EmployeeBuilder from '../employee-builder/EmployeeBuilder';
+import BulkLeadsModal from '../employee-builder/BulkLeadsModal';
 
 export default function Dashboard({ onNavigate }) {
   const [loading, setLoading] = useState(true);
+  const [isBulkLeadsOpen, setIsBulkLeadsOpen] = useState(false);
   const [dashData, setDashData] = useState(null);
   const [balance, setBalance] = useState('1,000');
   const [rawBalance, setRawBalance] = useState(1000);
@@ -29,7 +34,7 @@ export default function Dashboard({ onNavigate }) {
         setDashData(d);
 
         const recent = d.recent_activity || [];
-        const hourlyBuckets = { '9am': 4, '11am': 12, '1pm': 8, '3pm': 19, '5pm': 15, '7pm': 9 };
+        const hourlyBuckets = { '9am': 0, '11am': 0, '1pm': 0, '3pm': 0, '5pm': 0, '7pm': 0 };
         recent.forEach((act) => {
           if (act.created_at) {
             const h = new Date(act.created_at).getHours();
@@ -111,9 +116,8 @@ export default function Dashboard({ onNavigate }) {
 
   return (
     <div
-      className="animate-fade-in"
+      className="animate-fade-in dashboard-page-container"
       style={{
-        padding: '24px 32px',
         maxWidth: 1440,
         margin: '0 auto',
         display: 'flex',
@@ -123,8 +127,8 @@ export default function Dashboard({ onNavigate }) {
       }}
     >
       {/* ── 1. Clean Editorial Header (No Box) ───────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
+      <div className="dashboard-header-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div className="dashboard-header-title">
           <h1
             className="font-editorial"
             style={{
@@ -142,8 +146,8 @@ export default function Dashboard({ onNavigate }) {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{
+        <div className="dashboard-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span className="dashboard-gateway-badge" style={{
             display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px',
             borderRadius: 20, background: '#f0fdf4', border: '1px solid #bbf7d0',
             fontSize: 12, fontWeight: 700, color: '#047857'
@@ -152,24 +156,52 @@ export default function Dashboard({ onNavigate }) {
             Plivo Voice Gateway Active (+91 80 6552 2007)
           </span>
 
-          <button className="btn btn-secondary btn-sm" onClick={handleRefresh} style={{ borderRadius: 20 }}>
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="dashboard-header-btns" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary btn-sm" onClick={handleRefresh} style={{ borderRadius: 20 }}>
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
 
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => onNavigate('employees/new')}
-            style={{ background: 'var(--brand-gradient)', border: 'none', borderRadius: 20, padding: '7px 16px' }}
-          >
-            <PlusCircle size={14} />
-            New AI Worker
-          </button>
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => setIsBulkLeadsOpen(true)}
+              style={{ borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6d28d9', borderColor: '#ddd6fe', background: '#f5f3ff' }}
+            >
+              <FileSpreadsheet size={14} color="#7c3aed" />
+              Bulk Leads 📂
+            </button>
+
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={() => onNavigate('employees/new')}
+              style={{ background: 'var(--brand-gradient)', border: 'none', borderRadius: 20, padding: '7px 16px' }}
+            >
+              <PlusCircle size={14} />
+              New AI Worker
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ── 2. Unified Executive Metrics Bar (Replaces 7 Separate Boxes) ── */}
-      <div style={{
+      {/* ── 2. Setup Notification Onboarding Banner ─────────────────── */}
+      <SetupNotificationBanner
+        onContinue={() => {
+          const el = document.getElementById('ai-employee-builder-workspace');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }}
+        hasIncompleteSetup={true}
+      />
+
+      {/* ── 3. Main AI Employee Builder Workspace ────────────────────── */}
+      <div id="ai-employee-builder-workspace">
+        <EmployeeBuilder
+          onNavigate={onNavigate}
+          onEmployeeCreated={() => fetchDashboardData()}
+        />
+      </div>
+
+      {/* ── 4. Unified Executive Metrics Bar (Replaces 7 Separate Boxes) ── */}
+      <div className="dashboard-metrics-bar" style={{
         background: '#ffffff',
         border: '1px solid var(--border)',
         borderRadius: 16,
@@ -181,14 +213,14 @@ export default function Dashboard({ onNavigate }) {
         boxShadow: '0 4px 20px rgba(124, 58, 237, 0.03)'
       }}>
         {[
-          { label: 'AI Employees', value: workforce.total || 1, sub: `${workforce.active || 1} active`, icon: Bot, color: '#7c3aed' },
-          { label: 'Voice Calls', value: calls.total || 1, sub: `${calls.active || 0} live`, icon: Phone, color: '#2563eb' },
-          { label: 'CRM Leads', value: leads.total || 1, sub: `${leads.qualified || 1} qualified`, icon: Users, color: '#10b981' },
-          { label: 'Tasks Done', value: tasks.completed || 0, sub: `${tasks.running || 0} running`, icon: CheckSquare, color: '#4f46e5' },
-          { label: 'Conversion Rate', value: `${leads.conversion_rate || 100}%`, sub: 'Avg Rate', icon: TrendingUp, color: '#d97706' },
+          { label: 'AI Employees', value: workforce.total ?? 0, sub: `${workforce.active ?? 0} active`, icon: Bot, color: '#7c3aed' },
+          { label: 'Voice Calls', value: calls.total ?? 0, sub: `${calls.active ?? 0} live`, icon: Phone, color: '#2563eb' },
+          { label: 'CRM Leads', value: leads.total ?? 0, sub: `${leads.qualified ?? 0} qualified`, icon: Users, color: '#10b981' },
+          { label: 'Tasks Done', value: tasks.completed ?? 0, sub: `${tasks.running ?? 0} running`, icon: CheckSquare, color: '#4f46e5' },
+          { label: 'Conversion Rate', value: `${leads.conversion_rate ?? 0}%`, sub: 'Avg Rate', icon: TrendingUp, color: '#d97706' },
           { label: 'Call Wallet', value: `₹${balance}`, sub: 'Credits left', icon: IndianRupee, color: '#059669' },
         ].map((m, idx) => (
-          <div key={m.label} style={{
+          <div key={m.label} className="dashboard-metric-item" style={{
             display: 'flex', alignItems: 'center', gap: 12,
             borderRight: idx < 5 ? '1px solid var(--border-light)' : 'none',
             paddingRight: idx < 5 ? 12 : 0
@@ -210,7 +242,7 @@ export default function Dashboard({ onNavigate }) {
       </div>
 
       {/* ── 3. Single-Screen 2-Column Command Center ───────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, alignItems: 'stretch' }}>
+      <div className="dashboard-command-grid" style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 20, alignItems: 'stretch' }}>
         
         {/* LEFT COLUMN: Telephony Cap & Live Activity Graph */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -233,7 +265,7 @@ export default function Dashboard({ onNavigate }) {
                     Telephony Call Duration Cap & Billing
                   </div>
                   <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 1 }}>
-                    ₹6/min wallet deduct • 30s auto-warning
+                    5 credits (₹5)/min wallet deduct • 30s auto-warning
                   </div>
                 </div>
               </div>
@@ -245,11 +277,11 @@ export default function Dashboard({ onNavigate }) {
               )}
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, background: 'var(--surface-soft)', padding: '12px 18px', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <div className="dashboard-cap-row" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, background: 'var(--surface-soft)', padding: '12px 18px', borderRadius: 12, border: '1px solid var(--border)', flexWrap: 'wrap' }}>
               <div>
                 <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>Available Calling Time</div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', marginTop: 2 }}>
-                  {Math.floor(rawBalance / (callLimits.rate_per_minute || 6.0))} <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}>mins</span>
+                  {Math.floor(rawBalance / (callLimits.rate_per_minute || 5.0))} <span style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 500 }}>mins</span>
                 </div>
               </div>
 
@@ -416,6 +448,12 @@ export default function Dashboard({ onNavigate }) {
         </div>
 
       </div>
+
+      <BulkLeadsModal
+        isOpen={isBulkLeadsOpen}
+        onClose={() => setIsBulkLeadsOpen(false)}
+        onCampaignCreated={() => fetchDashboardData()}
+      />
     </div>
   );
 }
