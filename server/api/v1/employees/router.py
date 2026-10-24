@@ -356,9 +356,32 @@ async def compile_and_create_employee(
     base_prompt = spec.get("system_prompt", "") if isinstance(spec, dict) else ""
     compiled_prompt = base_prompt + script_prompt
 
+    # Ensure user has a valid Workspace in DB so foreign key constraint succeeds
+    from server.models import Workspace, WorkspaceMember, Organization
+    wm = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
+    if wm and wm.workspace_id:
+        target_ws_id = wm.workspace_id
+    else:
+        ws_by_user = db.query(Workspace).filter(Workspace.id == user.id).first()
+        if ws_by_user:
+            target_ws_id = ws_by_user.id
+        else:
+            first_ws = db.query(Workspace).first()
+            if first_ws:
+                target_ws_id = first_ws.id
+            else:
+                # Create default organization & workspace
+                org = Organization(id=f"org_{user.id}", name="My Organization")
+                db.add(org)
+                db.flush()
+                ws = Workspace(id=user.id, organization_id=org.id, name="My Workspace")
+                db.add(ws)
+                db.flush()
+                target_ws_id = ws.id
+
     try:
         emp = AIEmployee(
-            workspace_id=user.id,
+            workspace_id=target_ws_id,
             created_by=user.id,
             name=name,
             role=role,

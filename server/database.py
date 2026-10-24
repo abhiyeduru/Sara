@@ -18,7 +18,7 @@ def create_db_engine():
                 pool_timeout=30,
                 echo=False,
                 connect_args={
-                    "connect_timeout": 5,
+                    "connect_timeout": 15,
                     "keepalives": 1,
                     "keepalives_idle": 30,
                     "keepalives_interval": 10,
@@ -27,7 +27,7 @@ def create_db_engine():
             )
             with test_engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
-            logger.info("Connected successfully to PostgreSQL database.")
+            logger.info("Connected successfully to PostgreSQL database (Neon).")
             return test_engine
         except Exception as e:
             logger.warning(f"PostgreSQL connection to Neon failed ({e}). Falling back to local SQLite database (sqlite:///sara.db)...")
