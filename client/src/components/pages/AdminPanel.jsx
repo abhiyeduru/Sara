@@ -478,10 +478,11 @@ export default function AdminPanel({ onNavigate }) {
             key={id}
             onClick={() => setActiveTab(id)}
             style={{
-              padding: '10px 6px 14px',
+              padding: '10px 14px 12px',
               border: 'none',
-              background: 'none',
-              borderBottom: activeTab === id ? '2.5px solid #7c3aed' : '2.5px solid transparent',
+              background: activeTab === id ? 'rgba(124, 58, 237, 0.08)' : 'transparent',
+              borderRadius: '10px 10px 0 0',
+              borderBottom: activeTab === id ? '3px solid #7c3aed' : '3px solid transparent',
               color: activeTab === id ? '#7c3aed' : 'var(--text-muted)',
               fontWeight: activeTab === id ? 700 : 500,
               fontSize: 13.5,
@@ -489,8 +490,22 @@ export default function AdminPanel({ onNavigate }) {
               display: 'flex',
               alignItems: 'center',
               gap: 8,
-              transition: 'all 0.15s ease',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
               whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={(e) => {
+              if (activeTab !== id) {
+                e.currentTarget.style.color = '#7c3aed';
+                e.currentTarget.style.background = 'rgba(124, 58, 237, 0.04)';
+                e.currentTarget.style.transform = 'translateY(-1px)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (activeTab !== id) {
+                e.currentTarget.style.color = 'var(--text-muted)';
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.transform = 'none';
+              }
             }}
           >
             <Icon size={16} />

@@ -1012,16 +1012,130 @@ async def get_campaign_leads(
     results = []
     for cl in c_leads:
         lead = db.query(Lead).filter(Lead.id == cl.lead_id).first()
+        call = db.query(Call).filter(Call.id == cl.call_id).first() if cl.call_id else None
+        
+        # Calculate interest from call outcome or sentiment
+        interest = "Neutral"
+        outcome_str = (cl.outcome or (call.outcome if call else "") or "").upper()
+        if "INTERESTED" in outcome_str or "QUALIFIED" in outcome_str:
+            interest = "High"
+        elif "CALLBACK" in outcome_str or "DETAILS" in outcome_str:
+            interest = "Medium"
+        elif "NOT_INTERESTED" in outcome_str or "NO_ANSWER" in outcome_str or "UNREACHABLE" in outcome_str:
+            interest = "Low"
+
         results.append({
             "id": cl.id,
+            "contact_id": f"CNT-{cl.id[:6].upper()}",
             "lead_id": cl.lead_id,
-            "name": lead.name if lead else "Prospect",
+            "name": (lead.name if lead and lead.name and lead.name.lower() != "prospect" else "Unknown"),
             "phone": lead.phone if lead else "",
             "status": cl.status,
             "attempts": cl.attempts,
-            "outcome": cl.outcome,
+            "outcome": cl.outcome or (call.outcome if call else "Pending"),
             "call_id": cl.call_id,
+            "interest": interest,
+            "summary": call.summary if call and call.summary else (lead.intent if lead else ""),
+            "duration": f"{call.duration_seconds // 60:02d}:{call.duration_seconds % 60:02d}" if call and call.duration_seconds else "00:00",
+            "duration_seconds": call.duration_seconds if call else 0,
+            "transcript": call.transcript if call else [],
+            "follow_up_needed": True if interest in ["High", "Medium"] or "CALLBACK" in outcome_str else False,
             "created_at": cl.created_at.isoformat() if cl.created_at else None
         })
     return {"data": results}
+
+
+@router.get("/{campaign_id}/reports")
+async def get_campaign_reports(
+    campaign_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Detailed individual call reports and aggregate analytics for Call by Sara campaigns.
+    """
+    camp = db.query(Campaign).filter(Campaign.id == campaign_id).first()
+    if not camp:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    c_leads = db.query(CampaignLead).filter(CampaignLead.campaign_id == campaign_id).all()
+    reports = []
+    
+    total_contacts = len(c_leads)
+    calls_attempted = sum(cl.attempts for cl in c_leads)
+    answered_count = 0
+    interested_count = 0
+    followup_count = 0
+    total_duration_sec = 0
+    failed_count = 0
+
+    for cl in c_leads:
+        lead = db.query(Lead).filter(Lead.id == cl.lead_id).first()
+        call = db.query(Call).filter(Call.id == cl.call_id).first() if cl.call_id else None
+        
+        outcome_str = (cl.outcome or (call.outcome if call else "") or "").upper()
+        is_answered = cl.status in ["connected", "completed"] or (call and call.status in ["completed", "in-progress"])
+        if is_answered:
+            answered_count += 1
+            if call and call.duration_seconds:
+                total_duration_sec += call.duration_seconds
+
+        interest = "Neutral"
+        if "INTERESTED" in outcome_str or "QUALIFIED" in outcome_str:
+            interest = "High"
+            interested_count += 1
+        elif "CALLBACK" in outcome_str or "DETAILS" in outcome_str:
+            interest = "Medium"
+        elif "NOT_INTERESTED" in outcome_str or "UNREACHABLE" in outcome_str or "FAILED" in outcome_str:
+            interest = "Low"
+
+        if cl.status in ["failed", "unreachable"]:
+            failed_count += 1
+
+        followup_needed = interest in ["High", "Medium"] or "CALLBACK" in outcome_str or "DETAILS" in outcome_str
+        if followup_needed:
+            followup_count += 1
+
+        phone_val = lead.phone if lead else ""
+        masked_phone = f"{phone_val[:5]}*****{phone_val[-2:]}" if len(phone_val) >= 7 else phone_val
+
+        reports.append({
+            "contact_id": f"CNT-{cl.id[:6].upper()}",
+            "name": lead.name if lead and lead.name and lead.name.lower() != "prospect" else "Unknown",
+            "phone": phone_val,
+            "masked_phone": masked_phone,
+            "campaign": camp.name,
+            "call_status": cl.status.capitalize(),
+            "call_id": cl.call_id,
+            "attempts": cl.attempts,
+            "duration": f"{call.duration_seconds // 60:02d}:{call.duration_seconds % 60:02d}" if call and call.duration_seconds else "00:00",
+            "duration_seconds": call.duration_seconds if call else 0,
+            "language": "Telugu",
+            "interest": interest,
+            "outcome": cl.outcome or (call.outcome if call else "Pending"),
+            "follow_up": "Required" if followup_needed else "Not Required",
+            "summary": call.summary if call and call.summary else (lead.intent if lead else "Pending conversation analysis"),
+            "transcript": call.transcript if call else [],
+            "next_action": "Authorized team member to follow up via WhatsApp/call" if followup_needed else "No action needed"
+        })
+
+    return {
+        "success": True,
+        "campaign_id": camp.id,
+        "campaign_name": camp.name,
+        "analytics": {
+            "total_contacts": total_contacts,
+            "calls_attempted": calls_attempted,
+            "calls_answered": answered_count,
+            "successful_conversations": answered_count,
+            "unanswered_calls": max(0, total_contacts - answered_count - failed_count),
+            "failed_calls": failed_count,
+            "interested_contacts": interested_count,
+            "followups_required": followup_count,
+            "total_duration": f"{total_duration_sec // 60}m {total_duration_sec % 60}s",
+            "total_duration_seconds": total_duration_sec
+        },
+        "reports": reports
+    }
+
 

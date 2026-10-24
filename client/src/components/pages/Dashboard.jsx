@@ -9,11 +9,17 @@ import SkeletonLoader from '../common/SkeletonLoader';
 import SetupNotificationBanner from '../employee-builder/SetupNotificationBanner';
 import EmployeeBuilder from '../employee-builder/EmployeeBuilder';
 import BulkLeadsModal from '../employee-builder/BulkLeadsModal';
+import DashboardWorkforceSection from '../dashboard/DashboardWorkforceSection';
+import QuickTestCallModal from '../dashboard/QuickTestCallModal';
 
 export default function Dashboard({ onNavigate }) {
   const [loading, setLoading] = useState(true);
   const [isBulkLeadsOpen, setIsBulkLeadsOpen] = useState(false);
+  const [selectedBulkEmployee, setSelectedBulkEmployee] = useState(null);
   const [dashData, setDashData] = useState(null);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [testCallEmployee, setTestCallEmployee] = useState(null);
+  const [isTestCallModalOpen, setIsTestCallModalOpen] = useState(false);
   const [balance, setBalance] = useState('1,000');
   const [rawBalance, setRawBalance] = useState(1000);
   const [chartData, setChartData] = useState([]);
@@ -23,10 +29,11 @@ export default function Dashboard({ onNavigate }) {
 
   const fetchDashboardData = async () => {
     try {
-      const [analyticsRes, billingRes, limitsRes] = await Promise.all([
+      const [analyticsRes, billingRes, limitsRes, employeesRes] = await Promise.all([
         fetch('/api/v1/analytics/dashboard'),
         fetch('/api/v1/billing/balance'),
         fetch('/api/v1/billing/limits'),
+        fetch('/api/v1/employees'),
       ]);
 
       if (analyticsRes.ok) {
@@ -48,6 +55,26 @@ export default function Dashboard({ onNavigate }) {
         });
         const chartPoints = Object.entries(hourlyBuckets).map(([t, v]) => ({ t, v }));
         setChartData(chartPoints);
+
+        // Fallback employees from analytics if separate endpoint not yet populated
+        if (d.all_employees && d.all_employees.length > 0) {
+          setEmployeesList(prev => {
+            const newIds = new Set(d.all_employees.map(e => e.id));
+            const preservedNew = prev.filter(e => e.isNew && !newIds.has(e.id));
+            return [...preservedNew, ...d.all_employees];
+          });
+        }
+      }
+
+      if (employeesRes.ok) {
+        const emps = await employeesRes.json();
+        if (Array.isArray(emps) && emps.length > 0) {
+          setEmployeesList(prev => {
+            const newIds = new Set(emps.map(e => e.id));
+            const preservedNew = prev.filter(e => e.isNew && !newIds.has(e.id));
+            return [...preservedNew, ...emps];
+          });
+        }
       }
 
       if (billingRes.ok) {
@@ -163,6 +190,30 @@ export default function Dashboard({ onNavigate }) {
             </button>
 
             <button
+              className="btn btn-sm"
+              onClick={() => onNavigate('call-by-sara')}
+              style={{
+                borderRadius: 20,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                background: 'linear-gradient(135deg, #7c3aed 0%, #ec4899 100%)',
+                color: '#ffffff',
+                border: 'none',
+                fontWeight: 700,
+                padding: '7px 18px',
+                boxShadow: '0 4px 14px rgba(124, 58, 237, 0.35)',
+                cursor: 'pointer',
+                transition: 'transform 0.15s ease'
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px) scale(1.02)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; }}
+            >
+              <Phone size={14} />
+              Call by Sara 📞
+            </button>
+
+            <button
               className="btn btn-secondary btn-sm"
               onClick={() => setIsBulkLeadsOpen(true)}
               style={{ borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6d28d9', borderColor: '#ddd6fe', background: '#f5f3ff' }}
@@ -196,7 +247,36 @@ export default function Dashboard({ onNavigate }) {
       <div id="ai-employee-builder-workspace">
         <EmployeeBuilder
           onNavigate={onNavigate}
-          onEmployeeCreated={() => fetchDashboardData()}
+          onEmployeeCreated={(newEmp) => {
+            if (newEmp) {
+              setEmployeesList(prev => [{ ...newEmp, isNew: true }, ...prev.filter(e => e.id !== newEmp.id)]);
+            }
+            fetchDashboardData();
+            setTimeout(() => {
+              const el = document.getElementById('dashboard-workforce-display');
+              if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 300);
+          }}
+          onTestCall={(emp) => {
+            setTestCallEmployee(emp);
+            setIsTestCallModalOpen(true);
+          }}
+        />
+      </div>
+
+      {/* ── 3.5. Autonomous AI Workforce Display (మీ AI ఉద్యోగులు) ─────── */}
+      <div id="dashboard-workforce-display">
+        <DashboardWorkforceSection
+          employees={employeesList}
+          onNavigate={onNavigate}
+          onTestCall={(emp) => {
+            setTestCallEmployee(emp);
+            setIsTestCallModalOpen(true);
+          }}
+          onOpenBulkModal={(emp) => {
+            setSelectedBulkEmployee(emp);
+            setIsBulkLeadsOpen(true);
+          }}
         />
       </div>
 
@@ -451,8 +531,23 @@ export default function Dashboard({ onNavigate }) {
 
       <BulkLeadsModal
         isOpen={isBulkLeadsOpen}
-        onClose={() => setIsBulkLeadsOpen(false)}
+        onClose={() => {
+          setIsBulkLeadsOpen(false);
+          setSelectedBulkEmployee(null);
+        }}
+        preselectedEmployeeId={selectedBulkEmployee?.id}
+        preselectedEmployeeName={selectedBulkEmployee?.name}
+        preselectedScript={selectedBulkEmployee?.call_script}
         onCampaignCreated={() => fetchDashboardData()}
+      />
+
+      <QuickTestCallModal
+        employee={testCallEmployee}
+        isOpen={isTestCallModalOpen}
+        onClose={() => {
+          setIsTestCallModalOpen(false);
+          setTestCallEmployee(null);
+        }}
       />
     </div>
   );

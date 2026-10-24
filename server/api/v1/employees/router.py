@@ -141,8 +141,9 @@ async def list_employees(
     if search:
         q = q.filter(AIEmployee.name.ilike(f"%{search}%"))
 
+    from sqlalchemy.orm import selectinload
     total = q.count()
-    employees = q.offset((page - 1) * limit).limit(limit).all()
+    employees = q.options(selectinload(AIEmployee.permissions), selectinload(AIEmployee.skills)).offset((page - 1) * limit).limit(limit).all()
     return {
         "total": total,
         "page": page,
@@ -244,16 +245,60 @@ async def compile_and_create_employee(
     voice_id, voice_name, voice_gender = voice_map.get(body.language, ("07bc462a-c644-49f1-baf7-82d5599131be", "Sindhu", "female"))
 
     identity = spec.get("identity", {})
-    name = identity.get("name") or "Sara"
-    role = identity.get("role_title") or (f"{body.template_category or 'Business'} Specialist")
-    department = identity.get("department") or (body.template_category or "Sales")
+    desc_lower = (body.description or "").lower()
+
+    # Detect domain to craft appropriate name & role
+    if any(k in desc_lower for k in ["ప్లాట్", "రియల్ ఎస్టేట్", "విల్లా", "వెంచర్", "plot", "villa", "real estate", "flat", "apartment", "gated"]):
+        detected_domain = "Real Estate"
+        name = "Sara (Real Estate)"
+        role = "Real Estate & Property Advisor"
+        department = "Real Estate Sales"
+    elif any(k in desc_lower for k in ["హాస్పిటల్", "డాక్టర్", "క్లినిక్", "hospital", "clinic", "doctor", "health", "dental"]):
+        detected_domain = "Healthcare"
+        name = "Sara (Healthcare)"
+        role = "Clinic & Appointment Specialist"
+        department = "Patient Care"
+    elif any(k in desc_lower for k in ["కార్", "షోరూమ్", "వాహనం", "car", "automobile", "dealership", "test drive"]):
+        detected_domain = "Automobile"
+        name = "Sara (Auto Sales)"
+        role = "Automobile Sales Specialist"
+        department = "Vehicle Sales"
+    elif any(k in desc_lower for k in ["ఇంటీరియర్", "interior", "modular kitchen", "home decor"]):
+        detected_domain = "Interior Design"
+        name = "Sara (Interior Design)"
+        role = "Interior Design Consultant"
+        department = "Design Services"
+    elif any(k in desc_lower for k in ["కోర్సు", "కోచింగ్", "course", "coaching", "admission", "education", "training"]):
+        detected_domain = "Education"
+        name = "Sara (Education)"
+        role = "Admissions & Course Advisor"
+        department = "Education Services"
+    else:
+        detected_domain = body.template_category or "Business Services"
+        name = identity.get("name") or "Sara"
+        role = identity.get("role_title") or (f"{body.template_category or 'Business'} Specialist")
+        department = identity.get("department") or (body.template_category or "Sales")
+
     mission = identity.get("mission") or body.description
+
+    # Ensure 5-stage tailored script exists matching this business description
+    if not body.script_stages or len(body.script_stages) < 3:
+        try:
+            from server.api.v1.voice.router import synthesize_script_for_business_core
+            synth_res = await synthesize_script_for_business_core(body.description, lang=body.language)
+            if synth_res.get("success") and synth_res.get("script_stages"):
+                body.script_stages = synth_res["script_stages"]
+                if not body.opening_line and synth_res.get("opening_line"):
+                    body.opening_line = synth_res["opening_line"].get(body.language) or synth_res["opening_line"].get("en")
+        except Exception as synth_err:
+            logger.warning(f"Script synthesis fallback in compile-and-create: {synth_err}")
 
     # Attach calling mode and template category
     universal_spec = spec
     universal_spec["calling_mode"] = body.calling_mode
-    universal_spec["template_category"] = body.template_category
+    universal_spec["template_category"] = body.template_category or detected_domain
     universal_spec["primary_language"] = body.language
+    universal_spec["domain"] = detected_domain
 
     # Build script steps from selected template stages or workflow
     if body.script_stages:
@@ -339,6 +384,27 @@ async def compile_and_create_employee(
 
     db.commit()
     db.refresh(emp)
+
+    # Auto-sync BusinessProfile for the user so telephony calls immediately know the business
+    try:
+        from server.models import BusinessProfile
+        bp = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
+        if not bp:
+            bp = BusinessProfile(
+                user_id=user.id,
+                workspace_id=user.id,
+                business_name=detected_domain or body.template_category or "Our Business",
+                industry=detected_domain or "Services",
+                description=body.description,
+            )
+            db.add(bp)
+        else:
+            bp.business_name = detected_domain or bp.business_name
+            bp.description = body.description or bp.description
+        db.commit()
+    except Exception as bp_err:
+        logger.warning(f"BusinessProfile sync notice: {bp_err}")
+
     logger.info(f"Autonomously compiled & created AI Employee {emp.name} ({emp.id}) with mode {body.calling_mode}")
     return _to_dict(emp)
 

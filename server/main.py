@@ -109,6 +109,7 @@ from server.api.v1.billing.router    import router as billing_router
 from server.api.v1.activity.router   import router as activity_router
 from server.api.v1.integrations.router import router as integrations_router, mcp_router
 from server.api.v1.knowledge.router import router as knowledge_router
+from server.api.v1.reports.router import router as reports_router
 from server.api.v1.admin.router import router as admin_router
 from server.api.v1.teams.router import router as teams_router
 from server.api.v1.voice.router import router as voice_router
@@ -147,6 +148,7 @@ app.include_router(phone_numbers_router)
 app.include_router(campaigns_router)
 app.include_router(approvals_router)
 app.include_router(analytics_router)
+app.include_router(reports_router)
 app.include_router(billing_router)
 app.include_router(activity_router)
 app.include_router(integrations_router)

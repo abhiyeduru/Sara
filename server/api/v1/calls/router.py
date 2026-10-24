@@ -243,6 +243,28 @@ async def hangup_call(
     c.ended_at = datetime.now(timezone.utc)
     db.commit()
 
+    try:
+        from server.services.voice.crm_sync_service import CRMSyncService
+        CRMSyncService.sync_call_to_crm_and_employee(
+            db=db,
+            call_id=c.id,
+            employee_id=c.ai_employee_id or c.employee_id,
+            phone_number=c.to_number or c.from_number,
+            direction=c.direction or "outbound",
+            duration_seconds=c.duration_seconds or 0,
+            transcript_history=c.transcript or [],
+            summary_data={
+                "summary": c.summary,
+                "sentiment": c.sentiment,
+                "intent": c.intent,
+                "outcome": c.outcome,
+                "lead_score": c.lead_score,
+            },
+            workspace_id=c.workspace_id,
+        )
+    except Exception as sync_err:
+        logger.warning(f"Error syncing hung up call to CRM: {sync_err}")
+
     await voice_events_bus.broadcast({
         "type": "call.completed",
         "call_id": c.id,

@@ -1,0 +1,22 @@
+[
+  {
+    "Timestamp": "2026-10-21 16:05:33 UTC",
+    "Name": "Kavitha",
+    "Phone": "+919876543210",
+    "Email": "",
+    "Requirement": "",
+    "Budget": "\u20b91.2 Cr",
+    "Status": "Qualified",
+    "Notes": "Gachibowli site visit"
+  },
+  {
+    "Timestamp": "2026-10-21 16:03:05 UTC",
+    "Name": "New Prospect",
+    "Phone": "",
+    "Email": "",
+    "Requirement": "",
+    "Budget": "Unspecified",
+    "Status": "Qualified",
+    "Notes": "Appended via AI Voice Call"
+  }
+]

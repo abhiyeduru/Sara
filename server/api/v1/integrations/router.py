@@ -108,12 +108,25 @@ class MCPServerCreate(BaseModel):
     auth_config: dict = {}
 
 
+class MCPToolExecuteRequest(BaseModel):
+    tool_name: str
+    arguments: dict = {}
+
+
 @mcp_router.get("")
 async def list_mcp_servers(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    servers = db.query(MCPServer).filter(MCPServer.workspace_id == user.id).all()
+    from server.services.mcp.google_hub_mcp import google_hub_mcp
+    google_hub_mcp.ensure_google_hub_mcp_registered(db, user.id)
+
+    servers = db.query(MCPServer).filter(
+        (MCPServer.workspace_id == user.id) | 
+        (MCPServer.workspace_id == "ws_default_1") |
+        (MCPServer.id == "mcp_google_hub_primary")
+    ).all()
+
     return {"data": [{
         "id": s.id,
         "name": s.name,
@@ -154,7 +167,17 @@ async def list_mcp_tools(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    tools = db.query(MCPTool).filter(MCPTool.server_id == server_id).all()
+    from server.services.mcp.google_hub_mcp import google_hub_mcp
+    google_hub_mcp.ensure_google_hub_mcp_registered(db, user.id)
+
+    tools = db.query(MCPTool).filter(
+        (MCPTool.server_id == server_id) | 
+        ((server_id in ["google_hub", "google-hub", "mcp_google_hub_primary"]) & (MCPTool.server_id == "mcp_google_hub_primary"))
+    ).all()
+
+    if not tools and server_id in ["google_hub", "google-hub", "mcp_google_hub_primary"]:
+        tools = db.query(MCPTool).filter(MCPTool.server_id == "mcp_google_hub_primary").all()
+
     return {"data": [{
         "id": t.id,
         "name": t.name,
@@ -162,3 +185,31 @@ async def list_mcp_tools(
         "risk_level": t.risk_level,
         "input_schema": t.input_schema,
     } for t in tools]}
+
+
+@mcp_router.post("/google-hub/execute")
+@mcp_router.post("/{server_id}/execute")
+async def execute_mcp_tool(
+    body: MCPToolExecuteRequest,
+    server_id: str = "google-hub",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Execute an MCP tool directly via HTTP / API.
+    Used by AI agents, workflow automations, and direct user triggers.
+    """
+    from server.services.mcp.google_hub_mcp import google_hub_mcp
+    result = await google_hub_mcp.execute_tool(
+        tool_name=body.tool_name,
+        args=body.arguments,
+        db=db,
+        user_id=user.id,
+        workspace_id=user.id
+    )
+    return {
+        "success": result.get("success", False),
+        "tool": body.tool_name,
+        "server": "Google Workspace Hub MCP",
+        "result": result
+    }

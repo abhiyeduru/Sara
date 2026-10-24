@@ -112,9 +112,29 @@ class ConversationOrchestrator:
         self.last_assistant_speech_end_time: float = 0.0
         self.primary_llm: str = (getattr(settings, "PRIMARY_LLM", "gemini") or "gemini").lower()
         self.caller_gender: str = "unknown"
-        self.caller_title: str = ""
-        self._init_caller_gender()
-        self._system_prompt = self._compile_system_prompt()
+        self.caller_title: str = "సార్"
+        self._system_prompt: Optional[str] = None
+        # Initialize caller gender & prompt asynchronously so call connects in < 50ms!
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._async_init_context())
+        except RuntimeError:
+            pass
+
+    async def _async_init_context(self) -> None:
+        """Asynchronously load caller gender and system prompt in background without blocking call pickup."""
+        try:
+            self._init_caller_gender()
+            self._system_prompt = self._compile_system_prompt()
+        except Exception as e:
+            logger.warning(f"[Call {self.call_id}] Background context init notice: {e}")
+
+    @property
+    def system_prompt(self) -> str:
+        """Return compiled system prompt or fast fallback while background compilation finishes."""
+        if not self._system_prompt:
+            self._system_prompt = self._compile_system_prompt()
+        return self._system_prompt
 
     def _init_caller_gender(self) -> None:
         """Inspect Lead or Customer name in DB to pre-classify caller gender if available."""
@@ -226,6 +246,9 @@ class ConversationOrchestrator:
 
     def _resolve_business_context(self) -> Dict[str, Any]:
         """Dynamically resolve business profile, user customizations, script stages, and lead context."""
+        if getattr(self, "_cached_ctx", None) is not None:
+            return self._cached_ctx
+
         emp_name = self.employee.name if self.employee else "Sara"
         role = self.employee.role if self.employee and self.employee.role else "Business & Client Advisory Specialist"
         dept = self.employee.department if self.employee and self.employee.department else "Customer Service"
@@ -266,25 +289,13 @@ class ConversationOrchestrator:
                     if candidate and candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
                         ws = candidate
                     else:
-                        # Check workspace_members
-                        wms = self.db.query(WorkspaceMember).filter(WorkspaceMember.user_id == self.employee.workspace_id).all()
-                        for wm in wms:
-                            candidate = self.db.query(Workspace).filter(Workspace.id == wm.workspace_id).first()
-                            if candidate and candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
-                                ws = candidate
-                                break
-                        if not ws and wms:
-                            ws = self.db.query(Workspace).filter(Workspace.id == wms[0].workspace_id).first()
+                        wm = self.db.query(WorkspaceMember).filter(WorkspaceMember.user_id == self.employee.workspace_id).first()
+                        if wm:
+                            ws = self.db.query(Workspace).filter(Workspace.id == wm.workspace_id).first()
 
-                # 3. Fallback: search any workspace with a valid business_profile
-                if not ws or not (ws.settings and isinstance(ws.settings, dict) and ws.settings.get("business_profile")):
-                    all_ws = self.db.query(Workspace).all()
-                    for candidate in all_ws:
-                        if candidate.settings and isinstance(candidate.settings, dict) and candidate.settings.get("business_profile"):
-                            ws = candidate
-                            break
-                    if not ws and all_ws:
-                        ws = all_ws[0]
+                # 3. Fallback: single fast limit(1) workspace
+                if not ws:
+                    ws = self.db.query(Workspace).first()
 
                 if ws:
                     if ws.name and ws.name != "Workspace":
@@ -375,7 +386,7 @@ class ConversationOrchestrator:
             except Exception as e:
                 logger.warning(f"Error resolving business context: {e}")
 
-        return {
+        self._cached_ctx = {
             "emp_name": emp_name,
             "role": role,
             "dept": dept,
@@ -395,6 +406,7 @@ class ConversationOrchestrator:
             "custom_opening_line": custom_opening_line,
             "script_steps": script_steps
         }
+        return self._cached_ctx
 
     def get_initial_greeting(self) -> str:
         """Construct warm, respectful, concise initial greeting for ANY business type."""
@@ -429,27 +441,21 @@ class ConversationOrchestrator:
             except Exception:
                 pass
 
-        # If user defined a custom opening line in script/universal_spec:
+        # 1. If user defined a custom opening line in script/universal_spec/business_profile, honor it first!
         if custom_opening and custom_opening.strip():
             greeting = custom_opening.strip()
-            greeting = greeting.replace("{Lead Name}", lead_name or title).replace("{Name}", lead_name or title)
+            greeting = greeting.replace("{Lead Name}", lead_name or "").replace("{Name}", lead_name or "")
             greeting = greeting.replace("{Business Name}", biz_name).replace("{Company}", biz_name)
             greeting = greeting.replace("{Preferred Timing}", "మీకు ఎప్పుడు వీలవుతుంది?")
-            # Remove any unreplaced variable brackets gracefully
             import re
-            greeting = re.sub(r'\{[A-Za-z0-9_\s]+\}', '', greeting).strip()
-            # If the opening line doesn't mention the business, prepend sweet company introduction
-            if biz_name.lower() not in greeting.lower() and lang in ["te", "telugu"]:
-                # Strip leading "నమస్కారం అండి!" / "హలో అండి!" to avoid duplicate greetings
-                stripped = re.sub(r'^(నమస్కారం|హలో|నమస్తే)[\s,!(అండీ|అండి|ఆండీ)]*', '', greeting).strip()
-                greeting = f"నమస్కారం {title}! నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. {stripped}".strip()
-            return self.adapt_honorific_to_caller(greeting)
+            greeting = re.sub(r'\{[^}]+\}', '', greeting).strip()
+            if greeting:
+                return self.adapt_honorific_to_caller(greeting)
 
-        # Sweet, respectful greeting under 4 seconds adapting to caller's language and business
+        # 2. Default opening for Telugu: Saadhyam AI / Dynamic Business
         if lang in ["te", "telugu"]:
-            if self.caller_title:
-                return f"హలో {self.caller_title}! నమస్కారం. నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. మీరు ఇప్పుడు మాట్లాడగలరా {self.caller_title}?"
-            return f"హలో, నమస్కారం! నేను {biz_name} నుండి {emp_name} మాట్లాడుతున్నాను. మీరు ఇప్పుడు మాట్లాడగలరా?"
+            return f"నమస్కారం అండి! నేను సారా మాట్లాడుతున్నాను, {biz_name} తరఫున. మీ వ్యాపారానికి సంబంధించిన ఒక చిన్న విషయం మాట్లాడటానికి కాల్ చేశాను అండి. ఇప్పుడు ఒక నిమిషం మాట్లాడటం వీలవుతుందా?"
+
         elif lang in ["hi", "hindi"]:
             if lead_name and lead_name.lower() != "customer":
                 return f"नमस्ते {lead_name} जी! मैं {biz_name} से {emp_name} बात कर रही हूँ, मैं आपकी क्या सहायता कर सकती हूँ?"
@@ -478,175 +484,73 @@ class ConversationOrchestrator:
                 pass
 
     def _compile_system_prompt(self) -> str:
-        """Compile layered system prompt with dynamic business context for ANY business type."""
+        # Dynamic business and script context from workspace/employee customization
         ctx = self._resolve_business_context()
-        emp_name = ctx["emp_name"]
-        role = ctx["role"]
-        dept = ctx["dept"]
-        mission = ctx["mission"]
-        biz_name = ctx["biz_name"]
-        biz_desc = ctx["biz_desc"]
-        biz_industry = ctx["biz_industry"]
-        locations_str = ctx["locations_str"]
-        services_str = ctx["services_str"]
-        policies_str = ctx["policies_str"]
-        calling_instruction = ctx["calling_instruction"]
-        knowledge_context = ctx["knowledge_context"]
-        operating_hours = ctx.get("operating_hours") or "09:00 AM – 09:00 PM IST"
-        policy_questions = ctx.get("policy_questions") or []
-        policy_offer = ctx.get("policy_offer") or ""
+        emp_name = ctx.get("emp_name") or "సారా"
+        biz_name = ctx.get("biz_name") or "Saadhyam AI"
+        biz_desc = ctx.get("biz_desc") or "AI Voice Assistant for businesses"
+        services_str = ctx.get("services_str") or "AI Voice Assistant, Call automation, Lead follow-ups"
+        locations_str = ctx.get("locations_str") or "India"
+        calling_inst = ctx.get("calling_instruction") or ""
+        knowledge = ctx.get("knowledge_context") or ""
         script_steps = ctx.get("script_steps") or []
 
-        lead_name = "Customer"
-        lead_area = ""
-        lead_budget = ""
-        lead_topic = ""
-        lead_reqs: List[str] = []
-        extra_lead_vars: Dict[str, Any] = {}
+        # Build dynamic script steps section if user configured custom steps
+        steps_prompt = ""
+        if script_steps and isinstance(script_steps, list):
+            steps_prompt = "## సంభాషణ దశలు (CUSTOM CONVERSATION FLOW):\n"
+            for idx, s in enumerate(script_steps, 1):
+                if isinstance(s, dict):
+                    t = s.get("title") or f"దశ {idx}"
+                    c = s.get("content") or s.get("text") or ""
+                    steps_prompt += f"దశ {idx} - {t}: {c}\n"
+                elif isinstance(s, str):
+                    steps_prompt += f"దశ {idx}: {s}\n"
+        else:
+            steps_prompt = """## 2. సంభాషణ దశలు (CONVERSATION FLOW):
+దశ 1: కాల్ ప్రారంభం & సమ్మతి:
+కస్టమర్ మాట్లాడటానికి అంగీకరిస్తే ధన్యవాదాలు చెప్పి, వారి వ్యాపారం గురించి అడగాలి.
+దశ 2: వ్యాపార సమస్యను గుర్తించడం:
+కాల్స్ చేయడం లేదా లీడ్స్ ఫాలో అప్ చేయడంలో ఏమైనా ఇబ్బందులు ఉన్నాయా అడగాలి.
+దశ 3: సేవల గురించి వివరించడం:
+మా సేవలు వారి వ్యాపారానికి ఎలా ఉపయోగపడతాయో క్లుప్తంగా చెప్పాలి.
+దశ 4: అవసరాలు & క్వాలిఫికేషన్ (ఒక్కొక్కటిగా అడగాలి):
+రోజుకు ఎన్ని కాల్స్, ప్రధాన ఉపయోగం, నిర్ణయం తీసుకునే వ్యక్తి వివరాలు తెలుసుకోవాలి.
+దశ 5: డెమో ఏర్పాటు & ముగింపు:
+ఆసక్తి ఉంటే ఒక చిన్న డెమో ఏర్పాటు చేయడానికి అనువైన సమయం అడగాలి."""
 
-        if self.db and self.call_id:
-            try:
-                call = self.db.query(Call).filter(
-                    (Call.id == self.call_id) |
-                    (Call.twilio_call_sid == self.call_id)
-                ).first()
-                lead = None
-                if call and call.lead_id:
-                    lead = self.db.query(Lead).filter(Lead.id == call.lead_id).first()
-                if not lead and call and (call.to_number or call.phone_number):
-                    num = call.to_number or call.phone_number
-                    lead = self.db.query(Lead).filter(
-                        (Lead.phone == num) | (Lead.phone.endswith(num[-10:]))
-                    ).order_by(Lead.updated_at.desc()).first()
+        custom_instructions_block = f"\n## కస్టమర్ నిర్దిష్ట సూచనలు (CALLING INSTRUCTIONS):\n{calling_inst}\n" if calling_inst else ""
+        knowledge_block = f"\n## ధృవీకరించిన వ్యాపార సమాచారం (KNOWLEDGE BASE):\n{knowledge}\n" if knowledge else ""
 
-                if lead:
-                    lead_name = lead.name or lead_name
-                    lead_area = lead.location or lead_area
-                    lead_budget = lead.budget or lead_budget
-                    lead_topic = lead.intent or lead_topic
-                    if lead.requirements:
-                        if isinstance(lead.requirements, list):
-                            lead_reqs = [str(r) for r in lead.requirements]
-                        elif isinstance(lead.requirements, dict):
-                            for k, v in lead.requirements.items():
-                                extra_lead_vars[k] = v
-                                lead_reqs.append(f"{k}: {v}")
-                        else:
-                            lead_reqs = [str(lead.requirements)]
-            except Exception as e:
-                logger.warning(f"Error extracting lead context: {e}")
+        base_prompt = f"""# సారా ఏఐ — కస్టమర్ కాలింగ్ మరియు లీడ్ క్వాలిఫికేషన్ సిస్టమ్ ({biz_name})
 
-        title = self.caller_title or "సార్"
-        gender_desc = self.caller_gender.upper()
+## 1. సారా యొక్క ప్రధాన లక్ష్యం
+నువ్వు {emp_name}. {biz_name} తరఫున కస్టమర్లతో మాట్లాడే స్నేహపూర్వక వాయిస్ అసిస్టెంట్వి.
+- సంస్థ/వ్యాపారం: {biz_name}
+- వివరణ: {biz_desc}
+- ఉత్పత్తులు & సేవలు: {services_str}
+- ప్రాంతాలు: {locations_str}
 
-        # Format script stages for the agent
-        script_stages_text = ""
-        if script_steps:
-            lang_key = "te" if (self.language or "").lower() in ["te", "telugu"] else ("hi" if (self.language or "").lower() in ["hi", "hindi"] else "en")
-            stages_lines = []
-            for idx, s in enumerate(script_steps, start=1):
-                s_title = s.get("shortTitle") or s.get("title") or f"Stage {idx}"
-                d = s.get("dialogue")
-                content = ""
-                if isinstance(d, dict):
-                    content = d.get(lang_key) or d.get("te") or d.get("en") or ""
-                elif isinstance(d, str):
-                    content = d
-                if not content and s.get("content"):
-                    content = s.get("content")
-                if content:
-                    content = content.replace("{Lead Name}", lead_name).replace("{Name}", lead_name)
-                    content = content.replace("{Business Name}", biz_name).replace("{Company}", biz_name)
-                    content = self.adapt_honorific_to_caller(content)
-                stages_lines.append(f"  Stage {idx} [{s_title}]: {content}")
-            script_stages_text = "\n".join(stages_lines)
+నీ ప్రధాన బాధ్యతలు:
+- కస్టమర్లతో సహజంగా, మర్యాదగా మాట్లాడాలి.
+- వారి వ్యాపార అవసరాలను గుర్తించాలి.
+- {biz_name} సేవలు వారి వ్యాపారానికి ఎలా సహాయపడతాయో వివరించాలి.
+- కస్టమర్ అడిగే సందేహాలకు సూటిగా, స్పష్టంగా సమాధానం ఇవ్వాలి.
+- ఆసక్తి ఉన్న కస్టమర్లకు డెమో ఏర్పాటు చేయాలి లేదా సేల్స్ టీమ్కు లీడ్ను అందించాలి.
+- నువ్వు ఒక రోబోట్లా మాట్లాడకూడదు. అనుభవం ఉన్న తెలుగు సేల్స్ ఎగ్జిక్యూటివ్లా సహజంగా, మర్యాదగా మాట్లాడాలి.
+- ఎల్లప్పుడూ కేవలం 1 నుండి 2 చిన్న వాక్యాల్లో (గరిష్టంగా 20 పదాలు) మాత్రమే సమాధానం చెప్పాలి.
+{custom_instructions_block}{knowledge_block}
+{steps_prompt}
 
-        extra_vars_str = "\n".join([f"- {k}: {v}" for k, v in extra_lead_vars.items()]) if extra_lead_vars else ""
-
-        base_prompt = f"""# SARA AI — TELUGU VOICE AGENT SYSTEM PROMPT
-
-## 1. Identity & Persona
-You are Sara, an extraordinarily sweet, cheerful, respectful female voice assistant representing {biz_name}.
-Role: {role}. Department: {dept}.
-Service Areas: {locations_str or "All service areas"}.
-Caller: {lead_name or "Customer"}.
-
-## 2. CALLER GENDER & RESPECTFUL ADDRESSING (STRICT RULE):
-- Detected Caller Gender: {gender_desc}
-- Required Caller Title: "{title}"
-- STRICT BAN ON REPETITIVE "అండీ" ("andi"):
-  * DO NOT keep saying "అండీ" or "andi" on every sentence! Continuous repetition of "అండీ" is strictly forbidden.
-  * If caller is a WOMAN / GIRL (female) -> ALWAYS address her respectfully as "మేడం" (Madam) (e.g. "సరే మేడం", "చెప్పండి మేడం", "ఖచ్చితంగా మేడం", "ధన్యవాదాలు మేడం").
-  * If caller is a MAN / BOY (male) -> ALWAYS address him respectfully as "సార్" (Sir) (e.g. "సరే సార్", "చెప్పండి సార్", "ఖచ్చితంగా సార్", "ధన్యవాదాలు సార్").
-  * Address the caller as "{title}" naturally at most once per turn.
-
-## 3. BUSINESS PROFILE & OFFERINGS (CUSTOMIZED BY BUSINESS OWNER):
-- Business Name: {biz_name}
-- Industry: {biz_industry}
-- Overview: {biz_desc}
-- Service Areas / Locations: {locations_str or "Hyderabad and surrounding areas"}
-- Operating Hours: {operating_hours}
-- Products & Services Offered (with Pricing/Packages):
-  {services_str}
-- Key Policies & Terms:
-  {policies_str}
-{f"- Special Offer: {policy_offer}" if policy_offer else ""}
-
-## 4. USER'S MANDATORY CUSTOM CALLING INSTRUCTION (HIGHEST PRIORITY):
-{calling_instruction or "Greet the customer warmly, introduce our business offerings, understand their requirements, and guide them to schedule a meeting or next step."}
-* NOTE: You MUST strictly adhere to this custom calling instruction in every turn of the conversation!
-
-## 5. CONVERSATION SCRIPT & STAGES:
-{script_stages_text or "1. Greet caller and state purpose. 2. Understand specific requirements. 3. Present matching offerings. 4. Confirm next steps or appointment."}
-* NOTE: Follow these stages smoothly. Never recite them like a checklist; adapt them naturally to what the customer says!
-
-## 6. CALLER CONTEXT & ENQUIRY DETAILS (USER INPUTS):
-- Caller Name: {lead_name}
-- Specific Requirement: {", ".join(lead_reqs) if lead_reqs else (lead_topic or "Enquired about our business services")}
-- Budget Range: {lead_budget or "To be discussed"}
-- Preferred Location: {lead_area or locations_str or "Applicable area"}
-{extra_vars_str}
-* NOTE: Acknowledge what the customer enquired about and tailor your answers directly to their specific need!
-
-{f"## 7. KEY QUESTIONS TO ASK CALLER:\n" + chr(10).join([f"- {q}" for q in policy_questions]) if policy_questions else ""}
-
-## 8. PROFESSIONAL HUMAN TELECALLER BEHAVIOR & CONVERSATION CONTINUITY (CRITICAL):
-1. COMPLETE & COHERENT SPOKEN SENTENCES:
-   - Like a real expert human telecaller, ALWAYS finish your sentence cleanly, naturally, and completely.
-   - Do NOT stop mid-sentence, leave dangling thoughts, or produce fragmented words.
-   - Keep answers natural, friendly, and complete (1 to 2 spoken sentences).
-
-2. RETENTION OF PREVIOUS TOPIC & SCRIPT OBJECTIVE:
-   - NEVER abandon the conversation topic or script objective!
-   - If the caller asks a side question or interrupts (e.g. asking for price, location, timings, or details):
-     * FIRST: Directly, clearly, and sweetly answer their question using the Business Profile above.
-     * SECOND: In the same turn, smoothly connect back to the previous topic or next qualification step!
-     * Example: If caller asks "ధర ఎంత?":
-       Say: "ధరలు మా వద్ద అనుకూలంగా ఉన్నాయి {title}. మీ అవసరానికి తగిన వివరాలు ఇప్పుడే పంచుకుంటాను {title}."
-   - Never lose track of what the customer wanted, what you offered, or what information you need to collect.
-
-3. DIRECT RELEVANCE — ANSWER EXACTLY WHAT CALLER SAYS:
-   - Listen carefully and directly answer what the customer JUST asked!
-   - If customer asks "ఎందుకు ఫోన్ చేసావు?", answer directly: "మీరు అడిగిన వివరాలు తెలియజేయడానికే కాల్ చేశాను {title}!"
-   - If customer mentions a specific budget, location, or symptom, immediately acknowledge that detail.
-
-4. NEVER REPEAT INTRODUCTIONS:
-   - You have ALREADY introduced yourself at the start of the call.
-   - NEVER repeat "నేను సారాను", "నేను {biz_name} నుండి", or greeting pleasantries in ongoing turns!
-
-5. EXCEPTIONALLY SWEET, CHARMING & REALISTIC SPOKEN TELUGU:
-   - Speak with captivating sweetness, warmth, and respectful affection using "{title}".
-   - Sound like an extraordinarily sweet, cheerful, polite Telugu girl who is attentive, natural, and helpful.
-   - Use colloquial spoken Telugu with natural rhythm. Never sound formal, bookish, stiff, or robotic.
-
-6. POLITE WRAP-UP & NEVER CUT OFF CALLS UNILATERALLY:
-   - When concluding a conversation or if caller says "థాంక్యూ" / "బాయ్" / "సరే":
-     Respond politely: "సరే {title}, మీ విలువైన సమయానికి ధన్యవాదాలు, నమస్కారం! మీకు ఇంకేమైనా వివరాలు కావాలా {title}?"
-   - NEVER abruptly cut off the customer! Always allow the caller to disconnect when they are ready.
-   - ONLY output [END_CALL] if the customer EXPLICITLY commands you to hang up ("కాల్ కట్ చేయండి", "ఫోన్ పెట్టేయండి", "cut the call").
-
-{knowledge_context if knowledge_context else ""}"""
+## 3. మాట్లాడే విధానం & అత్యంత ముఖ్యమైన నిబంధనలు (CRITICAL RULES):
+- సంభాషణ స్పీడ్: ఫోన్‌లో ఎదుటి మనిషితో మాట్లాడుతున్నట్లుగా వెంటనే సమాధానం ఇవ్వాలి.
+- అవుట్‌పుట్ పొడవు: ఎల్లప్పుడూ కేవలం 1 నుండి 2 వాక్యాలు (20 పదాల లోపు) మాత్రమే ఉండాలి. లెంథీ ప్యారాలు అస్సలు మాట్లాడకూడదు.
+- ఒకేసారి ఒక ప్రశ్న మాత్రమే అడగాలి.
+- ఎదుటి వ్యక్తి చెప్పేది శ్రద్ధగా వినాలి. పదే పదే ఒకే విషయాన్ని అడగకూడదు.
+- [END_CALL] ను కస్టమర్ కాల్ కట్ చేయమని చెప్పినప్పుడు మాత్రమే ఉపయోగించాలి.
+"""
         return base_prompt
+
 
     async def handle_barge_in(self) -> None:
         """
@@ -666,7 +570,7 @@ Caller: {lead_name or "Customer"}.
         self.is_speaking = False
         self.current_speaking_text = ""
 
-        # Cancel active turn task
+        # Cancel any active turn task unconditionally so it does not continue synthesizing or speaking
         if self.active_turn_task and not self.active_turn_task.done():
             self.active_turn_task.cancel()
 
@@ -709,12 +613,14 @@ Caller: {lead_name or "Customer"}.
         if getattr(self, "greeting_in_progress", False):
             logger.info(f"[Call {self.call_id}] 🛑 Customer spoke '{clean_text}' during greeting -> halting greeting and processing customer turn immediately!")
             self.greeting_in_progress = False
-            self.is_speaking = False
 
-        # Cancel any previous speaking turn that might still be active
+        # Unconditionally cancel any previous turn task (whether THINKING or SPEAKING)
+        # to prevent concurrent turns from running in parallel and delaying responses!
+        if self.active_turn_task and not self.active_turn_task.done():
+            logger.info(f"[Call {self.call_id}] 🛑 Cancelling prior active turn task for new customer utterance: '{clean_text}'")
+            self.active_turn_task.cancel()
+
         if self.is_speaking or getattr(self, "greeting_in_progress", False):
-            if self.active_turn_task and not self.active_turn_task.done():
-                self.active_turn_task.cancel()
             if self.flush_audio_callback:
                 try:
                     res = self.flush_audio_callback()
@@ -722,10 +628,7 @@ Caller: {lead_name or "Customer"}.
                         await res
                 except Exception:
                     pass
-            self.is_speaking = False
-        else:
-            if self.active_turn_task and not self.active_turn_task.done():
-                self.active_turn_task.cancel()
+        self.is_speaking = False
 
         prev_user_time = self.last_user_time
         self.last_user_text = clean_text
@@ -830,11 +733,11 @@ Caller: {lead_name or "Customer"}.
                     "timestamp": time.time()
                 })
                 if asyncio.iscoroutine(res):
-                    await res
+                    asyncio.create_task(res)
             except Exception:
                 pass
 
-        # Launch single agent turn task
+        # Launch single agent turn task immediately!
         self.active_turn_task = asyncio.create_task(
             self._execute_agent_turn(clean_text, turn_start_time)
         )
@@ -843,7 +746,8 @@ Caller: {lead_name or "Customer"}.
         """Execute LLM streaming, phrase chunking, pipelined TTS prefetch, and audio dispatch."""
         self.set_state(ConversationState.THINKING)
         self.turn_first_audio_time: Optional[float] = None
-        chunker = SentenceChunker(min_chunk_words=4, max_chunk_words=18)
+        # Fast 2-word first chunk for instant sub-700ms Time-To-First-Audio!
+        chunker = SentenceChunker(min_chunk_words=2, max_chunk_words=14)
 
         full_reply_tokens: List[str] = []
         first_token_time: Optional[float] = None
@@ -917,7 +821,7 @@ Caller: {lead_name or "Customer"}.
                 # Primary: Google Gemini LLM streaming
                 async for gchunk in self.gemini_service.stream_chat(
                     messages=recent_messages,
-                    system_prompt=self._system_prompt,
+                    system_prompt=self.system_prompt,
                     temperature=0.3,
                     max_tokens=65
                 ):
@@ -951,7 +855,7 @@ Caller: {lead_name or "Customer"}.
                 # Fallback: Gemini LLM streaming
                 async for gchunk in self.gemini_service.stream_chat(
                     messages=recent_messages,
-                    system_prompt=self._system_prompt,
+                    system_prompt=self.system_prompt,
                     temperature=0.3,
                     max_tokens=65
                 ):
@@ -1002,8 +906,36 @@ Caller: {lead_name or "Customer"}.
             if tts_worker_task:
                 await tts_worker_task
 
-            # Finalize turn
-            complete_text = normalize_numbers_to_english("".join(full_reply_tokens).strip())
+            # Finalize turn & autonomously execute Google Hub MCP commands
+            raw_turn_text = "".join(full_reply_tokens).strip()
+            from server.services.mcp.google_hub_mcp import parse_and_execute_inline_commands
+            ws_id = self.employee.workspace_id if self.employee else "workspace_default_1"
+            u_id = self.employee.created_by if self.employee else "user_demo_owner"
+
+            clean_cmd_text, executed_tools = parse_and_execute_inline_commands(
+                text=raw_turn_text,
+                db=self.db,
+                user_id=u_id,
+                workspace_id=ws_id
+            )
+
+            for tool_item in executed_tools:
+                if self.send_event_callback:
+                    try:
+                        ev_res = self.send_event_callback({
+                            "type": "mcp.command_executed",
+                            "tool": tool_item["tool"],
+                            "status": tool_item["status"],
+                            "summary": tool_item["summary"],
+                            "result": tool_item["result"],
+                            "hub": "Google Workspace Hub MCP"
+                        })
+                        if asyncio.iscoroutine(ev_res):
+                            await ev_res
+                    except Exception:
+                        pass
+
+            complete_text = normalize_numbers_to_english(clean_cmd_text if clean_cmd_text else raw_turn_text)
             complete_text = self.adapt_honorific_to_caller(complete_text)
             should_disconnect = bool(getattr(self, "explicit_hangup_requested", False))
             if "[END_CALL]" in complete_text or "[end_call]" in complete_text.lower():
@@ -1197,57 +1129,48 @@ Caller: {lead_name or "Customer"}.
                 self.send_audio_callback(audio_bytes, normalized)
 
     async def _execute_tool(self, tool_name: str, args: Dict[str, Any]) -> None:
-        """Execute structured business tool inside DB within tenant scope."""
+        """Execute structured business tool inside DB within tenant scope using Google Hub MCP."""
         logger.info(f"[Call {self.call_id}] Executing tool '{tool_name}' with args: {args}")
 
-        if not self.db:
-            return
+        ws_id = self.employee.workspace_id if self.employee else "workspace_default_1"
+        u_id = self.employee.created_by if self.employee else "user_demo_owner"
 
         try:
-            ws_id = self.employee.workspace_id if self.employee else "workspace_default_1"
+            from server.services.mcp.google_hub_mcp import google_hub_mcp
+            res = await google_hub_mcp.execute_tool(
+                tool_name=tool_name,
+                args=args,
+                db=self.db,
+                user_id=u_id,
+                workspace_id=ws_id
+            )
+            logger.info(f"[Call {self.call_id}] Google Hub MCP tool '{tool_name}' result: {res}")
 
-            if tool_name == "create_lead":
-                lead = Lead(
-                    workspace_id=ws_id,
-                    name=args.get("name", "Interested Prospect"),
-                    phone=args.get("phone", ""),
-                    email=args.get("email", ""),
-                    source="AI Voice Call",
-                    status="qualified",
-                    pipeline_stage="qualified",
-                    intent=args.get("interest", "Client Inquiry"),
-                    budget=args.get("budget", ""),
-                    requirements=[args.get("interest", "")] if args.get("interest") else [],
-                    next_action=args.get("notes", "Follow up regarding customer inquiry")
-                )
-                self.db.add(lead)
-                self.db.commit()
-                logger.info(f"Lead saved: {lead.name} ({lead.id})")
+            if self.send_event_callback:
+                try:
+                    cb_res = self.send_event_callback({
+                        "type": "mcp.command_executed",
+                        "tool": tool_name,
+                        "status": "success" if res.get("success") else "failed",
+                        "summary": res.get("confirmation_message") or f"Executed {tool_name}",
+                        "result": res,
+                        "hub": "Google Workspace Hub MCP"
+                    })
+                    if asyncio.iscoroutine(cb_res):
+                        await cb_res
+                except Exception:
+                    pass
 
-            elif tool_name == "schedule_appointment":
-                # Save meeting / task record
-                from server.models import Task
-                task = Task(
-                    workspace_id=ws_id,
-                    title=f"Appointment / Consultation: {args.get('customer_name', 'Customer')} ({args.get('date', '')} at {args.get('time', '')})",
-                    status="todo",
-                    priority="high",
-                    notes=f"Appointment Type: {args.get('appointment_type', 'consultation')}. Notes: {args.get('notes', '')}"
-                )
-                self.db.add(task)
-                self.db.commit()
-                logger.info(f"Appointment task saved: {task.title}")
-
-            elif tool_name == "transfer_to_human":
+            if tool_name == "transfer_to_human":
                 self.set_state(ConversationState.ESCALATING)
                 logger.info(f"Escalating call to human executive. Reason: {args.get('reason')}")
-
             elif tool_name == "end_call":
                 self.set_state(ConversationState.ENDING)
                 logger.info(f"End call requested. Reason: {args.get('reason')}")
 
         except Exception as e:
-            self.db.rollback()
+            if self.db:
+                self.db.rollback()
             logger.error(f"Error executing tool {tool_name}: {e}")
 
     async def end_conversation(self) -> Dict[str, Any]:

@@ -25,44 +25,44 @@ async def dashboard_analytics(
     Single endpoint powering the main dashboard:
     KPIs, workforce status, task summary, recent activity.
     """
-    ws = user.id
+    # Workspace and user identification
+    allowed_ids = [user.id]
+    from server.models import WorkspaceMember
+    member = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
+    if member and member.workspace_id:
+        allowed_ids.append(member.workspace_id)
 
-    # AI Workforce counts
-    total_employees = db.query(AIEmployee).filter(AIEmployee.workspace_id == ws).count()
-    active_employees = db.query(AIEmployee).filter(
-        AIEmployee.workspace_id == ws, AIEmployee.status == "active"
-    ).count()
-    paused_employees = db.query(AIEmployee).filter(
-        AIEmployee.workspace_id == ws, AIEmployee.status == "paused"
-    ).count()
+    # AI Workforce query across both workspace_id and created_by
+    emp_q = db.query(AIEmployee).filter(
+        (AIEmployee.workspace_id.in_(allowed_ids)) | (AIEmployee.created_by == user.id)
+    )
+    total_employees = emp_q.count()
+    active_employees = emp_q.filter(AIEmployee.status == "active").count()
+    paused_employees = emp_q.filter(AIEmployee.status == "paused").count()
+    all_employees_records = emp_q.order_by(AIEmployee.created_at.desc()).all()
 
     # Tasks
-    total_tasks = db.query(Task).filter(Task.workspace_id == ws).count()
-    running_tasks = db.query(Task).filter(Task.workspace_id == ws, Task.status == "running").count()
-    completed_tasks = db.query(Task).filter(Task.workspace_id == ws, Task.status == "completed").count()
+    total_tasks = db.query(Task).filter(Task.workspace_id.in_(allowed_ids)).count()
+    running_tasks = db.query(Task).filter(Task.workspace_id.in_(allowed_ids), Task.status == "running").count()
+    completed_tasks = db.query(Task).filter(Task.workspace_id.in_(allowed_ids), Task.status == "completed").count()
     pending_approvals = db.query(Approval).filter(
-        Approval.workspace_id == ws, Approval.status == "pending"
+        Approval.workspace_id.in_(allowed_ids), Approval.status == "pending"
     ).count()
 
     # Leads
-    total_leads = db.query(Lead).filter(Lead.workspace_id == ws).count()
+    total_leads = db.query(Lead).filter(Lead.workspace_id.in_(allowed_ids)).count()
     qualified_leads = db.query(Lead).filter(
-        Lead.workspace_id == ws, Lead.status.in_(["qualified", "proposal", "negotiation", "won"])
+        Lead.workspace_id.in_(allowed_ids), Lead.status.in_(["qualified", "proposal", "negotiation", "won"])
     ).count()
 
     # Calls
-    total_calls = db.query(Call).filter(Call.workspace_id == ws).count()
-    active_calls = db.query(Call).filter(Call.workspace_id == ws, Call.status == "connected").count()
+    total_calls = db.query(Call).filter(Call.workspace_id.in_(allowed_ids)).count()
+    active_calls = db.query(Call).filter(Call.workspace_id.in_(allowed_ids), Call.status == "connected").count()
 
     # Recent activity
     recent_activity = db.query(ActivityLog).filter(
-        ActivityLog.workspace_id == ws
+        ActivityLog.workspace_id.in_(allowed_ids)
     ).order_by(ActivityLog.created_at.desc()).limit(15).all()
-
-    # Top employees (by total_calls desc)
-    top_employees = db.query(AIEmployee).filter(
-        AIEmployee.workspace_id == ws
-    ).order_by(AIEmployee.total_calls.desc()).limit(5).all()
 
     return {
         "workforce": {
@@ -97,15 +97,36 @@ async def dashboard_analytics(
             "entity_type": a.entity_type,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         } for a in recent_activity],
+        "all_employees": [{
+            "id": e.id,
+            "name": e.name,
+            "role": e.role,
+            "department": e.department,
+            "status": e.status,
+            "total_calls": e.total_calls or 0,
+            "total_tasks": e.total_tasks or 0,
+            "performance_score": e.performance_score or 96,
+            "voice_language": e.voice_language or "te",
+            "voice_name": e.voice_name or "Sindhu",
+            "calling_mode": (e.universal_spec or {}).get("calling_mode", "instant"),
+            "call_script": (e.universal_spec or {}).get("call_script"),
+            "script_stages": (e.universal_spec or {}).get("script_stages"),
+            "mission": e.mission,
+            "description": e.description,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        } for e in all_employees_records],
         "top_employees": [{
             "id": e.id,
             "name": e.name,
             "role": e.role,
             "status": e.status,
-            "total_calls": e.total_calls,
-            "total_tasks": e.total_tasks,
-            "performance_score": e.performance_score,
-        } for e in top_employees],
+            "total_calls": e.total_calls or 0,
+            "total_tasks": e.total_tasks or 0,
+            "performance_score": e.performance_score or 96,
+            "voice_language": e.voice_language or "te",
+            "calling_mode": (e.universal_spec or {}).get("calling_mode", "instant"),
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        } for e in all_employees_records[:8]],
     }
 
 

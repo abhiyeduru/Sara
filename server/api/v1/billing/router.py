@@ -14,15 +14,28 @@ router = APIRouter(prefix="/api/v1/billing", tags=["Billing"])
 
 
 def _get_user_account(db: Session, user: User) -> CreditAccount:
-    from server.models import WorkspaceMember
+    from server.models import Workspace, WorkspaceMember
     member = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user.id).first()
-    ws_id = member.workspace_id if member else user.id
+    ws = None
+    if member:
+        ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
+    if not ws:
+        ws = db.query(Workspace).filter(Workspace.owner_id == user.id).first()
+    if not ws:
+        ws = db.query(Workspace).first()
+    if not ws:
+        import uuid
+        ws = Workspace(id=str(uuid.uuid4()), name=f"{user.name or 'User'}'s Workspace", owner_id=user.id)
+        db.add(ws)
+        db.flush()
+    
+    ws_id = ws.id
 
     account = db.query(CreditAccount).filter(CreditAccount.workspace_id == ws_id).first()
     if not account:
-        account = db.query(CreditAccount).filter(CreditAccount.workspace_id == user.id).first()
-    if not account:
+        import uuid
         account = CreditAccount(
+            id=str(uuid.uuid4()),
             workspace_id=ws_id,
             balance=1000.0,
             total_purchased=1000.0,

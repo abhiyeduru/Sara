@@ -21,32 +21,20 @@ from .voice_events import voice_events_bus
 logger = logging.getLogger("sara.voice.plivo_service")
 
 
+_CACHED_PUBLIC_URL: Optional[str] = None
+_CACHED_PUBLIC_URL_TIME: float = 0.0
+
 def is_domain_resolvable(url: str) -> bool:
     if not url or "api.trycloudflare.com" in url or "localhost" in url or "127.0.0.1" in url:
         return False
     try:
         from urllib.parse import urlparse
         import socket
-        import time
-        import httpx
         host = urlparse(url).hostname
         if not host:
             return False
-        # Plivo requires that the domain has valid public DNS resolution
+        # Fast DNS resolution check (sub-millisecond)
         socket.gethostbyname(host)
-        
-        # Test HTTP health through Cloudflare edge (retry on transient 530 during edge warmup)
-        for attempt in range(2):
-            try:
-                with httpx.Client(timeout=2.5, verify=False, follow_redirects=True) as client:
-                    resp = client.get(f"{url.rstrip('/')}/api/health")
-                    if resp.status_code == 200:
-                        return True
-                    if resp.status_code == 530:
-                        time.sleep(0.5)
-            except Exception:
-                time.sleep(0.5)
-        # If DNS resolved, the domain is valid for Plivo answer_url
         return True
     except Exception:
         return False
@@ -54,6 +42,12 @@ def is_domain_resolvable(url: str) -> bool:
 
 def get_live_public_base_url() -> str:
     """Always resolves the latest public Cloudflare URL dynamically from .env or server/.env and verifies DNS health."""
+    global _CACHED_PUBLIC_URL, _CACHED_PUBLIC_URL_TIME
+    import time
+    now = time.time()
+    if _CACHED_PUBLIC_URL and (now - _CACHED_PUBLIC_URL_TIME < 60.0):
+        return _CACHED_PUBLIC_URL
+
     root_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
     try:
         from dotenv import dotenv_values
@@ -70,12 +64,17 @@ def get_live_public_base_url() -> str:
                         setattr(settings, "PLIVO_WEBHOOK_BASE_URL", clean_url)
                     if hasattr(settings, "PUBLIC_BASE_URL"):
                         setattr(settings, "PUBLIC_BASE_URL", clean_url)
+                    _CACHED_PUBLIC_URL = clean_url
+                    _CACHED_PUBLIC_URL_TIME = now
                     return clean_url
     except Exception:
         pass
 
     url = os.getenv("PLIVO_WEBHOOK_BASE_URL") or os.getenv("PUBLIC_BASE_URL") or getattr(settings, "PLIVO_WEBHOOK_BASE_URL", None) or getattr(settings, "PUBLIC_BASE_URL", None) or ""
-    return url.rstrip("/")
+    clean_url = url.rstrip("/")
+    _CACHED_PUBLIC_URL = clean_url
+    _CACHED_PUBLIC_URL_TIME = now
+    return clean_url
 
 
 class PlivoService:

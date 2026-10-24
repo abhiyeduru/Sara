@@ -66,6 +66,7 @@ __all__ = [
     "router",
     "generate_plivo_media_stream_xml",
     "_generate_plivo_media_stream_xml",
+    "synthesize_script_for_business_core",
 ]
 
 
@@ -607,3 +608,400 @@ async def chat_simulate(
         "business_name": biz_name,
         "provider": "google_gemini"
     }
+
+
+# ── 12. Direct Voice STT Audio Transcription Endpoint ─────────────────────────
+@router.post("/transcribe", tags=["Voice Telephony & Media Streams"])
+async def transcribe_audio_endpoint(
+    request: Request
+):
+    """
+    Transcribes audio sent from client microphone via Sarvam Saaras AI or Deepgram STT.
+    Accepts JSON with audio_base64 or binary audio payload.
+    Supports Telugu, Hindi, English, and other Indian languages.
+    """
+    import base64
+    from server.providers.sarvam_stt import SarvamSTT
+
+    audio_bytes = b""
+    language_hint = "te"
+
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            raw_b64 = body.get("audio_base64") or body.get("audio") or ""
+            if "," in raw_b64:
+                raw_b64 = raw_b64.split(",", 1)[1]
+            if raw_b64:
+                audio_bytes = base64.b64decode(raw_b64)
+            language_hint = body.get("language") or body.get("language_code") or "te"
+        except Exception as e:
+            logger.warning(f"Error parsing JSON audio transcription payload: {e}")
+    elif "multipart/form-data" in content_type:
+        try:
+            form = await request.form()
+            file_upload = form.get("file") or form.get("audio")
+            if file_upload:
+                audio_bytes = await file_upload.read()
+            language_hint = form.get("language") or form.get("language_code") or "te"
+        except Exception as e:
+            logger.warning(f"Error parsing multipart audio: {e}")
+    else:
+        audio_bytes = await request.body()
+        language_hint = request.query_params.get("language", "te")
+
+    if not audio_bytes or len(audio_bytes) < 100:
+        return {
+            "success": False,
+            "transcript": "",
+            "detail": "No valid audio received or audio was empty"
+        }
+
+    # 1. Primary: Sarvam AI STT
+    sarvam = SarvamSTT()
+    try:
+        res = await sarvam.transcribe(audio_bytes, language_hint=language_hint)
+        transcript = (res.get("transcript") or "").strip()
+        if transcript:
+            return {
+                "success": True,
+                "transcript": transcript,
+                "language": res.get("detected_language") or language_hint,
+                "provider": "sarvam_ai"
+            }
+    except Exception as err:
+        logger.warning(f"Sarvam STT failed: {err}")
+
+    # 2. Fallback: Deepgram
+    try:
+        from server.providers.deepgram_stt import DeepgramSTT
+        deepgram = DeepgramSTT()
+        dg_res = await deepgram.transcribe(audio_bytes, language_hint=language_hint)
+        transcript = (dg_res.get("transcript") or "").strip()
+        if transcript:
+            return {
+                "success": True,
+                "transcript": transcript,
+                "language": language_hint,
+                "provider": "deepgram"
+            }
+    except Exception as dg_err:
+        logger.warning(f"Deepgram fallback STT failed: {dg_err}")
+
+    return {
+        "success": False,
+        "transcript": "",
+        "detail": "Could not transcribe audio via available STT providers"
+    }
+
+
+# ── 12. Instant Voice-to-Script Generation Engine ────────────────────────────
+from pydantic import BaseModel
+
+class VoiceScriptRequest(BaseModel):
+    transcript: str
+    language: Optional[str] = "te"
+    calling_mode: Optional[str] = "instant"
+    business_context: Optional[str] = None
+
+
+async def synthesize_script_for_business_core(raw_speech: str, lang: str = "te") -> dict:
+    """
+    Core synthesis engine: Analyzes business description or spoken transcript
+    and produces a tailored, 5-stage conversational call script with native Telugu & English dialogues.
+    """
+    raw_speech = (raw_speech or "").strip()
+    lang = lang or "te"
+
+    if not raw_speech:
+        return {
+            "success": False,
+            "detail": "Empty speech or description received."
+        }
+
+    logger.info(f"🎙️ [Script-Synthesizer] Synthesizing script for: '{raw_speech[:80]}...' (lang={lang})")
+
+    # 1. Try Gemini LLM for high-accuracy contextual generation
+    try:
+        from server.config import settings
+        import httpx
+        key = settings.GEMINI_API_KEY
+        if key:
+            prompt = f"""The user spoke into the microphone describing their business and calling goal:
+"{raw_speech}"
+
+Language preference: {lang} (if 'te', generate natural spoken Telugu with respectful honorifics like 'అండి', 'గారు').
+
+Create a tailored, high-converting 5-stage conversational calling script specifically for this business.
+Return ONLY a valid JSON object with this exact schema (no markdown formatting, no code fences):
+{{
+  "business_type": "Short business title with emoji (e.g. 🏡 Vijayawada Real Estate Plots, 🏥 Dental & Health Clinic, 🚗 Car Dealership)",
+  "cleaned_description": "A concise 1-2 sentence professional job description for the AI caller.",
+  "opening_line": {{
+    "te": "Natural spoken Telugu greeting referencing why we called",
+    "en": "Natural spoken English greeting referencing why we called"
+  }},
+  "script_stages": [
+    {{
+      "step": 1,
+      "title": "1. Greet & Reference Enquiry",
+      "subtitle": "Warm Introduction & context",
+      "dialogue": {{
+        "te": "Telugu dialogue for stage 1",
+        "en": "English dialogue for stage 1"
+      }}
+    }},
+    {{
+      "step": 2,
+      "title": "2. Qualify Specific Requirement",
+      "subtitle": "Discover specific needs & budget",
+      "dialogue": {{
+        "te": "Telugu dialogue for stage 2",
+        "en": "English dialogue for stage 2"
+      }}
+    }},
+    {{
+      "step": 3,
+      "title": "3. Present Offer & Key Benefits",
+      "subtitle": "Highlight top offerings & advantages",
+      "dialogue": {{
+        "te": "Telugu dialogue for stage 3",
+        "en": "English dialogue for stage 3"
+      }}
+    }},
+    {{
+      "step": 4,
+      "title": "4. Address FAQs & Build Trust",
+      "subtitle": "Resolve doubts, pricing, or assurances",
+      "dialogue": {{
+        "te": "Telugu dialogue for stage 4",
+        "en": "English dialogue for stage 4"
+      }}
+    }},
+    {{
+      "step": 5,
+      "title": "5. Confirm Appointment / Next Action",
+      "subtitle": "Schedule visit, slot, or WhatsApp brochure",
+      "dialogue": {{
+        "te": "Telugu dialogue for stage 5",
+        "en": "English dialogue for stage 5"
+      }}
+    }}
+  ]
+}}"""
+            gemini_url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key={key}"
+            gemini_payload = {
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.2,
+                    "maxOutputTokens": 1500
+                }
+            }
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                resp = await client.post(gemini_url, json=gemini_payload)
+                if resp.status_code == 200:
+                    resp_json = resp.json()
+                    candidates = resp_json.get("candidates", [])
+                    if candidates:
+                        raw_res = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        if "```json" in raw_res:
+                            raw_res = raw_res.split("```json")[1].split("```")[0].strip()
+                        elif "```" in raw_res:
+                            raw_res = raw_res.split("```")[1].split("```")[0].strip()
+
+                        import json
+                        data = json.loads(raw_res)
+                        if data.get("script_stages") and len(data["script_stages"]) >= 3:
+                            return {
+                                "success": True,
+                                "provider": "gemini_ai",
+                                "business_type": data.get("business_type") or "Custom Business Voice Script",
+                                "cleaned_description": data.get("cleaned_description") or raw_speech,
+                                "opening_line": data.get("opening_line", {}),
+                                "script_stages": data.get("script_stages", [])
+                            }
+    except Exception as llm_err:
+        logger.warning(f"Gemini voice-to-script synthesis error: {llm_err}, using smart heuristic domain generator")
+
+    # 2. Intelligent Deterministic Domain Fallback (Zero network failure risk)
+    lower_text = raw_speech.lower()
+
+    if any(k in lower_text for k in ["ప్లాట్", "రియల్ ఎస్టేట్", "విల్లా", "వెంచర్", "సైట్", "land", "plot", "villa", "real estate", "flat", "apartment", "gated"]):
+        biz_title = "🏡 Real Estate & Plots"
+        cleaned_desc = f"Call property enquiries, explain venture amenities, qualify budget and book a site visit. ({raw_speech[:100]})"
+        stages = [
+            {
+                "step": 1,
+                "title": "1. Greet & Reference Property Enquiry",
+                "subtitle": "Warm Introduction & context",
+                "dialogue": {
+                    "te": "నమస్కారం అండి! మీరు మా వెంచర్‌లో ఓపెన్ ప్లాట్లు/విల్లాల గురించి వివరాలు అడిగారు కదా, ఆ సమాచారం తెలియజేయడానికి కాల్ చేస్తున్నానండి.",
+                    "en": "Hello! Calling regarding the property and villa details you enquired about in our gated venture."
+                }
+            },
+            {
+                "step": 2,
+                "title": "2. Qualify Layout & Budget",
+                "subtitle": "Discover specific needs & budget",
+                "dialogue": {
+                    "te": "మీరు ఏ సైజు ప్లాట్ లేదా 2/3 BHK విల్లా కోసం చూస్తున్నారు అండి? మరియు మీ బడ్జెట్ ఎంతవరకు అనుకుంటున్నారు?",
+                    "en": "May I know what plot size or BHK configuration you are looking for, and your preferred budget range?"
+                }
+            },
+            {
+                "step": 3,
+                "title": "3. Highlight Venture Amenities & Clear Title",
+                "subtitle": "Highlight top offerings & advantages",
+                "dialogue": {
+                    "te": "మా ప్రాజెక్ట్ 100% క్లియర్ టైటిల్, RERA/DTCP అప్రూవల్ మరియు ప్రీమియం క్లబ్‌హౌస్ సౌకర్యాలతో వేగంగా అభివృద్ధి చెందుతోంది అండి.",
+                    "en": "Our venture is 100% RERA & DTCP approved with premium clubhouse amenities and rapid development."
+                }
+            },
+            {
+                "step": 4,
+                "title": "4. Address Bank Loans & Registration",
+                "subtitle": "Resolve doubts, pricing, or assurances",
+                "dialogue": {
+                    "te": "ప్రముఖ జాతీయ బ్యాంకుల నుండి 80% వరకు ఈజీ హోమ్ లోన్ సదుపాయం కూడా అందుబాటులో ఉంది అండి.",
+                    "en": "Pre-approved bank loans up to 80% are readily available from all leading national banks."
+                }
+            },
+            {
+                "step": 5,
+                "title": "5. Confirm Free Site Visit & WhatsApp Share",
+                "subtitle": "Schedule visit, slot, or WhatsApp brochure",
+                "dialogue": {
+                    "te": "ఈ వారాంతంలో ఉచిత సైట్ విజిట్ కోసం కారు పికప్ ఏర్పాటు చేద్దామా అండి? లొకేషన్ వివరాలు మీ వాట్సాప్‌కి కూడా పంపిస్తున్నాను.",
+                    "en": "Shall we schedule a complimentary site visit with car pickup this weekend? I am also sending the venture map to your WhatsApp."
+                }
+            }
+        ]
+
+    elif any(k in lower_text for k in ["హాస్పిటల్", "డాక్టర్", "క్లినిక్", "చెకప్", "hospital", "clinic", "doctor", "health", "teeth", "dental", "appointment"]):
+        biz_title = "🏥 Clinic & Healthcare"
+        cleaned_desc = f"Call patient inquiries, identify required doctor specialty, and book a consultation slot. ({raw_speech[:100]})"
+        stages = [
+            {
+                "step": 1,
+                "title": "1. Greet & Reference Health Consultation",
+                "subtitle": "Warm Introduction & context",
+                "dialogue": {
+                    "te": "నమస్కారం అండి! మీరు డాక్టర్ కన్సల్టేషన్ అపాయింట్‌మెంట్ కోసం వివరాలు అడిగారు కదా, ఆ సమాచారం కోసం కాల్ చేస్తున్నానండి.",
+                    "en": "Hello! Calling regarding the doctor consultation appointment you requested details for."
+                }
+            },
+            {
+                "step": 2,
+                "title": "2. Understand Health Query & Specialty",
+                "subtitle": "Discover specific needs & symptoms",
+                "dialogue": {
+                    "te": "మీరు ఏ సమస్య లేదా చెకప్ కోసం డాక్టర్‌ని సంప్రదించాలనుకుంటున్నారో చెప్పగలరా అండి?",
+                    "en": "Could you share the symptoms or medical consultation you are looking for?"
+                }
+            },
+            {
+                "step": 3,
+                "title": "3. Offer Consultation Time Slots",
+                "subtitle": "Highlight top offerings & doctor timings",
+                "dialogue": {
+                    "te": "రేపు ఉదయం 11:00 AM లేదా సాయంత్రం 5:30 PM స్లాట్ ఖాళీగా ఉంది అండి. మీకు ఏ సమయం అనుకూలంగా ఉంటుంది?",
+                    "en": "We have consultation slots available tomorrow at 11:00 AM or 5:30 PM. Which timing suits you best?"
+                }
+            },
+            {
+                "step": 4,
+                "title": "4. Address Fees & Clinic Location",
+                "subtitle": "Resolve doubts, pricing, or assurances",
+                "dialogue": {
+                    "te": "కన్సల్టేషన్ ఫీజు చాలా అందుబాటులో ఉంది మరియు అవసరమైతే రిపోర్ట్స్ ఆన్‌లైన్‌లో కూడా రివ్యూ చేయవచ్చు అండి.",
+                    "en": "The consultation fees are transparent, and previous medical reports can also be reviewed."
+                }
+            },
+            {
+                "step": 5,
+                "title": "5. Confirm Token & WhatsApp Directions",
+                "subtitle": "Schedule visit, slot, or WhatsApp brochure",
+                "dialogue": {
+                    "te": "మీ అపాయింట్‌మెంట్ స్లాట్ బుక్ చేశానండి. టోకెన్ నంబర్ మరియు క్లినిక్ లొకేషన్ మీ వాట్సాప్‌కి పంపిస్తున్నాను. ధన్యవాదాలు!",
+                    "en": "Your consultation is booked! Sending the token number and Google Maps location to your WhatsApp now. Thank you!"
+                }
+            }
+        ]
+
+    else:
+        biz_title = "💼 Business Inquiries & Sales"
+        cleaned_desc = f"Call new client leads, explain product/service details, answer questions and book next steps. ({raw_speech[:100]})"
+        stages = [
+            {
+                "step": 1,
+                "title": "1. Greet & Reference Inquiry",
+                "subtitle": "Warm Introduction & context",
+                "dialogue": {
+                    "te": "నమస్కారం అండి! మీరు మా సేవల గురించి వివరాలు అడిగారు కదా, ఆ వివరాలు తెలియజేయడానికి కాల్ చేశానండి. ఒక నిమిషం మాట్లాడవచ్చా?",
+                    "en": "Hello! Calling regarding the inquiry you submitted for our services. May I take a quick minute to assist you?"
+                }
+            },
+            {
+                "step": 2,
+                "title": "2. Understand Customer Requirement",
+                "subtitle": "Discover specific needs & budget",
+                "dialogue": {
+                    "te": "మీకు కావలసిన నిర్దిష్ట అవసరాలు మరియు మీ ప్రాధాన్యత గురించి కాస్త వివరంగా చెప్పగలరా అండి?",
+                    "en": "Could you tell me a little more about your exact requirement and preferred timeline?"
+                }
+            },
+            {
+                "step": 3,
+                "title": "3. Explain Solutions & Exclusive Offers",
+                "subtitle": "Highlight top offerings & advantages",
+                "dialogue": {
+                    "te": "మా వద్ద మీ అవసరానికి సరిపోయే ఉత్తమమైన ప్లాన్స్ మరియు ఈ వారం ప్రత్యేక ఆఫర్లు కూడా అందుబాటులో ఉన్నాయి అండి.",
+                    "en": "We offer customized packages tailored directly to your requirement with special pricing this week."
+                }
+            },
+            {
+                "step": 4,
+                "title": "4. Answer Questions & Clarify Pricing",
+                "subtitle": "Resolve doubts, pricing, or assurances",
+                "dialogue": {
+                    "te": "ధరలు చాలా పారదర్శకంగా ఉంటాయి మరియు పూర్తి కస్టమర్ సపోర్ట్ ఎల్లప్పుడూ మీకు అందుబాటులో ఉంటుంది అండి.",
+                    "en": "Our pricing is fully transparent with dedicated end-to-end customer assistance."
+                }
+            },
+            {
+                "step": 5,
+                "title": "5. Confirm Order / Next Action over WhatsApp",
+                "subtitle": "Schedule visit, slot, or WhatsApp brochure",
+                "dialogue": {
+                    "te": "పూర్తి వివరాలు, ప్రైసింగ్ కోట్ మీ వాట్సాప్‌కి ఇప్పుడే పంపిస్తున్నాను అండి. మీరు చూసిన తర్వాత తదుపరి స్టెప్ ప్లాన్ చేద్దాం. థాంక్యూ అండి!",
+                    "en": "I am sending the complete brochure and pricing proposal to your WhatsApp right away. Looking forward to assisting you. Thank you!"
+                }
+            }
+        ]
+
+    return {
+        "success": True,
+        "provider": "smart_domain_engine",
+        "business_type": biz_title,
+        "cleaned_description": cleaned_desc,
+        "opening_line": {
+            "te": stages[0]["dialogue"]["te"],
+            "en": stages[0]["dialogue"]["en"]
+        },
+        "script_stages": stages
+    }
+
+
+@router.post("/generate-script-from-voice", tags=["Voice Telephony & Media Streams"])
+async def generate_script_from_voice_endpoint(body: VoiceScriptRequest):
+    """
+    Takes natural speech spoken into the microphone by a business owner
+    and autonomously synthesizes a production-ready, 5-stage conversational call script
+    tailored specifically to their business in Telugu & English.
+    """
+    return await synthesize_script_for_business_core(body.transcript, body.language)
+
+
+

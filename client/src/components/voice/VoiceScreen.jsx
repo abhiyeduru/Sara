@@ -156,6 +156,21 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
             ...prev,
             { speaker: activeEmployee?.name || 'Sara', role: 'assistant', text: ev.text, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
           ]);
+        } else if (ev.type === 'mcp.command_executed') {
+          setTranscripts(prev => [
+            ...prev,
+            {
+              speaker: 'Google Hub MCP',
+              role: 'system',
+              isMcpAction: true,
+              tool: ev.tool,
+              summary: ev.summary,
+              calendarLink: ev.result?.calendar_link,
+              details: ev.result,
+              status: ev.status,
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ]);
         }
       }
     });
@@ -378,6 +393,10 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#10b981' }} />
               <strong>Telephony:</strong> Plivo (+91 80 6552 2007)
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4338ca', fontWeight: 700 }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#6366f1' }} />
+              <strong>Google Hub MCP:</strong> Connected (Calendar, Sheets, Gmail)
             </span>
           </div>
         </div>
@@ -951,31 +970,81 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                     key={idx}
                     style={{
                       marginBottom: 12, display: 'flex', flexDirection: 'column',
-                      alignItems: t.role === 'user' ? 'flex-end' : 'flex-start'
+                      alignItems: t.isMcpAction ? 'center' : (t.role === 'user' ? 'flex-end' : 'flex-start')
                     }}
                   >
-                    <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
-                      {t.speaker} • {t.time}
-                    </div>
-                    <div style={{
-                      maxWidth: '85%', padding: '10px 14px', borderRadius: 14, fontSize: 13, lineHeight: 1.5,
-                      background: t.role === 'user' ? '#7c3aed' : '#ffffff',
-                      color: t.role === 'user' ? '#ffffff' : '#0f172a',
-                      border: t.role === 'user' ? 'none' : '1px solid var(--border)',
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
-                    }}>
-                      <div>{t.text}</div>
-                      {t.translation && (
-                        <div style={{
-                          fontSize: 11.5, marginTop: 6, fontStyle: 'italic',
-                          color: t.role === 'user' ? '#f3e8ff' : '#475569',
-                          borderTop: t.role === 'user' ? '1px dashed rgba(255,255,255,0.3)' : '1px dashed #e2e8f0',
-                          paddingTop: 4
-                        }}>
-                          🌐 <strong>Live Translation:</strong> "{t.translation}"
+                    {!t.isMcpAction && (
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+                        {t.speaker} • {t.time}
+                      </div>
+                    )}
+
+                    {t.isMcpAction ? (
+                      /* Google Hub MCP Autonomous Execution Card */
+                      <div style={{
+                        width: '94%',
+                        padding: '12px 16px',
+                        borderRadius: 14,
+                        fontSize: 12.5,
+                        background: 'linear-gradient(135deg, rgba(238,242,255,0.98), rgba(245,243,255,0.98))',
+                        border: '1px solid #c7d2fe',
+                        boxShadow: '0 4px 14px rgba(99,102,241,0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 6
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#4338ca', fontSize: 12 }}>
+                            <Zap size={14} color="#6366f1" />
+                            ⚡ Google Hub MCP Autonomous Execution
+                          </div>
+                          <span style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 10, background: '#dcfce7', color: '#15803d', fontWeight: 700 }}>
+                            ✓ Executed by AI
+                          </span>
                         </div>
-                      )}
-                    </div>
+                        <div style={{ color: '#1e293b', fontWeight: 600, fontSize: 13, lineHeight: 1.4 }}>
+                          {t.summary || t.text}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+                          <span style={{ fontSize: 11, color: '#64748b', fontFamily: 'monospace' }}>
+                            Tool: {t.tool}
+                          </span>
+                          {t.calendarLink && (
+                            <a
+                              href={t.calendarLink}
+                              target="_blank"
+                              rel="noreferrer"
+                              style={{
+                                fontSize: 11.5, color: '#4f46e5', display: 'inline-flex',
+                                alignItems: 'center', gap: 4, textDecoration: 'none', fontWeight: 700
+                              }}
+                            >
+                              📅 View in Google Calendar <ExternalLink size={12} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{
+                        maxWidth: '85%', padding: '10px 14px', borderRadius: 14, fontSize: 13, lineHeight: 1.5,
+                        background: t.role === 'user' ? '#7c3aed' : '#ffffff',
+                        color: t.role === 'user' ? '#ffffff' : '#0f172a',
+                        border: t.role === 'user' ? 'none' : '1px solid var(--border)',
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+                      }}>
+                        <div>{t.text}</div>
+                        {t.translation && (
+                          <div style={{
+                            fontSize: 11.5, marginTop: 6, fontStyle: 'italic',
+                            color: t.role === 'user' ? '#f3e8ff' : '#475569',
+                            borderTop: t.role === 'user' ? '1px dashed rgba(255,255,255,0.3)' : '1px dashed #e2e8f0',
+                            paddingTop: 4
+                          }}>
+                            🌐 <strong>Live Translation:</strong> "{t.translation}"
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
 
@@ -989,12 +1058,62 @@ export default function VoiceScreen({ agent, onClose, onNavigate }) {
                 <div ref={chatEndRef} />
               </div>
 
+              {/* Google Hub MCP Quick Command Chips */}
+              <div style={{ display: 'flex', gap: 6, overflowX: 'auto', padding: '6px 2px 2px', flexShrink: 0 }}>
+                {[
+                  { label: '📅 Book Tomorrow 11 AM Site Visit', prompt: 'Can you please schedule a site visit for me tomorrow at 11:00 AM on Google Calendar?' },
+                  { label: '📊 Log details to Google Sheets', prompt: 'Please save my inquiry details and contact to our Google Sheets leads pipeline.' },
+                  { label: '📧 Send Email Confirmation', prompt: 'Can you send an appointment confirmation email and brochure to my email abhi@gmail.com?' }
+                ].map((chip, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setTextInput(chip.prompt);
+                      if (streamer) {
+                        streamer.sendText(chip.prompt);
+                        setTranscripts(prev => [
+                          ...prev,
+                          { speaker: 'You', role: 'user', text: chip.prompt, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+                        ]);
+                        setTextInput('');
+                      }
+                    }}
+                    style={{
+                      background: 'var(--surface-soft)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 14,
+                      padding: '4px 10px',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      transition: 'all 0.15s ease'
+                    }}
+                    onMouseEnter={e => {
+                      e.currentTarget.style.borderColor = 'var(--primary)';
+                      e.currentTarget.style.color = 'var(--primary)';
+                    }}
+                    onMouseLeave={e => {
+                      e.currentTarget.style.borderColor = 'var(--border)';
+                      e.currentTarget.style.color = 'var(--text-primary)';
+                    }}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+
               {/* Text Input Form */}
-              <form onSubmit={handleSendText} style={{ display: 'flex', gap: 8, marginTop: 10, flexShrink: 0 }}>
+              <form onSubmit={handleSendText} style={{ display: 'flex', gap: 8, marginTop: 8, flexShrink: 0 }}>
                 <input
                   type="text"
                   className="input"
-                  placeholder={`Message ${activeEmployee?.name || 'Sara'}...`}
+                  placeholder={`Ask ${activeEmployee?.name || 'Sara'} or test Google Hub MCP command...`}
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
                   style={{ flex: 1, borderRadius: 20, fontSize: 13 }}

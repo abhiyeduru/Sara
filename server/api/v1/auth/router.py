@@ -280,6 +280,11 @@ def google_oauth_redirect(
 
     target_redirect_uri = redirect_uri or settings.GOOGLE_REDIRECT_URI
 
+    # State stores the originating frontend base URL + redirect_uri used
+    state_payload = frontend_base
+    if target_redirect_uri:
+        state_payload = f"{frontend_base}__RURI__{target_redirect_uri}"
+
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": target_redirect_uri,
@@ -287,10 +292,11 @@ def google_oauth_redirect(
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "select_account",
-        "state": frontend_base
+        "state": state_payload
     }
     url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
     return RedirectResponse(url)
+
 
 
 @router.get("/google/callback")
@@ -304,10 +310,17 @@ async def google_oauth_callback(
     """
     Exchange Google OAuth code for tokens, retrieve profile, and redirect to frontend.
     """
-    # Determine target frontend URL dynamically
+    # Determine target frontend URL and stored redirect_uri dynamically from state
     frontend_target = "http://localhost:5174"
-    if state and state.startswith("http"):
-        frontend_target = state.rstrip("/")
+    state_redirect_uri = None
+
+    if state:
+        if "__RURI__" in state:
+            parts = state.split("__RURI__", 1)
+            frontend_target = parts[0].rstrip("/")
+            state_redirect_uri = parts[1]
+        elif state.startswith("http"):
+            frontend_target = state.rstrip("/")
     else:
         referer = request.headers.get("referer", "")
         if "saadhyam.com" in referer or "saadhyam.com" in str(request.base_url) or "vercel.app" in referer:
@@ -322,13 +335,16 @@ async def google_oauth_callback(
     req_path = request.url.path
     req_proto = request.headers.get("x-forwarded-proto") or request.url.scheme or "http"
 
-    candidate_uris = [
-        settings.GOOGLE_REDIRECT_URI,
-    ]
+    candidate_uris = []
+    if state_redirect_uri:
+        candidate_uris.append(state_redirect_uri)
+    if settings.GOOGLE_REDIRECT_URI:
+        candidate_uris.append(settings.GOOGLE_REDIRECT_URI)
     if req_host:
         candidate_uris.append(f"{req_proto}://{req_host}{req_path}")
         if not req_path.endswith("/"):
             candidate_uris.append(f"{req_proto}://{req_host}{req_path}/")
+
 
     candidate_uris.extend([
         "http://localhost:8001/api/space/google/callback/",

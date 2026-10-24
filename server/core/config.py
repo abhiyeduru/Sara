@@ -46,7 +46,7 @@ class Settings:
     DEFAULT_VOICE_ID: str = os.getenv("DEFAULT_VOICE_ID", "07bc462a-c644-49f1-baf7-82d5599131be")
     CARTESIA_PRIMARY_VOICE_ID: str = "07bc462a-c644-49f1-baf7-82d5599131be"
     CARTESIA_ALT_VOICE_ID: str = "cf061d8b-a752-4865-81a2-57570a6e0565"
-    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "sk_car_Caz6Y144PrSF7XKUjSK7fU")
+    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "sk_car_xvvSHJtEvJnE25yMFXUWPY")
     CARTESIA_MODEL_ID: str = os.getenv("CARTESIA_MODEL_ID", "sonic-preview")
 
     # ── Silence Handling ─────────────────────────────────────────────────────

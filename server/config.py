@@ -42,7 +42,7 @@ class Settings:
     DEFAULT_GREETING: str = "హలో! నమస్కారం. నేను సారా మాట్లాడుతున్నాను. మీరు ఇప్పుడు ఒక నిమిషం మాట్లాడగలరా?"
 
     # Cartesia STT & TTS
-    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "sk_car_Caz6Y144PrSF7XKUjSK7fU")
+    CARTESIA_API_KEY: str = os.getenv("CARTESIA_API_KEY", "sk_car_xvvSHJtEvJnE25yMFXUWPY")
     CARTESIA_STT_MODEL: str = os.getenv("CARTESIA_STT_MODEL", "ink-whisper")
 
     # Sarvam AI (Secondary Indic Fallback)

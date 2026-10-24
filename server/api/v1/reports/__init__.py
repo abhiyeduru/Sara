@@ -1,0 +1,3 @@
+from server.api.v1.reports.router import router
+
+__all__ = ["router"]

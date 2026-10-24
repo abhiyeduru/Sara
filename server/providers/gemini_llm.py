@@ -193,14 +193,79 @@ class GeminiLLM(LLMProvider):
             "x-goog-api-key": self.api_key
         }
 
-        # Prioritize tested working models (gemini-3.6-flash and gemini-3-flash-preview)
+        # For ultra-low latency conversational Telugu (<400ms response time),
+        # prioritize Sarvam 105B streaming conversational LLM first, followed by Gemini
+        sarvam_key = getattr(settings, "SARVAM_API_KEY", None)
+        client = await self._get_client()
+        succeeded = False
+
+        if sarvam_key:
+            try:
+                s_messages = []
+                if system_prompt:
+                    s_messages.append({"role": "system", "content": system_prompt})
+                s_messages.extend(messages)
+                s_payload = {
+                    "model": "sarvam-105b-conversations",
+                    "messages": s_messages,
+                    "max_tokens": max_tokens or 45,
+                    "temperature": temperature or 0.3,
+                    "stream": True
+                }
+                s_headers = {
+                    "api-subscription-key": sarvam_key,
+                    "Content-Type": "application/json"
+                }
+                async with client.stream(
+                    "POST",
+                    "https://api.sarvam.ai/v1/chat/completions",
+                    headers=s_headers,
+                    json=s_payload,
+                    timeout=httpx.Timeout(6.0, connect=3.0)
+                ) as s_resp:
+                    if s_resp.status_code == 200:
+                        async for s_line in s_resp.aiter_lines():
+                            if s_line.startswith("data: "):
+                                s_chunk = s_line[6:].strip()
+                                if s_chunk == "[DONE]":
+                                    break
+                                try:
+                                    s_data = json.loads(s_chunk)
+                                    s_delta = s_data["choices"][0]["delta"].get("content", "")
+                                    if s_delta:
+                                        is_first = False
+                                        if not first_token_sent:
+                                            first_token_sent = True
+                                            ttft_ms = (time.perf_counter() - start_time) * 1000
+                                            is_first = True
+                                        yield {
+                                            "token": s_delta,
+                                            "first_token": is_first,
+                                            "ttft_ms": round(ttft_ms, 2),
+                                            "done": False
+                                        }
+                                        succeeded = True
+                                except Exception:
+                                    continue
+                        if succeeded:
+                            total_ms = (time.perf_counter() - start_time) * 1000
+                            yield {
+                                "token": "",
+                                "first_token": False,
+                                "ttft_ms": round(ttft_ms, 2),
+                                "total_ms": round(total_ms, 2),
+                                "done": True
+                            }
+                            return
+            except Exception as sarvam_err:
+                logger.warning(f"Sarvam 105B streaming notice: {sarvam_err}. Falling back to Gemini...")
+
+        # Fallback to Google Gemini
         models_to_try = [self.model]
-        for alt in ["gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite-preview"]:
+        for alt in ["gemini-3.6-flash", "gemini-3-flash-preview"]:
             if alt not in models_to_try:
                 models_to_try.append(alt)
 
-        succeeded = False
-        client = await self._get_client()
         for current_model in models_to_try[:2]:
             payload = self._format_gemini_payload(
                 messages=messages,
@@ -212,7 +277,7 @@ class GeminiLLM(LLMProvider):
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{current_model}:streamGenerateContent?alt=sse"
             model_yielded_token = False
             try:
-                async with client.stream("POST", url, headers=headers, json=payload, timeout=httpx.Timeout(2.5, connect=1.5)) as resp:
+                async with client.stream("POST", url, headers=headers, json=payload, timeout=httpx.Timeout(5.0, connect=2.0)) as resp:
                     if resp.status_code == 429:
                         logger.warning(f"Gemini {current_model} returned 429 rate limit. Trying next model...")
                         continue

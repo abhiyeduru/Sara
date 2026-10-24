@@ -106,8 +106,8 @@ class SarvamRealtimeSTTService:
             f"wss://api.sarvam.ai/speech-to-text-realtime/ws"
             f"?model=saaras:v3-realtime"
             f"&language_code={lang_code}"
-            f"&silence_duration_ms=450"
-            f"&min_speech_duration_ms=200"
+            f"&silence_duration_ms=300"
+            f"&min_speech_duration_ms=150"
         )
         headers = {
             "api-subscription-key": self.api_key
@@ -119,7 +119,7 @@ class SarvamRealtimeSTTService:
             logger.info(f"Connecting to Sarvam Realtime STT: {url}...")
             sig = inspect.signature(websockets.connect)
             header_param = "additional_headers" if "additional_headers" in sig.parameters else "extra_headers"
-            kwargs = {header_param: headers, "ssl": ssl_ctx}
+            kwargs = {header_param: headers, "ssl": ssl_ctx, "open_timeout": 8.0}
 
             self.ws = await websockets.connect(url, **kwargs)
             self._is_connected = True

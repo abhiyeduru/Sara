@@ -183,6 +183,22 @@ export default function Topbar({
                 </button>
               )}
 
+              {onNavigate && (
+                <button
+                  onClick={() => { setShowUserMenu(false); onNavigate('admin'); }}
+                  style={{
+                    background: 'none', border: 'none', textAlign: 'left', padding: '8px 10px',
+                    borderRadius: 6, fontSize: 12, fontWeight: 600, color: '#7c3aed',
+                    cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.08)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                >
+                  🛡️ Admin Control Center
+                </button>
+              )}
+
+
 
               {onLogout && (
                 <button

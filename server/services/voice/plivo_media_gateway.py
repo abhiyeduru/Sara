@@ -105,8 +105,8 @@ class PlivoMediaGateway:
                     await self._on_stop()
                     break
 
-        except WebSocketDisconnect:
-            logger.info(f"Plivo Media Stream WebSocket disconnected (Stream: {self.stream_id})")
+        except WebSocketDisconnect as ws_disc:
+            logger.info(f"Plivo Media Stream WebSocket disconnected (Stream: {self.stream_id}, code={getattr(ws_disc, 'code', None)}, reason={getattr(ws_disc, 'reason', None)})")
             await self._on_stop()
         except Exception as e:
             logger.error(f"Error in Plivo Media Gateway: {e}", exc_info=True)
@@ -126,30 +126,10 @@ class PlivoMediaGateway:
 
         logger.info(f"Plivo Stream started: streamId={self.stream_id}, callUUID={self.call_uuid}, call_id={self.call_id}")
 
-        # Fetch Call and assigned AI Employee from database
-        call = None
-        employee = None
-        if self.call_id:
-            call = self.db.query(Call).filter(
-                (Call.id == self.call_id) |
-                (Call.twilio_call_sid == self.call_uuid) |
-                (Call.twilio_call_sid == f"plv_{self.call_uuid}")
-            ).first()
-
-        if call:
-            call.status = "in-progress"
-            self.db.commit()
-            emp_id = call.ai_employee_id or call.employee_id
-            if emp_id:
-                employee = self.db.query(AIEmployee).filter(AIEmployee.id == emp_id).first()
-
-        if not employee:
-            employee = self.db.query(AIEmployee).first()
-
-        # 1. Initialize Conversation Orchestrator in Plivo mode (raw 8kHz mulaw)
+        # Initialize Conversation Orchestrator immediately (in memory)
         self.orchestrator = ConversationOrchestrator(
             call_id=self.call_id or "call_plivo",
-            employee=employee,
+            employee=None,
             db=self.db,
             output_mode="plivo",  # Direct raw 8kHz mulaw
             send_audio_callback=self._send_audio_to_plivo,
@@ -158,7 +138,59 @@ class PlivoMediaGateway:
             trigger_hangup_callback=self.hangup_after_playback,
         )
 
-        # 2. Initialize Streaming STT (Deepgram Nova-3 Primary for native 8kHz mulaw sub-150ms latency)
+        # 1. Start dedicated background audio streaming task IMMEDIATELY (<1ms)
+        self._audio_streaming_task = asyncio.create_task(self._audio_streaming_loop())
+
+        # 2. Synthesize & stream initial greeting IMMEDIATELY (0ms lag!)
+        greeting_text = "నమస్కారం అండి! నేను సారా మాట్లాడుతున్నాను, Saadhyam AI తరఫున. మీ వ్యాపారానికి సంబంధించిన ఒక చిన్న విషయం మాట్లాడటానికి కాల్ చేశాను అండి. ఇప్పుడు ఒక నిమిషం మాట్లాడటం వీలవుతుందా?"
+        logger.info(f"🎙️ [Call {self.call_id}] Instant zero-delay initial greeting: '{greeting_text}'")
+        self._greeting_task = asyncio.create_task(self._send_greeting(greeting_text))
+
+        # 3. Start Streaming STT immediately
+        asyncio.create_task(self._init_stt_stream(None))
+
+        # 4. Resolve DB records & employee details in background without blocking audio
+        async def _async_resolve_call_and_db():
+            try:
+                call = None
+                if self.call_id:
+                    call = self.db.query(Call).filter(
+                        (Call.id == self.call_id) |
+                        (Call.twilio_call_sid == self.call_uuid) |
+                        (Call.twilio_call_sid == f"plv_{self.call_uuid}")
+                    ).first()
+                if call:
+                    call.status = "in-progress"
+                    self.db.commit()
+                    emp_id = call.ai_employee_id or call.employee_id
+                    if emp_id:
+                        emp = self.db.query(AIEmployee).filter(AIEmployee.id == emp_id).first()
+                        if emp and self.orchestrator:
+                            self.orchestrator.employee = emp
+            except Exception as e:
+                logger.debug(f"[Call {self.call_id}] Background DB resolve notice: {e}")
+
+        self.call_start_time = time.time()
+        self.workspace_id = "user_business_owner_1"
+        self.direction = "outbound"
+
+        async def _background_post_connect():
+            try:
+                eligibility = CallBillingService.verify_call_eligibility(self.db, self.workspace_id)
+                self.max_duration_seconds = eligibility.get("effective_limit_seconds", 600)
+                self._watchdog_task = asyncio.create_task(self._duration_watchdog())
+                if self.call_uuid:
+                    try:
+                        plivo_client.record_call(self.call_uuid)
+                    except Exception as e:
+                        logger.debug(f"Plivo record_call notice: {e}")
+            except Exception as ex:
+                logger.debug(f"Background post-connect notice: {ex}")
+
+        asyncio.create_task(_background_post_connect())
+
+    async def _init_stt_stream(self, employee: Any) -> None:
+        """Initialize Streaming STT connection concurrently without blocking audio playback."""
         lang = (self.orchestrator.language if self.orchestrator else None) or (employee.voice_language if employee else None) or "te"
         if not lang or lang in ["en", "auto"]:
             lang = "te"
@@ -237,63 +269,51 @@ class PlivoMediaGateway:
             except Exception as e:
                 logger.warning(f"AssemblyAI streaming init notice: {e}")
 
-
-        # 3. Setup Call Start Time & Duration Limit Watchdog (5 to 10 min, ₹6/min)
-        self.call_start_time = time.time()
-        ws_id = (call.workspace_id if call else None) or "user_business_owner_1"
-        self.workspace_id = ws_id
-        eligibility = CallBillingService.verify_call_eligibility(self.db, ws_id)
-        self.max_duration_seconds = eligibility.get("effective_limit_seconds", 600)
-        logger.info(
-            f"Plivo Call {self.call_id} duration limit configured to {self.max_duration_seconds}s "
-            f"({self.max_duration_seconds // 60}m) at ₹{CallBillingService.RATE_PER_MINUTE_INR}/min "
-            f"(account balance: ₹{eligibility.get('balance', 0):,.2f})"
-        )
-        self._watchdog_task = asyncio.create_task(self._duration_watchdog())
-
-        self.target_phone_number = (call.to_number or call.phone_number) if call else None
-        self.direction = getattr(call, "direction", "outbound") if call else "outbound"
-        self.ai_employee_id = (call.ai_employee_id or call.employee_id) if call else (employee.id if employee else None)
-
-        # Trigger carrier-level Plivo call recording
-        if self.call_uuid:
-            try:
-                plivo_client.record_call(self.call_uuid)
-            except Exception as e:
-                logger.debug(f"Plivo record_call notice: {e}")
-
-        # 4. Start dedicated background audio streaming task
-        self._audio_streaming_task = asyncio.create_task(self._audio_streaming_loop())
-
-        # 5. Send initial greeting
-        greeting_text = self.orchestrator.get_initial_greeting()
-        asyncio.create_task(self._send_greeting(greeting_text))
-
     async def _send_greeting(self, greeting_text: str) -> None:
         """Synthesize and stream initial greeting to caller immediately on call connect."""
-        await asyncio.sleep(0.15)  # Quick carrier line stabilization
+        try:
+            # Dynamically resolve greeting from orchestrator (supports user custom opening lines!)
+            if self.orchestrator:
+                custom_greeting = self.orchestrator.get_initial_greeting()
+                if custom_greeting and custom_greeting.strip():
+                    greeting_text = custom_greeting.strip()
 
-        if self.orchestrator and self.is_running:
-            self._greeting_in_progress = True
-            self.orchestrator.greeting_in_progress = True
-            logger.info(f"Streaming initial greeting: '{greeting_text}'")
-            self.orchestrator.messages.append({"role": "assistant", "content": greeting_text})
-            self.orchestrator.transcript_history.append({
-                "speaker": self.orchestrator.employee.name if self.orchestrator.employee else "Sara",
-                "role": "assistant",
-                "text": greeting_text,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            })
-            try:
-                await self.orchestrator._synthesize_and_send_chunk(greeting_text, time.perf_counter(), True)
-            finally:
-                self._greeting_in_progress = False
-                if self.orchestrator:
-                    self.orchestrator.greeting_in_progress = False
-                    if self.orchestrator.state == ConversationState.SPEAKING:
-                        self.orchestrator.is_speaking = False
-                        self.orchestrator.current_speaking_text = ""
-                        self.orchestrator.set_state(ConversationState.LISTENING)
+            logger.info(f"🎙️ [Call {self.call_id}] _send_greeting coroutine started for: '{greeting_text[:50]}...'")
+            await asyncio.sleep(0.01)  # Instant startup
+
+            if self.orchestrator and self.is_running:
+                self._greeting_in_progress = True
+                self.orchestrator.greeting_in_progress = True
+                logger.info(f"Streaming initial greeting: '{greeting_text}'")
+                self.orchestrator.messages.append({"role": "assistant", "content": greeting_text})
+                self.orchestrator.transcript_history.append({
+                    "speaker": self.orchestrator.employee.name if self.orchestrator.employee else "Sara",
+                    "role": "assistant",
+                    "text": greeting_text,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+                try:
+                    # Break into natural clauses (. ! ?) so first audio plays in < 500ms
+                    import re
+                    clauses = [c.strip() for c in re.split(r'([.?!।\n]+)', greeting_text) if c.strip() and not re.match(r'^[.?!।\n]+$', c)]
+                    if not clauses:
+                        clauses = [greeting_text]
+
+                    for idx, clause in enumerate(clauses):
+                        if not self.is_running or not self._greeting_in_progress or (self.orchestrator and not getattr(self.orchestrator, "greeting_in_progress", False)):
+                            logger.info(f"[Call {self.call_id}] Initial greeting interrupted at clause #{idx+1}")
+                            break
+                        await self.orchestrator._synthesize_and_send_chunk(clause, time.perf_counter(), idx == 0)
+                finally:
+                    self._greeting_in_progress = False
+                    if self.orchestrator:
+                        self.orchestrator.greeting_in_progress = False
+                        if self.orchestrator.state == ConversationState.SPEAKING:
+                            self.orchestrator.is_speaking = False
+                            self.orchestrator.current_speaking_text = ""
+                            self.orchestrator.set_state(ConversationState.LISTENING)
+        except Exception as e:
+            logger.error(f"❌ [Call {self.call_id}] Exception in _send_greeting: {e}", exc_info=True)
 
     async def _on_media(self, message: Dict[str, Any]) -> None:
         """Forward incoming caller audio from Plivo directly into STT."""
@@ -350,16 +370,25 @@ class PlivoMediaGateway:
             return
         ev_type = event.get("type")
         if ev_type == "transcript" and self.call_id:
-            try:
-                # Update DB Call.transcript immediately so poller sees it live turn-by-turn
-                call = self.db.query(Call).filter(Call.id == self.call_id).first()
-                if not call and getattr(self, "call_uuid", None):
-                    call = self.db.query(Call).filter(Call.twilio_call_sid == f"plv_{self.call_uuid}").first()
-                if call and self.orchestrator:
-                    call.transcript = list(self.orchestrator.transcript_history)
-                    self.db.commit()
-            except Exception as e:
-                logger.debug(f"DB live transcript update notice: {e}")
+            # Update DB Call.transcript asynchronously in background so audio pipeline has 0ms blocking!
+            history_copy = list(self.orchestrator.transcript_history) if self.orchestrator else []
+            call_id = self.call_id
+            call_uuid = getattr(self, "call_uuid", None)
+
+            def _bg_update_db():
+                try:
+                    from server.database import SessionLocal
+                    with SessionLocal() as db_session:
+                        call = db_session.query(Call).filter(Call.id == call_id).first()
+                        if not call and call_uuid:
+                            call = db_session.query(Call).filter(Call.twilio_call_sid == f"plv_{call_uuid}").first()
+                        if call:
+                            call.transcript = history_copy
+                            db_session.commit()
+                except Exception as e:
+                    logger.debug(f"DB live transcript update notice: {e}")
+
+            asyncio.create_task(asyncio.to_thread(_bg_update_db))
 
         try:
             from server.services.voice.voice_events import voice_events_bus
@@ -474,21 +503,21 @@ class PlivoMediaGateway:
             if last_prompt:
                 prompt_words = set(re.findall(r"\w+", last_prompt))
                 overlap_with_prompt = sum(1 for w in clean_words if w in prompt_words)
-                if overlap_with_prompt >= 2 or (clean_words and overlap_with_prompt / len(clean_words) >= 0.60):
-                    logger.debug(f"[Call {self.call_id}] Suppressed trailing STT delivery of active turn prompt: '{clean}'")
+                if overlap_with_prompt >= 1 and (len(clean_words) <= 2 or overlap_with_prompt / len(clean_words) >= 0.50):
+                    logger.debug(f"[Call {self.call_id}] Suppressed trailing STT echo of active prompt: '{clean}'")
                     return
 
             # Explicit stop commands:
             INTERRUPT_KEYWORDS = {
-                "వద్దు", "వద్దండి", "ఆగండి", "ఆగు", "విను", "వినండి", "ఒక్క నిమిషం", "చాలు", "లేదు", "ఆపండి", "హలో", "చెప్పండి",
+                "వద్దు", "వద్దండి", "ఆగండి", "ఆగు", "విను", "వినండి", "ఒక్క నిమిషం", "చాలు", "లేదు", "ఆపండి", "హలో",
                 "stop", "wait", "hold", "listen", "no", "quiet", "cancel", "shut", "enough", "hello"
             }
             has_explicit_interrupt = any(w in INTERRUPT_KEYWORDS for w in clean_words)
 
-            # Minimal 200ms grace window to filter initial audio packet handshake
+            # Minimal 350ms grace window after speaking starts to filter initial carrier line transients
             speaking_start = getattr(self.orchestrator, "speaking_start_time", 0.0)
-            if speaking_start and (time.perf_counter() - speaking_start < 0.20) and not has_explicit_interrupt:
-                logger.debug(f"[Call {self.call_id}] Suppressing interruption during first 200ms playback grace window: '{clean}'")
+            if speaking_start and (time.perf_counter() - speaking_start < 0.35) and not has_explicit_interrupt:
+                logger.debug(f"[Call {self.call_id}] Suppressing interruption during first 350ms playback grace window: '{clean}'")
                 return
 
             # Instant barge-in: If caller speaks any real word, stop assistant immediately!
@@ -525,17 +554,17 @@ class PlivoMediaGateway:
         is_very_short = len(words) < 2
 
         if not real_is_final and not real_speech_final:
-            # For purely interim/incomplete chunks, do not trigger early; keep only safety fallback (1.2s)
-            flush_delay = 1.200
+            # For purely interim/incomplete chunks, fast 280ms debounce for natural turn-taking
+            flush_delay = 0.280
         elif is_trailing or is_very_short:
-            # Caller paused mid-clause or single word; wait briefly for them to complete thought
-            flush_delay = 0.200
-        elif real_speech_final:
-            # Completed sentence recognized by STT VAD
-            flush_delay = 0.060
-        else:
-            # Completed finalized STT segment
+            # Caller paused mid-clause or single word; brief 80ms pause
             flush_delay = 0.080
+        elif real_speech_final:
+            # Completed sentence recognized by STT VAD -> Instant dispatch!
+            flush_delay = 0.010
+        else:
+            # Completed finalized STT segment -> Instant dispatch!
+            flush_delay = 0.020
 
         if self._utterance_flush_task and not self._utterance_flush_task.done():
             self._utterance_flush_task.cancel()
@@ -727,6 +756,8 @@ class PlivoMediaGateway:
                 try:
                     await self.ws.send_text(json.dumps(play_msg))
                     frames_in_burst += 1
+                    if frames_in_burst == 1 or frames_in_burst % 10 == 0:
+                        logger.info(f"▶️ [Call {self.call_id}] Sent playAudio packet #{frames_in_burst} ({len(chunk)} bytes) to Plivo")
                     # Rapid pre-buffer for first 6 frames (960ms) into Plivo's jitter buffer
                     if frames_in_burst <= 6:
                         await asyncio.sleep(0.005)
@@ -773,7 +804,8 @@ class PlivoMediaGateway:
             return
 
         clear_msg = {
-            "event": "clearAudio"
+            "event": "clearAudio",
+            "streamId": self.stream_id
         }
         try:
             await self.ws.send_text(json.dumps(clear_msg))

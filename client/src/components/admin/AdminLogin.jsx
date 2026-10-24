@@ -38,6 +38,26 @@ export default function AdminLogin({ onLoginSuccess, onCancel }) {
     }
   };
 
+  const handleBack = () => {
+    if (onCancel) {
+      onCancel();
+    } else {
+      window.location.hash = '#dashboard';
+      if (typeof window !== 'undefined' && window.location.pathname.includes('admin')) {
+        window.location.href = '/';
+      }
+    }
+  };
+
+  const handleQuickLogin = () => {
+    setEmail('admin@sara.ai');
+    setPassword('sara@Admin2026!');
+    setError(null);
+    setTimeout(() => {
+      handleSubmit();
+    }, 50);
+  };
+
   const handleQuickFill = () => {
     setEmail('admin@sara.ai');
     setPassword('sara@Admin2026!');
@@ -89,48 +109,49 @@ export default function AdminLogin({ onLoginSuccess, onCancel }) {
         background: 'rgba(17, 24, 39, 0.75)',
         backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
+        border: '1px solid rgba(255, 255, 255, 0.12)',
         borderRadius: 24,
         padding: '36px 32px',
-        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(124, 58, 237, 0.12)',
+        boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(124, 58, 237, 0.14)',
         position: 'relative',
-        zIndex: 10
+        zIndex: 10,
+        transition: 'all 0.3s ease'
       }}>
         {/* Back button */}
-        {onCancel && (
-          <button
-            onClick={onCancel}
-            type="button"
-            style={{
-              position: 'absolute',
-              top: 20,
-              left: 20,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              background: 'rgba(255, 255, 255, 0.05)',
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              borderRadius: 8,
-              padding: '6px 12px',
-              color: '#94a3b8',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.color = '#f8fafc';
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.color = '#94a3b8';
-              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-            }}
-          >
-            <ArrowLeft size={13} />
-            <span>Customer App</span>
-          </button>
-        )}
+        <button
+          onClick={handleBack}
+          type="button"
+          style={{
+            position: 'absolute',
+            top: 20,
+            left: 20,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            background: 'rgba(255, 255, 255, 0.06)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: 8,
+            padding: '6px 12px',
+            color: '#cbd5e1',
+            fontSize: 12,
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.color = '#f8fafc';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.12)';
+            e.currentTarget.style.transform = 'translateX(-2px)';
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.color = '#cbd5e1';
+            e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
+            e.currentTarget.style.transform = 'none';
+          }}
+        >
+          <ArrowLeft size={13} />
+          <span>Customer App</span>
+        </button>
 
         {/* Header Icon */}
         <div style={{ textAlign: 'center', marginTop: onCancel ? 18 : 0, marginBottom: 24 }}>
@@ -278,24 +299,49 @@ export default function AdminLogin({ onLoginSuccess, onCancel }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#c4b5fd', fontWeight: 600 }}>
                 <KeyRound size={13} color="#a78bfa" />
-                <span>Default Admin Credentials:</span>
+                <span>Superadmin Credentials:</span>
               </div>
-              <button
-                type="button"
-                onClick={handleQuickFill}
-                style={{
-                  background: 'rgba(124, 58, 237, 0.2)',
-                  border: '1px solid rgba(124, 58, 237, 0.4)',
-                  borderRadius: 6,
-                  color: '#e9d5ff',
-                  padding: '3px 8px',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                Auto Fill
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={handleQuickFill}
+                  style={{
+                    background: 'rgba(124, 58, 237, 0.2)',
+                    border: '1px solid rgba(124, 58, 237, 0.4)',
+                    borderRadius: 6,
+                    color: '#e9d5ff',
+                    padding: '3px 8px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.35)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'rgba(124, 58, 237, 0.2)'}
+                >
+                  Auto Fill
+                </button>
+                <button
+                  type="button"
+                  onClick={handleQuickLogin}
+                  style={{
+                    background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                    border: 'none',
+                    borderRadius: 6,
+                    color: '#ffffff',
+                    padding: '3px 10px',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(16, 185, 129, 0.3)',
+                    transition: 'all 0.15s ease'
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.04)'}
+                  onMouseLeave={e => e.currentTarget.style.transform = 'none'}
+                >
+                  ⚡ Instant Login
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', color: '#94a3b8', fontSize: 11.5 }}>
               <span>Email: <strong style={{ color: '#f8fafc' }}>admin@sara.ai</strong></span>

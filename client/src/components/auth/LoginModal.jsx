@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  ArrowRight, CheckCircle2, User, Zap, Sun, Moon
+  ArrowRight, CheckCircle2, User, Zap, Sun, Moon, Shield, Sparkles, Lock
 } from 'lucide-react';
 import lottie from 'lottie-web';
 
@@ -98,12 +98,20 @@ function LottieShowcase() {
   );
 }
 
-export default function LoginModal({ onLoginSuccess }) {
+export default function LoginModal({ onLoginSuccess, onOpenAdmin }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [googleClientId, setGoogleClientId] = useState('');
   const [emailInput, setEmailInput] = useState('abhiyeduru8@gmail.com');
   const googleBtnRef = useRef(null);
+
+  const handleGoAdmin = () => {
+    if (onOpenAdmin) {
+      onOpenAdmin();
+    } else {
+      window.location.hash = '#admin';
+    }
+  };
 
   // Theme: 'light' (pure white) or 'dark' (obsidian purple)
   const [theme, setTheme] = useState(() => {
@@ -443,8 +451,38 @@ export default function LoginModal({ onLoginSuccess }) {
           </span>
         </div>
 
-        {/* Top Right Controls: Theme Toggle */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* Top Right Controls: Theme Toggle & Admin Access */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button
+            onClick={handleGoAdmin}
+            title="Access Superadmin & Telephony Control Center"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '8px 14px',
+              borderRadius: 20,
+              border: isDark ? '1px solid rgba(124, 58, 237, 0.45)' : '1px solid #ddd6fe',
+              background: isDark ? 'rgba(124, 58, 237, 0.22)' : '#f5f3ff',
+              color: isDark ? '#c4b5fd' : '#7c3aed',
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.transform = 'translateY(-1px)';
+              e.currentTarget.style.background = isDark ? 'rgba(124, 58, 237, 0.35)' : '#ede9fe';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.transform = 'none';
+              e.currentTarget.style.background = isDark ? 'rgba(124, 58, 237, 0.22)' : '#f5f3ff';
+            }}
+          >
+            <Shield size={14} color="#7c3aed" />
+            <span>Admin Portal</span>
+          </button>
+
           <button
             onClick={toggleTheme}
             title={isDark ? 'Switch to Light mode' : 'Switch to Dark mode'}
@@ -460,11 +498,13 @@ export default function LoginModal({ onLoginSuccess }) {
               fontSize: 12,
               fontWeight: 600,
               cursor: 'pointer',
-              transition: 'all 0.2s',
+              transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
             }}
+            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
+            onMouseLeave={(e) => (e.currentTarget.style.transform = 'none')}
           >
             {isDark ? <Sun size={15} color="#FBBF24" /> : <Moon size={15} color="#A855F7" />}
-            <span>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
+            <span>{isDark ? 'Light' : 'Dark'}</span>
           </button>
         </div>
       </header>
@@ -750,6 +790,33 @@ export default function LoginModal({ onLoginSuccess }) {
                 </button>
               </div>
             )}
+
+            {/* Quick Admin Navigation Link */}
+            <div style={{ textAlign: 'center', marginTop: 8, paddingTop: 14, borderTop: `1px solid ${colors.dividerLine}` }}>
+              <button
+                type="button"
+                onClick={handleGoAdmin}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: isDark ? '#c4b5fd' : '#7c3aed',
+                  fontSize: 12.5,
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'all 0.15s ease',
+                  padding: '4px 8px',
+                  borderRadius: 6
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.textDecoration = 'underline')}
+                onMouseLeave={(e) => (e.currentTarget.style.textDecoration = 'none')}
+              >
+                <Shield size={14} color="#7c3aed" />
+                <span>Superadmin or Telephony Operator? Access Admin Portal ➔</span>
+              </button>
+            </div>
           </div>
 
           {/* Footer Legal & Privacy Links */}

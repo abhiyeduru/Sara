@@ -29,6 +29,7 @@ const NAV = [
   {
     section: 'Communication',
     items: [
+      { id: 'call-by-sara', label: 'Call by Sara',    icon: Phone, badge: 'HOT' },
       { id: 'calls',        label: 'Voice Calls',     icon: Phone },
       { id: 'instant-leads',label: 'Instant Leads',   icon: Zap },
       { id: 'campaigns',    label: 'Campaigns',       icon: Megaphone },
@@ -62,6 +63,7 @@ const NAV = [
       { id: 'approvals', label: 'Approvals',   icon: Shield },
       { id: 'activity',  label: 'Activity Log', icon: Activity },
       { id: 'billing',   label: 'Billing & Usage', icon: CreditCard },
+      { id: 'admin',     label: 'Admin Control', icon: ShieldCheck, badge: 'PRO' },
       { id: 'settings',  label: 'Settings',     icon: Settings },
     ]
   },

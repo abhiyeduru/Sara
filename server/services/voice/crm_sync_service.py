@@ -181,6 +181,49 @@ class CRMSyncService:
             except Exception as e:
                 logger.warning(f"Error updating AI Employee stats: {e}")
 
+        # ── Accurate CRM Stage Mapping as per Calls ──
+        outcome_clean = (outcome or "").strip().lower().replace("-", "_")
+        stage_status_map = {
+            "won": ("won", "won"),
+            "deal_closed": ("won", "won"),
+            "proposal": ("proposal", "proposal"),
+            "proposal sent": ("proposal", "proposal"),
+            "proposal_sent": ("proposal", "proposal"),
+            "negotiation": ("negotiation", "negotiation"),
+            "qualified": ("qualified", "qualified"),
+            "interested": ("qualified", "qualified"),
+            "engaged": ("engaged", "engaged"),
+            "contacted": ("contacted", "contacted"),
+            "not_interested": ("lost", "lost"),
+            "lost": ("lost", "lost"),
+            "wrong_number": ("lost", "lost"),
+            "callback": ("contacted", "contacted")
+        }
+        lead_status, lead_stage = stage_status_map.get(
+            outcome_clean,
+            ("qualified", "qualified") if is_qualified else ("contacted", "contacted")
+        )
+
+        customer_stage_map = {
+            "won": "Won",
+            "deal_closed": "Won",
+            "proposal": "Proposal Sent",
+            "proposal sent": "Proposal Sent",
+            "proposal_sent": "Proposal Sent",
+            "negotiation": "Negotiation",
+            "qualified": "Qualified",
+            "interested": "Interested",
+            "contacted": "Contacted",
+            "not_interested": "Lost",
+            "lost": "Lost",
+            "wrong_number": "Lost",
+            "callback": "Contacted"
+        }
+        cust_stage = customer_stage_map.get(
+            outcome_clean,
+            "Qualified" if is_qualified else "Contacted"
+        )
+
         # ── 4. Create / Update CRM Customer ──────────────────────────────────
         customer = None
         try:
@@ -196,8 +239,8 @@ class CRMSyncService:
                     user_id=user_id,
                     name=customer_name,
                     phone=target_phone,
-                    status="Qualified" if is_qualified else "Contacted",
-                    pipeline_stage="Qualified" if is_qualified else "Contacted",
+                    status=cust_stage,
+                    pipeline_stage=cust_stage,
                     lead_score=lead_score,
                     source="AI Voice Call",
                     budget=str(summary_data.get("budget", "")),
@@ -208,25 +251,30 @@ class CRMSyncService:
                         "latest_call_summary": summary_text,
                         "sentiment": sentiment,
                         "intent": intent,
+                        "outcome": outcome,
                         "last_call_at": datetime.now(timezone.utc).isoformat(),
                     },
                     last_interaction=datetime.now(timezone.utc),
                 )
                 db.add(customer)
                 db.flush()
-                logger.info(f"👤 Created new CRM Customer: {customer.name} ({customer.phone})")
+                logger.info(f"👤 Created new CRM Customer: {customer.name} ({customer.phone}) -> {cust_stage}")
             else:
                 customer.last_interaction = datetime.now(timezone.utc)
-                if is_qualified and customer.status in ["New Lead", "Contacted"]:
+                if cust_stage in ["Won", "Lost", "Proposal Sent", "Negotiation", "Qualified"]:
+                    customer.status = cust_stage
+                    customer.pipeline_stage = cust_stage
+                elif is_qualified and customer.status in ["New Lead", "Contacted"]:
                     customer.status = "Qualified"
                     customer.pipeline_stage = "Qualified"
                 customer.lead_score = max(customer.lead_score or 50, lead_score)
                 curr_mem = dict(customer.memory or {})
                 curr_mem["latest_call_summary"] = summary_text
                 curr_mem["sentiment"] = sentiment
+                curr_mem["outcome"] = outcome
                 curr_mem["last_call_at"] = datetime.now(timezone.utc).isoformat()
                 customer.memory = curr_mem
-                logger.info(f"👤 Updated existing CRM Customer: {customer.name}")
+                logger.info(f"👤 Updated existing CRM Customer: {customer.name} -> {customer.pipeline_stage}")
 
             if call:
                 call.customer_id = customer.id
@@ -250,8 +298,8 @@ class CRMSyncService:
                     name=customer_name,
                     phone=target_phone,
                     source="Inbound Call" if direction == "inbound" else "Outbound Call",
-                    status="qualified" if is_qualified else "contacted",
-                    pipeline_stage="qualified" if is_qualified else "contacted",
+                    status=lead_status,
+                    pipeline_stage=lead_stage,
                     lead_score=lead_score,
                     intent=intent,
                     requirements=extracted_reqs if isinstance(extracted_reqs, list) else [str(extracted_reqs)],
@@ -260,16 +308,19 @@ class CRMSyncService:
                 )
                 db.add(lead)
                 db.flush()
-                logger.info(f"🎯 Created CRM Lead: {lead.name} ({lead.phone})")
+                logger.info(f"🎯 Created CRM Lead: {lead.name} ({lead.phone}) -> {lead_status}")
             else:
                 lead.last_interaction = datetime.now(timezone.utc)
-                if is_qualified:
+                if lead_status in ["won", "lost", "proposal", "negotiation", "qualified"]:
+                    lead.status = lead_status
+                    lead.pipeline_stage = lead_stage
+                elif is_qualified and lead.status in ["new", "contacted"]:
                     lead.status = "qualified"
                     lead.pipeline_stage = "qualified"
                 lead.lead_score = max(lead.lead_score or 50, lead_score)
-                lead.intent = intent
-                lead.next_action = next_action
-                logger.info(f"🎯 Updated CRM Lead: {lead.name}")
+                lead.intent = intent or lead.intent
+                lead.next_action = next_action or lead.next_action
+                logger.info(f"🎯 Updated CRM Lead: {lead.name} -> {lead.status}")
 
             if call:
                 call.lead_id = lead.id

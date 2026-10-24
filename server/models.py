@@ -142,17 +142,17 @@ class AIEmployee(Base):
     # Voice
     voice_id      = Column(String(100), nullable=True)
     voice_name    = Column(String(100), nullable=True)
-    voice_gender  = Column(String(20),  default="female")
-    voice_language= Column(String(20),  default="en")
+    voice_gender  = Column(String(50),  default="female")
+    voice_language= Column(String(50),  default="en")
     voice_speed   = Column(Float, default=1.0)
-    voice_tone    = Column(String(50),  default="professional")
+    voice_tone    = Column(String(255),  default="professional")
 
     # Behaviour
     languages     = Column(JSON, default=lambda: ["en"])
     working_hours = Column(JSON, default=lambda: {"start": "09:00", "end": "21:00", "days": ["mon","tue","wed","thu","fri","sat"]})
-    personality   = Column(String(50), default="Professional & Friendly")
-    communication_style = Column(String(50), default="Concise")
-    sales_behavior= Column(String(50), default="Consultative")
+    personality   = Column(String(255), default="Professional & Friendly")
+    communication_style = Column(String(255), default="Concise")
+    sales_behavior= Column(String(255), default="Consultative")
 
     # Runtime specs (compiled from natural language)
     compiled_prompt   = Column(Text, default="")
@@ -495,7 +495,7 @@ class Call(Base):
     sentiment       = Column(String(30), default="neutral")
     intent          = Column(String(100), default="")
     lead_score      = Column(Integer, default=0)
-    outcome         = Column(String(50), default="")
+    outcome         = Column(String(500), default="")
     # QUALIFIED | INTERESTED | NOT_INTERESTED | CALLBACK | NO_ANSWER | BUSY | WRONG_NUMBER | VOICEMAIL | FAILED
 
     # Billing & Cost

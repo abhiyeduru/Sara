@@ -217,6 +217,27 @@ Your primary language is Telugu, with natural Andhra Pradesh and Telangana conve
 - Use only verified information from the business knowledge base and CRM.
 - Never invent prices, offers, property availability, or appointments.
 - Confirm important details before taking action.
+
+## 5. Google Hub MCP Autonomous Tool Execution (CRITICAL)
+You have direct autonomous access to Google Workspace Hub tools (Google Calendar, Google Sheets, Gmail, Google Contacts, and CRM).
+Whenever an action is requested or needed (booking an appointment, appending details to sheet, sending an email, capturing a lead), YOU MUST EXECUTE IT YOURSELF using the inline command format:
+[COMMAND: tool_name({"param": "value"})]
+
+Supported Google Hub MCP Commands:
+- [COMMAND: google_calendar_schedule({"title": "Site Visit / Consultation", "date": "tomorrow", "time": "11:00 AM", "customer_name": "...", "customer_phone": "..."})]
+- [COMMAND: google_calendar_check_availability({"date": "tomorrow"})]
+- [COMMAND: google_sheets_append_row({"row_data": {"name": "...", "phone": "...", "budget": "80 Lakhs", "requirement": "..."}})]
+- [COMMAND: gmail_send_message({"to_email": "...", "subject": "Meeting Confirmation & Details", "body": "..."})]
+- [COMMAND: google_contacts_create({"name": "...", "phone": "...", "email": "..."})]
+- [COMMAND: crm_create_lead({"name": "...", "phone": "...", "interest": "...", "budget": "..."})]
+- [COMMAND: crm_send_whatsapp({"phone": "...", "message": "..."})]
+
+RULES FOR COMMAND EXECUTION:
+1. Always emit the [COMMAND: ...] tag immediately when taking action.
+2. The system automatically executes your command in the background on Google Hub.
+3. NEVER read the bracketed command tag out loud. Always pair it with natural, warm spoken confirmation in Telugu or English!
+Example:
+"[COMMAND: google_calendar_schedule({"title": "Site Visit", "date": "tomorrow", "time": "11:00 AM"})] ఖచ్చితంగా అండీ! రేపు ఉదయం 11:00 గంటలకు మీ సైట్ విజిట్ గూగుల్ క్యాలెండర్‌లో బుక్ చేశాను."
 {biz_summary}"""
 
         greeting_prompt = "హలో! నమస్కారం. నేను సారా మాట్లాడుతున్నాను. మీరు ఇప్పుడు ఒక నిమిషం మాట్లాడగలరా?"
@@ -540,12 +561,19 @@ Your primary language is Telugu, with natural Andhra Pradesh and Telangana conve
                         phrase_queue.task_done()
                         break
 
-                    phrase_item = normalize_numbers_to_english(phrase_item)
-                    target_synth_lang = get_synth_lang(phrase_item)
+                    # Clean out any inline MCP commands so TTS never speaks bracketed code
+                    phrase_clean = re.sub(r"\[COMMAND:.*?\]", "", phrase_item, flags=re.DOTALL)
+                    phrase_clean = re.sub(r"<tool:.*?>.*?</tool>", "", phrase_clean, flags=re.DOTALL)
+                    phrase_clean = normalize_numbers_to_english(phrase_clean.strip())
+                    if not phrase_clean:
+                        phrase_queue.task_done()
+                        continue
+
+                    target_synth_lang = get_synth_lang(phrase_clean)
                     tts_start = time.perf_counter()
                     try:
                         tts_res = await synthesize_speech(
-                            text=phrase_item,
+                            text=phrase_clean,
                             voice_id=active_voice_id,
                             language=target_synth_lang
                         )
@@ -561,7 +589,7 @@ Your primary language is Telugu, with natural Andhra Pradesh and Telangana conve
                             await websocket.send_json({
                                 "type": "tts.audio",
                                 "audio": b64_audio,
-                                "text": phrase_item,
+                                "text": phrase_clean,
                                 "chunk_latency_ms": round(tts_dur, 2)
                             })
                     except Exception as err:
@@ -610,7 +638,31 @@ Your primary language is Telugu, with natural Andhra Pradesh and Telangana conve
                 except asyncio.CancelledError:
                     pass
 
-            complete_agent_reply = normalize_numbers_to_english("".join(full_response_text).strip())
+            raw_full_reply = "".join(full_response_text).strip()
+
+            # Autonomously parse and execute any Google Hub MCP commands issued by the AI
+            from server.services.mcp.google_hub_mcp import parse_and_execute_inline_commands
+            ws_id = getattr(ai_emp, 'workspace_id', None) or "ws_default_1"
+            clean_reply, executed_tools = parse_and_execute_inline_commands(
+                text=raw_full_reply,
+                db=db,
+                user_id=target_user_id,
+                workspace_id=ws_id
+            )
+
+            # Broadcast executed tool results in real time to the frontend
+            for tool_item in executed_tools:
+                await websocket.send_json({
+                    "type": "mcp.command_executed",
+                    "tool": tool_item["tool"],
+                    "status": tool_item["status"],
+                    "summary": tool_item["summary"],
+                    "result": tool_item["result"],
+                    "args": tool_item["args"],
+                    "hub": "Google Workspace Hub MCP"
+                })
+
+            complete_agent_reply = normalize_numbers_to_english(clean_reply if clean_reply else raw_full_reply)
             manager.messages.append({"role": "assistant", "content": complete_agent_reply})
 
             # Calculate precise turn metrics

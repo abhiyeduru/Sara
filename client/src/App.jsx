@@ -15,6 +15,7 @@ import VoiceCalls from './components/pages/VoiceCalls';
 import Leads from './components/pages/Leads';
 import CRM from './components/pages/CRM';
 import Analytics from './components/pages/Analytics';
+import Reports from './components/pages/Reports';
 import Approvals from './components/pages/Approvals';
 import Integrations from './components/pages/Integrations';
 import Billing from './components/pages/Billing';
@@ -26,6 +27,7 @@ import MCPConnections from './components/pages/MCPConnections';
 import PhoneNumbers from './components/pages/PhoneNumbers';
 import TalkWithSara from './components/pages/TalkWithSara';
 import CampaignsStudio from './components/pages/CampaignsStudio';
+import CallBySara from './components/pages/CallBySara';
 import AdminPortal from './components/admin/AdminPortal';
 import ComingSoon from './components/pages/ComingSoon';
 import LoginModal from './components/auth/LoginModal';
@@ -33,11 +35,12 @@ import BusinessOnboardingModal from './components/auth/BusinessOnboardingModal';
 import MobileBottomNav from './components/MobileBottomNav';
 
 import { UsersRound, GraduationCap, Zap, Megaphone, PhoneIncoming, MessageCircle,
-  Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic, ShieldCheck } from 'lucide-react';
+  Inbox, UserCheck, Users, BarChart3, Cpu, Hash, Code2, Activity, Sparkles, Mic, ShieldCheck, PhoneCall } from 'lucide-react';
 
 const PAGE_META = {
   admin:             { title: 'Admin & Platform Control Center', subtitle: 'Manage all users, call minutes, payments, and multi-tenant telephony' },
   dashboard:         { title: 'Dashboard', subtitle: 'Good morning — your AI workforce at a glance' },
+  'call-by-sara':    { title: 'Call by Sara', subtitle: 'Autonomous Telugu Outbound Voice Calling & Lead Qualifier' },
   'talk-sara':       { title: 'Talk with Sara', subtitle: 'Live human-like conversational voice agent' },
   ask:               { title: 'Ask Sara', subtitle: 'Your AI workplace assistant' },
   employees:         { title: 'My AI Employees', subtitle: 'Manage your AI workforce' },
@@ -95,11 +98,12 @@ function renderPage(page, onNavigate, pageParams = {}) {
 
     case 'instant-leads':   return <CampaignsStudio onNavigate={onNavigate} />;
     case 'campaigns':       return <CampaignsStudio onNavigate={onNavigate} />;
+    case 'call-by-sara':    return <CallBySara onNavigate={onNavigate} />;
     case 'inbound':         return <ComingSoon title="Inbound Calls" subtitle="Configure AI employees to handle inbound customer calls." icon={PhoneIncoming} ctaLabel="Set Up Inbound" onCta={() => {}} />;
     case 'whatsapp':        return <ComingSoon title="WhatsApp" subtitle="Connect WhatsApp Business to your AI employees." icon={MessageCircle} ctaLabel="Connect WhatsApp" onCta={() => onNavigate('integrations')} />;
     case 'conversations':   return <ComingSoon title="Conversations" subtitle="Unified inbox for all AI-customer interactions." icon={Inbox} ctaLabel="View Calls" onCta={() => onNavigate('calls')} />;
     case 'customers':       return <ComingSoon title="Customers" subtitle="Full customer database with AI interaction history." icon={Users} ctaLabel="View Leads" onCta={() => onNavigate('leads')} />;
-    case 'reports':         return <ComingSoon title="Reports" subtitle="Generate AI-powered business intelligence reports." icon={BarChart3} ctaLabel="View Analytics" onCta={() => onNavigate('analytics')} />;
+    case 'reports':         return <Reports onNavigate={onNavigate} />;
     case 'developers':      return <ComingSoon title="API & Webhooks" subtitle="Access Sara AI via REST API and configure webhooks." icon={Code2} ctaLabel="View Docs" onCta={() => {}} />;
 
     default: return <Dashboard onNavigate={onNavigate} />;
@@ -381,6 +385,7 @@ export default function App() {
             setShowOnboarding(true);
           }
         }}
+        onOpenAdmin={() => handleNavigate('admin')}
       />
     );
   }
