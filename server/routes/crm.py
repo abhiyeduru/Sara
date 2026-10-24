@@ -759,7 +759,7 @@ async def natural_language_search(
 
 @router.get("/analytics")
 async def get_crm_analytics(
-    role: str = Query("CEO", enum=["CEO", "CRO", "Sales Manager", "Sales Rep", "AI Workforce"]),
+    role: str = Query("CEO", description="Role filter: CEO, CRO, Sales Manager, Sales Rep, AI Workforce"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user)
 ):
