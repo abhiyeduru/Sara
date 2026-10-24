@@ -225,12 +225,21 @@ async def compile_and_create_employee(
     """
     from server.engine.agent_compiler import AgentCompiler
 
-    # 1. Compile through AI compiler pipeline
-    compiler = AgentCompiler()
-    spec = compiler.compile(
-        natural_input=body.description,
-        language_preference=body.language
-    )
+    try:
+        # 1. Compile through AI compiler pipeline
+        compiler = AgentCompiler()
+        spec = compiler.compile(
+            natural_input=body.description,
+            language_preference=body.language
+        )
+    except Exception as comp_err:
+        logger.error(f"AgentCompiler error: {comp_err}", exc_info=True)
+        spec = {
+            "identity": {"name": "Sara", "role_title": "AI Calling Specialist", "department": "Sales"},
+            "behavior": {"personality": "Professional & polite", "communication_style": "Concise"},
+            "workflow": {"steps": []},
+            "tools": []
+        }
 
     # 2. Curated voice mapping for regional Indian languages
     voice_map = {
@@ -244,7 +253,7 @@ async def compile_and_create_employee(
     }
     voice_id, voice_name, voice_gender = voice_map.get(body.language, ("07bc462a-c644-49f1-baf7-82d5599131be", "Sindhu", "female"))
 
-    identity = spec.get("identity", {})
+    identity = spec.get("identity", {}) if isinstance(spec, dict) else {}
     desc_lower = (body.description or "").lower()
 
     # Detect domain to craft appropriate name & role
@@ -294,7 +303,7 @@ async def compile_and_create_employee(
             logger.warning(f"Script synthesis fallback in compile-and-create: {synth_err}")
 
     # Attach calling mode and template category
-    universal_spec = spec
+    universal_spec = spec if isinstance(spec, dict) else {}
     universal_spec["calling_mode"] = body.calling_mode
     universal_spec["template_category"] = body.template_category or detected_domain
     universal_spec["primary_language"] = body.language
@@ -321,7 +330,7 @@ async def compile_and_create_employee(
         universal_spec["script_stages"] = body.script_stages
     else:
         steps = []
-        wf_steps = spec.get("workflow", {}).get("steps", [])
+        wf_steps = spec.get("workflow", {}).get("steps", []) if isinstance(spec, dict) else []
         for idx, s in enumerate(wf_steps, start=1):
             steps.append({
                 "id": f"s{idx}",
@@ -330,7 +339,7 @@ async def compile_and_create_employee(
             })
 
         call_script = {
-            "opening_line": spec.get("prompt_templates", {}).get("greeting", f"హలో అండి, నేను {name} మాట్లాడుతున్నాను."),
+            "opening_line": spec.get("prompt_templates", {}).get("greeting", f"హలో అండి, నేను {name} మాట్లాడుతున్నాను.") if isinstance(spec, dict) else f"హలో అండి, నేను {name} మాట్లాడుతున్నాను.",
             "steps": steps or [
                 {"id": "s1", "shortTitle": "Greet & Identify", "content": "Introduce warmly and ask caller what they need."},
                 {"id": "s2", "shortTitle": "Qualify Details", "content": "Ask for specific requirements, budget, or preferred timing."},
@@ -344,58 +353,63 @@ async def compile_and_create_employee(
     script_prompt = "\n\n### MANDATORY MULTI-STAGE CONVERSATIONAL SCRIPT & STAGES:\n"
     for st in call_script.get("steps", []):
         script_prompt += f"Stage: {st.get('shortTitle')}\nInstruction / Dialogue: \"{st.get('content')}\"\n\n"
-    compiled_prompt = spec.get("system_prompt", "") + script_prompt
+    base_prompt = spec.get("system_prompt", "") if isinstance(spec, dict) else ""
+    compiled_prompt = base_prompt + script_prompt
 
-    emp = AIEmployee(
-        workspace_id=user.id,
-        created_by=user.id,
-        name=name,
-        role=role,
-        department=department,
-        mission=mission,
-        description=body.description,
-        personality=spec.get("behavior", {}).get("personality", "Professional, warm, helpful"),
-        communication_style=spec.get("behavior", {}).get("communication_style", "Concise & polite"),
-        sales_behavior=spec.get("behavior", {}).get("sales_behavior", "Consultative"),
-        languages=[body.language, "en"] if body.language != "en" else ["en"],
-        voice_id=voice_id,
-        voice_name=voice_name,
-        voice_gender=voice_gender,
-        voice_language=body.language,
-        primary_model="groq",
-        status="active",
-        compiled_prompt=compiled_prompt,
-        universal_spec=universal_spec,
-        workflow_spec=spec.get("workflow", {}),
-        tools_spec=spec.get("tools", []),
-    )
-    db.add(emp)
-    db.flush()
+    try:
+        emp = AIEmployee(
+            workspace_id=user.id,
+            created_by=user.id,
+            name=name,
+            role=role,
+            department=department,
+            mission=mission,
+            description=body.description,
+            personality=spec.get("behavior", {}).get("personality", "Professional, warm, helpful") if isinstance(spec, dict) else "Professional",
+            communication_style=spec.get("behavior", {}).get("communication_style", "Concise & polite") if isinstance(spec, dict) else "Concise",
+            sales_behavior=spec.get("behavior", {}).get("sales_behavior", "Consultative") if isinstance(spec, dict) else "Consultative",
+            languages=[body.language, "en"] if body.language != "en" else ["en"],
+            voice_id=voice_id,
+            voice_name=voice_name,
+            voice_gender=voice_gender,
+            voice_language=body.language,
+            primary_model="groq",
+            status="active",
+            compiled_prompt=compiled_prompt,
+            universal_spec=universal_spec,
+            workflow_spec=spec.get("workflow", {}) if isinstance(spec, dict) else {},
+            tools_spec=spec.get("tools", []) if isinstance(spec, dict) else [],
+        )
+        db.add(emp)
+        db.flush()
 
-    # Default permissions
-    default_perms = [
-        ("crm:read", "allowed"), ("crm:write", "allowed"),
-        ("calls:make", "allowed"), ("calls:receive", "allowed"),
-        ("lead:read", "allowed"), ("lead:write", "allowed"),
-        ("knowledge:read", "allowed"),
-    ]
-    for cap, access in default_perms:
-        db.add(AIEmployeePermission(employee_id=emp.id, capability=cap, access=access))
+        # Default permissions
+        default_perms = [
+            ("crm:read", "allowed"), ("crm:write", "allowed"),
+            ("calls:make", "allowed"), ("calls:receive", "allowed"),
+            ("lead:read", "allowed"), ("lead:write", "allowed"),
+            ("knowledge:read", "allowed"),
+        ]
+        for cap, access in default_perms:
+            db.add(AIEmployeePermission(employee_id=emp.id, capability=cap, access=access))
 
-    db.commit()
-    db.refresh(emp)
+        db.commit()
+        db.refresh(emp)
+    except Exception as db_err:
+        db.rollback()
+        logger.error(f"Failed to persist AIEmployee in compile-and-create: {db_err}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Database error saving employee: {str(db_err)}")
 
-    # Auto-sync BusinessProfile for the user so telephony calls immediately know the business
+    # Auto-sync BusinessProfile for the user safely
     try:
         from server.models import BusinessProfile
         bp = db.query(BusinessProfile).filter(BusinessProfile.user_id == user.id).first()
         if not bp:
             bp = BusinessProfile(
                 user_id=user.id,
-                workspace_id=user.id,
                 business_name=detected_domain or body.template_category or "Our Business",
                 industry=detected_domain or "Services",
-                description=body.description,
+                description=body.description or "",
             )
             db.add(bp)
         else:
@@ -403,7 +417,8 @@ async def compile_and_create_employee(
             bp.description = body.description or bp.description
         db.commit()
     except Exception as bp_err:
-        logger.warning(f"BusinessProfile sync notice: {bp_err}")
+        db.rollback()
+        logger.warning(f"BusinessProfile sync notice (non-fatal): {bp_err}")
 
     logger.info(f"Autonomously compiled & created AI Employee {emp.name} ({emp.id}) with mode {body.calling_mode}")
     return _to_dict(emp)
